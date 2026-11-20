@@ -117,15 +117,20 @@ class RecordingService : LifecycleService() {
             }
             var seconds = 0
             var silentSeconds = 0
+            var nextRestartS = GPS_WATCHDOG_FIRST_S
             while (isActive) {
                 delay(1_000)
                 recorder.tick()
                 seconds++
                 if (seconds % NOTIFICATION_PERIOD_S == 0) updateNotification()
-                // Chien de garde : si le GPS se tait trop longtemps, on relance l'écoute.
-                silentSeconds = if (recorder.snapshot.value.hasSignal) 0 else silentSeconds + 1
-                if (silentSeconds >= GPS_WATCHDOG_S) {
+                // Chien de garde : si le GPS reste muet très longtemps (plusieurs minutes), on relance son écoute.
+                // Volontairement patient : relancer un GPS qui cherche encore ses satellites ne ferait que le retarder.
+                if (recorder.snapshot.value.hasSignal) {
                     silentSeconds = 0
+                    nextRestartS = GPS_WATCHDOG_FIRST_S
+                } else if (++silentSeconds >= nextRestartS) {
+                    silentSeconds = 0
+                    nextRestartS = GPS_WATCHDOG_NEXT_S
                     container.gps.restart()
                 }
             }
@@ -256,7 +261,8 @@ class RecordingService : LifecycleService() {
         private const val CHANNEL_ID = "enregistrement"
         private const val NOTIFICATION_ID = 1
         private const val NOTIFICATION_PERIOD_S = 5
-        private const val GPS_WATCHDOG_S = 45
+        private const val GPS_WATCHDOG_FIRST_S = 180
+        private const val GPS_WATCHDOG_NEXT_S = 300
         private const val MAX_FIX_AGE_MS = 5_000L
         private const val MAX_RIDE_MS = 24 * 60 * 60 * 1000L
 

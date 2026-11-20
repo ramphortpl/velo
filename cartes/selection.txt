@@ -1,0 +1,3 @@
+# Régions à générer au prochain passage du workflow « Cartes hors ligne » :
+# « toutes », ou des identifiants de cartes/regions.json séparés par des espaces.
+corse

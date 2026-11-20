@@ -19,7 +19,7 @@ PACKAGE = "fr.velogo.app.essai"
 ACTIVITY = "fr.velogo.app.MainActivity"
 OUT = "essai"
 # Bord du lac d'Annecy : point de départ de la sortie simulée.
-START_LAT, START_LON, START_ALT = 45.8992, 6.1294, 448.0
+START_LAT, START_LON = 45.8992, 6.1294
 SPEED_MPS = 7.0
 
 failures = []
@@ -128,30 +128,45 @@ def check_alive(when):
 
 
 class Gps:
-    """Fait avancer une position simulée et l'envoie à l'émulateur."""
+    """Fait avancer une position simulée et l'envoie au téléphone.
+
+    On passe par le « fournisseur de test » d'Android (cmd location) plutôt que par le GPS simulé de l'émulateur :
+    ce dernier se bloque parfois au démarrage et entraîne tout le système avec lui. Limite : ces positions n'ont ni
+    vitesse ni altitude ; l'appli déduit donc la vitesse du déplacement (l'altitude est couverte par les tests de calcul).
+    """
 
     def __init__(self):
-        self.lat, self.lon, self.alt = START_LAT, START_LON, START_ALT
+        self.lat, self.lon = START_LAT, START_LON
         self.distance = 0.0
+        # Le droit « position fictive » est donné au shell d'adb, sous ses différentes identités possibles.
+        for cible in ("com.android.shell", "shell", "root"):
+            shell(f"appops set {cible} android:mock_location allow")
+        for commande in (
+            "cmd location providers add-test-provider gps --requiresSatellite --supportsSpeed --supportsBearing --supportsAltitude --powerRequirement 1",
+            "cmd location providers set-test-provider-enabled gps true",
+        ):
+            retour = shell(commande + " 2>&1").strip()
+            if retour:
+                log(f"{commande.split(' --')[0]} : {retour[:300]}")
 
-    def send(self, speed):
-        knots = speed * 1.943844
-        adb("emu", "geo", "fix", f"{self.lon:.6f}", f"{self.lat:.6f}", f"{self.alt:.1f}", "12", f"{knots:.2f}")
+    def send(self):
+        shell(f"cmd location providers set-test-provider-location gps --location {self.lat:.6f},{self.lon:.6f} --accuracy 4")
 
-    def ride(self, seconds, bearing_deg=40.0, slope_pct=3.0):
+    def ride(self, seconds, bearing_deg=40.0):
         bearing = math.radians(bearing_deg)
         for _ in range(seconds):
+            debut = time.time()
             self.lat += SPEED_MPS * math.cos(bearing) / 111_320.0
             self.lon += SPEED_MPS * math.sin(bearing) / (111_320.0 * math.cos(math.radians(self.lat)))
-            self.alt += SPEED_MPS * slope_pct / 100.0
             self.distance += SPEED_MPS
-            self.send(SPEED_MPS)
-            time.sleep(1.0)
+            self.send()
+            time.sleep(max(0.0, 1.0 - (time.time() - debut)))
 
     def stand(self, seconds):
         for _ in range(seconds):
-            self.send(0.0)
-            time.sleep(1.0)
+            debut = time.time()
+            self.send()
+            time.sleep(max(0.0, 1.0 - (time.time() - debut)))
 
 
 def read_km():
@@ -176,7 +191,7 @@ def main():
         fail("installation de l'APK refusée")
         return
     adb("logcat", "-c")
-    gps.send(0.0)
+    gps.send()
 
     log("démarrage de l'appli")
     shell(f"am start -W -n {PACKAGE}/{ACTIVITY}", timeout=120)
@@ -185,8 +200,16 @@ def main():
     shot("carte_au_demarrage")
     if not check_alive("après le démarrage"):
         return
+    # Une sortie restée « en cours » (redémarrage imprévu de l'émulateur) : on la termine pour repartir d'un état connu.
+    if find("Sortie interrompue"):
+        log("une sortie interrompue traînait : on la termine")
+        tap("Terminer")
+        time.sleep(4)
+        tap("Rouler", required=False)
     if not wait_for("Démarrer", 30):
         fail("le bouton « Démarrer » n'apparaît pas")
+    if not wait_for("GPS ±", 25, exact=False):
+        fail("aucune position GPS reçue par l'appli")
 
     log("démarrage d'une sortie")
     tap("Démarrer")

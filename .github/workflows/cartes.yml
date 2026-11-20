@@ -1,0 +1,199 @@
+name: Cartes hors ligne
+
+# Fabrique les packs de cartes téléchargés par l'appli et les publie dans la Release « cartes » :
+#   fond-<région>.pmtiles   fond de carte découpé dans le basemap Protomaps du jour
+#   velo-<région>.pmtiles   surcouche vélo générée par Planetiler depuis OpenStreetMap (cartes/SurcoucheVelo.java)
+#   relief-<région>.pmtiles modèle de terrain découpé dans Mapterhorn (LiDAR HD de l'IGN)
+#   <dalle>.rd5             données d'itinéraire BRouter
+#   catalogue.json          la liste de tout cela, avec tailles et empreintes
+on:
+  workflow_dispatch:
+    inputs:
+      regions:
+        description: "Régions à générer (identifiants séparés par des espaces) ou « toutes »"
+        default: "toutes"
+  push:
+    branches: ["main", "claude/**"]
+    # Seulement ce qui change le contenu des packs (le style, lui, est embarqué dans l'appli).
+    paths:
+      - "cartes/selection.txt"
+      - "cartes/SurcoucheVelo.java"
+      - "cartes/regions.json"
+      - "cartes/contours/**"
+      - "cartes/outils/catalogue.py"
+      - ".github/workflows/cartes.yml"
+  schedule:
+    - cron: "23 2 4 * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cartes-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PMTILES_VERSION: "1.31.2"
+  PLANETILER_VERSION: "0.10.2"
+  ETIQUETTE: cartes
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  preparation:
+    name: Préparation
+    runs-on: ubuntu-latest
+    outputs:
+      regions: ${{ steps.plan.outputs.regions }}
+      build: ${{ steps.plan.outputs.build }}
+      osm: ${{ steps.plan.outputs.osm }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: plan
+        env:
+          REGIONS_DEMANDEES: ${{ github.event.inputs.regions }}
+        run: |
+          REGIONS="$(python3 cartes/outils/catalogue.py selection)"
+          echo "regions=$REGIONS" >> "$GITHUB_OUTPUT"
+          BUILD="$(curl -fsSL https://build-metadata.protomaps.dev/builds.json | python3 -c 'import json,sys; print(sorted(b["key"] for b in json.load(sys.stdin))[-1])')"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          # Pour un essai sur la seule Corse, inutile de traiter les 5 Go de la France entière.
+          if [ "$REGIONS" = '["corse"]' ]; then
+            echo "osm=https://download.geofabrik.de/europe/france/corse-latest.osm.pbf" >> "$GITHUB_OUTPUT"
+          else
+            echo "osm=https://download.geofabrik.de/europe/france-latest.osm.pbf" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Régions : $REGIONS — fond Protomaps : $BUILD" >> "$GITHUB_STEP_SUMMARY"
+      - name: Release « cartes »
+        run: |
+          gh release view "$ETIQUETTE" >/dev/null 2>&1 || gh release create "$ETIQUETTE" --prerelease \
+            --title "Cartes hors ligne" --notes "Packs de cartes de VeloGo (en cours de génération)." --target "$GITHUB_SHA"
+
+  surcouche:
+    name: Surcouche vélo (Planetiler)
+    needs: preparation
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Place disque
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          df -h / /mnt || true
+      - name: Extrait OpenStreetMap
+        run: |
+          mkdir -p travail
+          curl -fSL --retry 4 --retry-delay 20 -o travail/extrait.osm.pbf "${{ needs.preparation.outputs.osm }}"
+          ls -la travail
+      - name: Planetiler
+        run: |
+          curl -fsSL -o planetiler.jar "https://github.com/onthegomap/planetiler/releases/download/v${PLANETILER_VERSION}/planetiler.jar"
+          java -Xmx11g -cp planetiler.jar cartes/SurcoucheVelo.java \
+            --osm=travail/extrait.osm.pbf --sortie=velo-france.pmtiles \
+            --minzoom=6 --maxzoom=14 --tmpdir=travail/tmp --force
+          ls -la velo-france.pmtiles
+      - uses: actions/upload-artifact@v7
+        with:
+          name: surcouche
+          path: velo-france.pmtiles
+          retention-days: 2
+          compression-level: 0
+
+  region:
+    name: ${{ matrix.region }}
+    needs: [preparation, surcouche]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        region: ${{ fromJson(needs.preparation.outputs.regions) }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Outil pmtiles
+        run: |
+          curl -fsSL "https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}/go-pmtiles_${PMTILES_VERSION}_Linux_x86_64.tar.gz" | tar xz pmtiles
+          ./pmtiles version
+      - uses: actions/download-artifact@v8
+        with:
+          name: surcouche
+      - name: Découpage
+        env:
+          REGION: ${{ matrix.region }}
+          BUILD: ${{ needs.preparation.outputs.build }}
+        run: |
+          CONTOUR="cartes/contours/$REGION.geojson"
+          ./pmtiles extract "https://build.protomaps.com/$BUILD" "fond-$REGION.pmtiles" --region="$CONTOUR" --maxzoom=15 --download-threads=4 -q
+          ./pmtiles extract velo-france.pmtiles "velo-$REGION.pmtiles" --region="$CONTOUR" -q
+          ./pmtiles extract https://download.mapterhorn.com/planet.pmtiles "relief-$REGION.pmtiles" --region="$CONTOUR" --maxzoom=12 --download-threads=4 -q
+          ls -la *-"$REGION".pmtiles
+          python3 cartes/outils/catalogue.py fragment "$REGION" "fond-$REGION.pmtiles" "velo-$REGION.pmtiles" "relief-$REGION.pmtiles"
+      - name: Publication
+        env:
+          REGION: ${{ matrix.region }}
+        run: gh release upload "$ETIQUETTE" "fond-$REGION.pmtiles" "velo-$REGION.pmtiles" "relief-$REGION.pmtiles" --clobber
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fragment-${{ matrix.region }}
+          path: fragment-${{ matrix.region }}.json
+          retention-days: 2
+
+  france:
+    name: Vue d'ensemble et itinéraires
+    needs: preparation
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Outil pmtiles
+        run: curl -fsSL "https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}/go-pmtiles_${PMTILES_VERSION}_Linux_x86_64.tar.gz" | tar xz pmtiles
+      - name: Vue d'ensemble de la France
+        env:
+          BUILD: ${{ needs.preparation.outputs.build }}
+        run: |
+          # Zooms 0 à 8 de toute la France : la carte n'est jamais vide en dehors des régions téléchargées.
+          ./pmtiles extract "https://build.protomaps.com/$BUILD" fond-france.pmtiles --bbox=-5.6,41.2,9.8,51.3 --maxzoom=8 -q
+          ./pmtiles extract https://download.mapterhorn.com/planet.pmtiles relief-france.pmtiles --bbox=-5.6,41.2,9.8,51.3 --maxzoom=7 -q
+          ls -la *.pmtiles
+          python3 cartes/outils/catalogue.py fragment france fond-france.pmtiles relief-france.pmtiles
+          gh release upload "$ETIQUETTE" fond-france.pmtiles relief-france.pmtiles --clobber
+      - name: Données d'itinéraire BRouter
+        run: |
+          # Seules les dalles qui ont changé sur brouter.de depuis le dernier passage sont retéléchargées.
+          gh release download "$ETIQUETTE" --pattern catalogue.json --output catalogue-precedent.json || true
+          python3 cartes/outils/catalogue.py dalles
+          if ls *.rd5 >/dev/null 2>&1; then
+            ls -la *.rd5
+            gh release upload "$ETIQUETTE" *.rd5 --clobber
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fragment-france
+          path: fragment-*.json
+          retention-days: 2
+
+  catalogue:
+    name: Catalogue
+    needs: [preparation, region, france]
+    if: ${{ !cancelled() && needs.france.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: fragment-*
+          path: fragments
+      - name: Assemblage
+        env:
+          BUILD_PROTOMAPS: ${{ needs.preparation.outputs.build }}
+        run: |
+          # Les régions absentes de ce passage gardent leurs fichiers précédents : on repart du catalogue en ligne.
+          gh release download "$ETIQUETTE" --pattern catalogue.json --output catalogue-precedent.json || true
+          python3 cartes/outils/catalogue.py assembler fragments
+          gh release upload "$ETIQUETTE" catalogue.json --clobber
+          gh release edit "$ETIQUETTE" --notes-file resume.md
+          cat resume.md >> "$GITHUB_STEP_SUMMARY"

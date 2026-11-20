@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import fr.velogo.app.ui.theme.LabelCapsStyle
 import fr.velogo.app.ui.theme.NumberStyle
+import fr.velogo.core.format.Formats
 
 /**
  * Un nombre dessiné aussi grand que possible dans la place disponible.
@@ -55,7 +56,12 @@ fun FittedNumber(
                 val widthPerPx = reference.size.width / REFERENCE_PX
                 // Hauteur utile d'une ligne de chiffres : hauteur des capitales + la place de la virgule.
                 val fontPx = minOf(size.height / LINE_EM, if (widthPerPx > 0f) available / widthPerPx else size.height).coerceAtLeast(1f)
-                val layout = measurer.measure(text, style.copy(fontSize = fontPx.toSp()), softWrap = false, maxLines = 1)
+                // Pas de valeur (pas encore de GPS) : un tiret discret, pas une barre de la taille des chiffres.
+                val absent = text == Formats.NO_VALUE
+                val layout = measurer.measure(
+                    if (absent) "– –" else text,
+                    style.copy(fontSize = (if (absent) minOf(fontPx * 0.45f, ABSENT_MAX_DP.dp.toPx()) else fontPx).toSp()), softWrap = false, maxLines = 1,
+                )
                 val total = layout.size.width + unitWidth
                 val x = when (align) {
                     Alignment.Start -> 0f
@@ -65,7 +71,7 @@ fun FittedNumber(
                 val baseline = (size.height - LINE_EM * fontPx) / 2f + (TOP_EM + CAP_EM) * fontPx
                 val y = baseline - layout.firstBaseline
                 onDrawBehind {
-                    drawText(layout, color = color, topLeft = Offset(x, y))
+                    drawText(layout, color = if (absent) unitColor else color, topLeft = Offset(x, y))
                     if (unitLayout != null) {
                         drawText(unitLayout, color = unitColor, topLeft = Offset(x + layout.size.width + gap, baseline - unitLayout.firstBaseline))
                     }
@@ -80,6 +86,8 @@ private const val TOP_EM = 0.04f
 private const val DESCENT_EM = 0.11f
 private const val LINE_EM = TOP_EM + CAP_EM + DESCENT_EM
 private const val REFERENCE_PX = 200f
+/** Taille maximale des tirets affichés à la place d'une valeur absente. */
+private const val ABSENT_MAX_DP = 40
 
 /** Une donnée de l'écran guidon : étiquette en capitales, grand nombre, unité. */
 @Composable

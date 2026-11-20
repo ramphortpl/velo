@@ -1,0 +1,12 @@
+{
+  "name": "velogo-style-hors-ligne",
+  "private": true,
+  "description": "Fabrique le style MapLibre de la carte vélo hors ligne de VeloGo.",
+  "type": "module",
+  "scripts": {
+    "generer": "node generer.mjs"
+  },
+  "dependencies": {
+    "@protomaps/basemaps": "5.7.2"
+  }
+}

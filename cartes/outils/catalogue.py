@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""Outils du pipeline de cartes hors ligne (lancés par .github/workflows/cartes.yml).
+
+  catalogue.py selection              -> liste JSON des régions à générer (pour la matrice du workflow)
+  catalogue.py fragment <id> <f>...   -> décrit les fichiers d'une région (taille, empreinte) dans fragment-<id>.json
+  catalogue.py dalles                 -> récupère sur brouter.de les données d'itinéraire qui ont changé
+  catalogue.py assembler <dossier>    -> assemble catalogue.json à partir des fragments
+"""
+import datetime
+import glob
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import urllib.request
+
+RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def regions():
+    with open(os.path.join(RACINE, "regions.json"), encoding="utf-8") as f:
+        return json.load(f)
+
+
+def selection():
+    """cartes/selection.txt : « toutes », ou des identifiants de régions séparés par des espaces."""
+    chemin = os.path.join(RACINE, "selection.txt")
+    demande = os.environ.get("REGIONS_DEMANDEES", "").strip()
+    if not demande and os.path.exists(chemin):
+        demande = " ".join(l.strip() for l in open(chemin, encoding="utf-8") if l.strip() and not l.startswith("#"))
+    connues = [r["id"] for r in regions()]
+    if not demande or demande == "toutes":
+        return connues
+    choisies = [r for r in demande.replace(",", " ").split() if r in connues]
+    return choisies or connues
+
+
+def empreinte(chemin):
+    h = hashlib.sha256()
+    with open(chemin, "rb") as f:
+        for bloc in iter(lambda: f.read(1 << 20), b""):
+            h.update(bloc)
+    return h.hexdigest()
+
+
+def decrire(chemin):
+    nom = os.path.basename(chemin)
+    return {"type": nom.split("-")[0] if "-" in nom else "dalle", "nom": nom, "taille": os.path.getsize(chemin), "sha256": empreinte(chemin)}
+
+
+def fragment(identifiant, fichiers):
+    contenu = {"id": identifiant, "fichiers": [decrire(f) for f in fichiers]}
+    with open(f"fragment-{identifiant}.json", "w", encoding="utf-8") as f:
+        json.dump(contenu, f, ensure_ascii=False, indent=2)
+    print(json.dumps(contenu, ensure_ascii=False))
+
+
+def dalles():
+    """Données d'itinéraire BRouter (fichiers .rd5) : on ne retélécharge que celles qui ont changé sur brouter.de.
+
+    Le catalogue précédent (catalogue-precedent.json) garde la date de chaque dalle ; une dalle inchangée reste telle
+    quelle dans la Release. On évite ainsi de redemander 800 Mo au serveur de BRouter à chaque passage.
+    """
+    voulues = sorted({d for r in regions() for d in r["dalles"]})
+    anciennes = {}
+    if os.path.exists("catalogue-precedent.json"):
+        try:
+            with open("catalogue-precedent.json", encoding="utf-8") as f:
+                anciennes = {d["nom"]: d for d in json.load(f).get("dalles", [])}
+        except (ValueError, KeyError):
+            anciennes = {}
+    fichiers = []
+    for dalle in voulues:
+        nom = f"{dalle}.rd5"
+        url = f"https://brouter.de/brouter/segments4/{nom}"
+        requete = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "VeloGo-cartes (GitHub Actions)"})
+        with urllib.request.urlopen(requete, timeout=60) as reponse:
+            modifie = reponse.headers.get("Last-Modified", "")
+            taille = int(reponse.headers.get("Content-Length", "0") or 0)
+        ancienne = anciennes.get(nom)
+        if ancienne and modifie and ancienne.get("modifie") == modifie and ancienne.get("taille") == taille:
+            print(f"{nom} : inchangée depuis le dernier passage")
+            fichiers.append(ancienne)
+            continue
+        print(f"{nom} : téléchargement ({taille / 1e6:.0f} Mo, {modifie})", flush=True)
+        subprocess.run(["curl", "-fSL", "--retry", "4", "--retry-delay", "15", "-A", "VeloGo-cartes (GitHub Actions)", "-o", nom, url], check=True)
+        description = decrire(nom)
+        description["modifie"] = modifie
+        fichiers.append(description)
+    with open("fragment-dalles.json", "w", encoding="utf-8") as f:
+        json.dump({"id": "dalles", "fichiers": fichiers}, f, ensure_ascii=False, indent=2)
+    print(f"{len(fichiers)} dalles, {sum(x['taille'] for x in fichiers) / 1e6:.0f} Mo")
+
+
+def assembler(dossier):
+    fragments = {}
+    for chemin in glob.glob(os.path.join(dossier, "**", "fragment-*.json"), recursive=True):
+        with open(chemin, encoding="utf-8") as f:
+            contenu = json.load(f)
+        fragments[contenu["id"]] = contenu["fichiers"]
+    catalogue = {
+        "version": 1,
+        "date": datetime.date.today().isoformat(),
+        "sources": {
+            "fond": "Protomaps " + os.environ.get("BUILD_PROTOMAPS", ""),
+            "relief": "Mapterhorn",
+            "donnees": "OpenStreetMap, IGN (relief), BRouter (itinéraires)",
+        },
+        "france": fragments.get("france", []),
+        "dalles": fragments.get("dalles", []),
+        "regions": [],
+    }
+    # Les régions qui n'ont pas été régénérées cette fois gardent leur description précédente.
+    precedent = {}
+    if os.path.exists("catalogue-precedent.json"):
+        try:
+            with open("catalogue-precedent.json", encoding="utf-8") as f:
+                ancien = json.load(f)
+            precedent = {r["id"]: r["fichiers"] for r in ancien.get("regions", [])}
+            if not catalogue["france"]:
+                catalogue["france"] = ancien.get("france", [])
+            if not catalogue["dalles"]:
+                catalogue["dalles"] = ancien.get("dalles", [])
+        except (ValueError, KeyError):
+            precedent = {}
+    for region in regions():
+        fichiers = fragments.get(region["id"]) or precedent.get(region["id"])
+        if fichiers:
+            catalogue["regions"].append({
+                "id": region["id"],
+                "nom": region["nom"],
+                "emprise": region["emprise"],
+                "dalles": region["dalles"],
+                "fichiers": fichiers,
+            })
+    with open("catalogue.json", "w", encoding="utf-8") as f:
+        json.dump(catalogue, f, ensure_ascii=False, indent=1)
+        f.write("\n")
+    # Résumé lisible pour la page de la Release.
+    def mo(octets):
+        return f"{octets / 1e6:.0f} Mo"
+    lignes = ["| Région | Fond | Vélo | Relief | Total |", "|---|---|---|---|---|"]
+    for region in catalogue["regions"]:
+        tailles = {f["type"]: f["taille"] for f in region["fichiers"]}
+        lignes.append(f"| {region['nom']} | {mo(tailles.get('fond', 0))} | {mo(tailles.get('velo', 0))} | {mo(tailles.get('relief', 0))} | {mo(sum(tailles.values()))} |")
+    with open("resume.md", "w", encoding="utf-8") as f:
+        f.write(f"Cartes hors ligne de VeloGo, générées le {catalogue['date']}.\n\n")
+        f.write("Ces fichiers sont téléchargés par l'appli (Réglages > Cartes hors ligne) : inutile de les récupérer à la main.\n\n")
+        f.write("\n".join(lignes) + "\n\n")
+        f.write(f"Vue d'ensemble de la France : {mo(sum(x['taille'] for x in catalogue['france']))}. ")
+        f.write(f"Données d'itinéraire BRouter : {mo(sum(x['taille'] for x in catalogue['dalles']))} pour toute la France.\n\n")
+        f.write("Données © les contributeurs d'OpenStreetMap (ODbL) ; fond Protomaps ; relief Mapterhorn (IGN, Licence Ouverte) ; BRouter.\n")
+    print(open("resume.md", encoding="utf-8").read())
+
+
+if __name__ == "__main__":
+    commande = sys.argv[1]
+    if commande == "selection":
+        print(json.dumps(selection()))
+    elif commande == "fragment":
+        fragment(sys.argv[2], sys.argv[3:])
+    elif commande == "dalles":
+        dalles()
+    elif commande == "assembler":
+        assembler(sys.argv[2])
+    else:
+        sys.exit(__doc__)

@@ -1,0 +1,202 @@
+[
+  {
+    "id": "auvergne-rhone-alpes",
+    "nom": "Auvergne-Rhône-Alpes",
+    "code": "84",
+    "emprise": [
+      2.063,
+      44.116,
+      7.184,
+      46.804
+    ],
+    "dalles": [
+      "E0_N40",
+      "E0_N45",
+      "E5_N40",
+      "E5_N45"
+    ]
+  },
+  {
+    "id": "bourgogne-franche-comte",
+    "nom": "Bourgogne-Franche-Comté",
+    "code": "27",
+    "emprise": [
+      2.849,
+      46.157,
+      7.136,
+      48.4
+    ],
+    "dalles": [
+      "E0_N45",
+      "E5_N45"
+    ]
+  },
+  {
+    "id": "bretagne",
+    "nom": "Bretagne",
+    "code": "53",
+    "emprise": [
+      -5.104,
+      47.283,
+      -1.018,
+      48.868
+    ],
+    "dalles": [
+      "W10_N45",
+      "W5_N45"
+    ]
+  },
+  {
+    "id": "centre-val-de-loire",
+    "nom": "Centre-Val de Loire",
+    "code": "24",
+    "emprise": [
+      0.053,
+      46.347,
+      3.128,
+      48.941
+    ],
+    "dalles": [
+      "E0_N45"
+    ]
+  },
+  {
+    "id": "corse",
+    "nom": "Corse",
+    "code": "94",
+    "emprise": [
+      8.552,
+      41.367,
+      9.56,
+      43.007
+    ],
+    "dalles": [
+      "E5_N40"
+    ]
+  },
+  {
+    "id": "grand-est",
+    "nom": "Grand Est",
+    "code": "44",
+    "emprise": [
+      3.388,
+      47.422,
+      8.233,
+      50.161
+    ],
+    "dalles": [
+      "E0_N45",
+      "E0_N50",
+      "E5_N45"
+    ]
+  },
+  {
+    "id": "hauts-de-france",
+    "nom": "Hauts-de-France",
+    "code": "32",
+    "emprise": [
+      1.382,
+      48.839,
+      4.256,
+      51.088
+    ],
+    "dalles": [
+      "E0_N45",
+      "E0_N50"
+    ]
+  },
+  {
+    "id": "normandie",
+    "nom": "Normandie",
+    "code": "28",
+    "emprise": [
+      -1.947,
+      48.182,
+      1.803,
+      50.071
+    ],
+    "dalles": [
+      "E0_N45",
+      "E0_N50",
+      "W5_N45"
+    ]
+  },
+  {
+    "id": "nouvelle-aquitaine",
+    "nom": "Nouvelle-Aquitaine",
+    "code": "75",
+    "emprise": [
+      -1.789,
+      42.778,
+      2.611,
+      47.176
+    ],
+    "dalles": [
+      "E0_N40",
+      "E0_N45",
+      "W5_N40",
+      "W5_N45"
+    ]
+  },
+  {
+    "id": "occitanie",
+    "nom": "Occitanie",
+    "code": "76",
+    "emprise": [
+      -0.327,
+      42.334,
+      4.842,
+      45.046
+    ],
+    "dalles": [
+      "E0_N40",
+      "E0_N45",
+      "W5_N40"
+    ]
+  },
+  {
+    "id": "pays-de-la-loire",
+    "nom": "Pays de la Loire",
+    "code": "52",
+    "emprise": [
+      -2.559,
+      46.267,
+      0.914,
+      48.563
+    ],
+    "dalles": [
+      "E0_N45",
+      "W5_N45"
+    ]
+  },
+  {
+    "id": "provence-alpes-cote-d-azur",
+    "nom": "Provence-Alpes-Côte d'Azur",
+    "code": "93",
+    "emprise": [
+      4.23,
+      42.983,
+      7.716,
+      45.127
+    ],
+    "dalles": [
+      "E0_N40",
+      "E5_N40",
+      "E5_N45"
+    ]
+  },
+  {
+    "id": "ile-de-france",
+    "nom": "Île-de-France",
+    "code": "11",
+    "emprise": [
+      1.447,
+      48.122,
+      3.556,
+      49.232
+    ],
+    "dalles": [
+      "E0_N45"
+    ]
+  }
+]

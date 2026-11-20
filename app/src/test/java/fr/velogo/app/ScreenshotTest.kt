@@ -105,6 +105,13 @@ class ScreenshotTest {
         content = chrome(recording.copy(state = RideState.PAUSED, speedMps = 0.0, slopePct = null), RideMode.DATA),
     )
 
+    /** Début de sortie, avant la première position GPS : les valeurs absentes s'affichent en tirets discrets. */
+    @Test
+    fun guidon_sans_gps() = captureRoboImage(
+        "$OUT/guidon_sans_gps.png",
+        content = chrome(RideSnapshot(state = RideState.RECORDING, startTimeMs = 1_800_000_000_000), RideMode.DATA),
+    )
+
     @Test
     @Config(sdk = [35], qualifiers = "w914dp-h411dp-420dpi")
     fun guidon_paysage() = captureRoboImage("$OUT/guidon_paysage.png", content = chrome(recording, RideMode.DATA))

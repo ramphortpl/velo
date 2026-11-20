@@ -16,3 +16,7 @@ captures/
 *.password
 keystore-password*
 .DS_Store
+
+# Python
+__pycache__/
+*.pyc
