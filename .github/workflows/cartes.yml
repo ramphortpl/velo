@@ -140,7 +140,7 @@ jobs:
       - name: Publication
         env:
           REGION: ${{ matrix.region }}
-        run: gh release upload "$ETIQUETTE" "fond-$REGION.pmtiles" "velo-$REGION.pmtiles" "relief-$REGION.pmtiles" --clobber
+        run: python3 cartes/outils/catalogue.py publier "fragment-$REGION.json"
       - uses: actions/upload-artifact@v7
         with:
           name: fragment-${{ matrix.region }}
@@ -165,16 +165,14 @@ jobs:
           ./pmtiles extract https://download.mapterhorn.com/planet.pmtiles relief-france.pmtiles --bbox=-5.6,41.2,9.8,51.3 --maxzoom=7 -q
           ls -la *.pmtiles
           python3 cartes/outils/catalogue.py fragment france fond-france.pmtiles relief-france.pmtiles
-          gh release upload "$ETIQUETTE" fond-france.pmtiles relief-france.pmtiles --clobber
+          python3 cartes/outils/catalogue.py publier fragment-france.json
       - name: Données d'itinéraire BRouter
         run: |
           # Seules les dalles qui ont changé sur brouter.de depuis le dernier passage sont retéléchargées.
           gh release download "$ETIQUETTE" --pattern catalogue.json --output catalogue-precedent.json || true
           python3 cartes/outils/catalogue.py dalles
-          if ls *.rd5 >/dev/null 2>&1; then
-            ls -la *.rd5
-            gh release upload "$ETIQUETTE" *.rd5 --clobber
-          fi
+          ls -la *.rd5 2>/dev/null || true
+          python3 cartes/outils/catalogue.py publier fragment-dalles.json
       - uses: actions/upload-artifact@v7
         with:
           name: fragment-france
@@ -201,4 +199,8 @@ jobs:
           python3 cartes/outils/catalogue.py assembler fragments
           gh release upload "$ETIQUETTE" catalogue.json --clobber
           gh release edit "$ETIQUETTE" --notes-file resume.md
+          # Les anciennes versions, que le nouveau catalogue ne référence plus, peuvent maintenant disparaître.
+          while read -r NOM; do
+            if [ -n "$NOM" ]; then gh release delete-asset "$ETIQUETTE" "$NOM" --yes || true; fi
+          done < a-supprimer.txt
           cat resume.md >> "$GITHUB_STEP_SUMMARY"

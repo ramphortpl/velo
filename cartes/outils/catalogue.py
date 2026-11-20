@@ -3,6 +3,8 @@
 
   catalogue.py selection              -> liste JSON des régions à générer (pour la matrice du workflow)
   catalogue.py fragment <id> <f>...   -> décrit les fichiers d'une région (taille, empreinte) dans fragment-<id>.json
+                                         et leur donne leur nom de publication (avec le début de l'empreinte)
+  catalogue.py publier <fragment>...  -> envoie dans la Release les fichiers qui n'y sont pas déjà
   catalogue.py dalles                 -> récupère sur brouter.de les données d'itinéraire qui ont changé
   catalogue.py assembler <dossier>    -> assemble catalogue.json à partir des fragments
 """
@@ -45,8 +47,23 @@ def empreinte(chemin):
 
 
 def decrire(chemin):
+    """Décrit un fichier et lui donne son nom de publication, qui contient le début de son empreinte.
+
+    Un fichier dont le contenu change change donc de nom : l'ancien reste en ligne jusqu'à ce que le nouveau
+    catalogue soit publié, et un téléchargement en cours pendant une régénération n'est jamais cassé.
+    """
     nom = os.path.basename(chemin)
-    return {"type": nom.split("-")[0] if "-" in nom else "dalle", "nom": nom, "taille": os.path.getsize(chemin), "sha256": empreinte(chemin)}
+    sha = empreinte(chemin)
+    base, extension = os.path.splitext(nom)
+    publie = f"{base}-{sha[:10]}{extension}"
+    os.replace(chemin, os.path.join(os.path.dirname(chemin), publie))
+    return {
+        "type": nom.split("-")[0] if "-" in nom else "dalle",
+        "nom": nom,
+        "fichier": publie,
+        "taille": os.path.getsize(os.path.join(os.path.dirname(chemin), publie)),
+        "sha256": sha,
+    }
 
 
 def fragment(identifiant, fichiers):
@@ -54,6 +71,40 @@ def fragment(identifiant, fichiers):
     with open(f"fragment-{identifiant}.json", "w", encoding="utf-8") as f:
         json.dump(contenu, f, ensure_ascii=False, indent=2)
     print(json.dumps(contenu, ensure_ascii=False))
+
+
+def en_ligne():
+    """Noms des fichiers déjà présents dans la Release de cartes (ou None si on ne peut pas le savoir)."""
+    chemin = os.environ.get("FICHIERS_EN_LIGNE")
+    if chemin:
+        with open(chemin, encoding="utf-8") as f:
+            return {ligne.strip() for ligne in f if ligne.strip()}
+    etiquette = os.environ.get("ETIQUETTE", "cartes")
+    resultat = subprocess.run(
+        ["gh", "release", "view", etiquette, "--json", "assets", "--jq", ".assets[].name"],
+        capture_output=True, text=True,
+    )
+    if resultat.returncode != 0:
+        return None
+    return {ligne.strip() for ligne in resultat.stdout.splitlines() if ligne.strip()}
+
+
+def publier(fragments):
+    """Envoie dans la Release les fichiers décrits par des fragments, sauf ceux qui y sont déjà (même contenu)."""
+    presents = en_ligne() or set()
+    etiquette = os.environ.get("ETIQUETTE", "cartes")
+    for chemin in fragments:
+        with open(chemin, encoding="utf-8") as f:
+            contenu = json.load(f)
+        for fichier in contenu["fichiers"]:
+            nom = fichier["fichier"]
+            if nom in presents:
+                print(f"{nom} : déjà en ligne")
+            elif os.path.exists(nom):
+                print(f"{nom} : envoi ({fichier['taille'] / 1e6:.0f} Mo)", flush=True)
+                subprocess.run(["gh", "release", "upload", etiquette, nom, "--clobber"], check=True)
+            else:
+                print(f"{nom} : conservé tel quel (inchangé)")
 
 
 def dalles():
@@ -79,7 +130,7 @@ def dalles():
             modifie = reponse.headers.get("Last-Modified", "")
             taille = int(reponse.headers.get("Content-Length", "0") or 0)
         ancienne = anciennes.get(nom)
-        if ancienne and modifie and ancienne.get("modifie") == modifie and ancienne.get("taille") == taille:
+        if ancienne and modifie and ancienne.get("fichier") and ancienne.get("modifie") == modifie and ancienne.get("taille") == taille:
             print(f"{nom} : inchangée depuis le dernier passage")
             fichiers.append(ancienne)
             continue
@@ -117,11 +168,13 @@ def assembler(dossier):
         try:
             with open("catalogue-precedent.json", encoding="utf-8") as f:
                 ancien = json.load(f)
-            precedent = {r["id"]: r["fichiers"] for r in ancien.get("regions", [])}
-            if not catalogue["france"]:
-                catalogue["france"] = ancien.get("france", [])
-            if not catalogue["dalles"]:
-                catalogue["dalles"] = ancien.get("dalles", [])
+            # Seules les descriptions au format actuel (avec nom de publication) sont reprises.
+            complet = lambda fichiers: bool(fichiers) and all(f.get("fichier") for f in fichiers)
+            precedent = {r["id"]: r["fichiers"] for r in ancien.get("regions", []) if complet(r["fichiers"])}
+            if not catalogue["france"] and complet(ancien.get("france")):
+                catalogue["france"] = ancien["france"]
+            if not catalogue["dalles"] and complet(ancien.get("dalles")):
+                catalogue["dalles"] = ancien["dalles"]
         except (ValueError, KeyError):
             precedent = {}
     for region in regions():
@@ -137,6 +190,17 @@ def assembler(dossier):
     with open("catalogue.json", "w", encoding="utf-8") as f:
         json.dump(catalogue, f, ensure_ascii=False, indent=1)
         f.write("\n")
+    # Ménage : les fichiers en ligne que plus rien ne référence (anciennes versions) seront supprimés
+    # par le workflow, une fois le nouveau catalogue publié.
+    references = {"catalogue.json"}
+    for fichier in catalogue["france"] + catalogue["dalles"]:
+        references.add(fichier["fichier"])
+    for region in catalogue["regions"]:
+        references.update(f["fichier"] for f in region["fichiers"])
+    presents = en_ligne()
+    with open("a-supprimer.txt", "w", encoding="utf-8") as f:
+        for nom in sorted((presents or set()) - references):
+            f.write(nom + "\n")
     # Résumé lisible pour la page de la Release.
     def mo(octets):
         return f"{octets / 1e6:.0f} Mo"
@@ -160,6 +224,8 @@ if __name__ == "__main__":
         print(json.dumps(selection()))
     elif commande == "fragment":
         fragment(sys.argv[2], sys.argv[3:])
+    elif commande == "publier":
+        publier(sys.argv[2:])
     elif commande == "dalles":
         dalles()
     elif commande == "assembler":
