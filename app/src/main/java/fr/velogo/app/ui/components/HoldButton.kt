@@ -62,7 +62,8 @@ fun HoldButton(
     Box(
         modifier
             .clip(shape)
-            .background(container.copy(alpha = 0.18f))
+            .background(MaterialTheme.colorScheme.surface)
+            .background(container.copy(alpha = 0.16f))
             .drawBehind { drawRect(container, size = Size(size.width * progress.value, size.height)) }
             .semantics(mergeDescendants = true) {
                 role = Role.Button

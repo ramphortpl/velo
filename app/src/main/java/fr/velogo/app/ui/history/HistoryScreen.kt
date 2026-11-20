@@ -68,6 +68,13 @@ class HistoryViewModel(container: AppContainer) : ViewModel() {
 fun HistoryScreen(onOpenRide: (Long) -> Unit, contentPadding: PaddingValues) {
     val vm = veloViewModel { HistoryViewModel(it) }
     val rides by vm.rides.collectAsStateWithLifecycle()
+    HistoryContent(rides, onOpenRide, contentPadding)
+}
+
+/** Le contenu de l'écran, sans accès aux données : c'est lui qu'on vérifie en image. */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+fun HistoryContent(rides: List<RideEntity>?, onOpenRide: (Long) -> Unit, contentPadding: PaddingValues) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     Scaffold(

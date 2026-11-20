@@ -1,6 +1,7 @@
 name: APK VeloGo
 
-# À chaque push : tests, puis APK signé (toujours avec la même clé) publié dans les Releases.
+# À chaque push : tests, APK signé (toujours avec la même clé) publié dans les Releases,
+# et essai de bout en bout sur un émulateur Android.
 on:
   push:
     branches: ["main", "claude/**"]
@@ -18,6 +19,7 @@ concurrency:
 
 jobs:
   apk:
+    name: Tests et APK signé
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -48,16 +50,25 @@ jobs:
           MINOR=$(grep '^minor=' version.properties | cut -d= -f2)
           echo "name=$MAJOR.$MINOR.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
-      - name: Vérifier le secret de signature
+      - name: Secret de signature
+        id: cle
         env:
           VELOGO_KEYSTORE_PASSWORD: ${{ secrets.VELOGO_KEYSTORE_PASSWORD }}
         run: |
-          if [ -z "$VELOGO_KEYSTORE_PASSWORD" ]; then
-            echo "::error::Secret VELOGO_KEYSTORE_PASSWORD absent : ajoute-le dans Settings > Secrets and variables > Actions. Sans lui, aucun APK signé ne peut être publié."
-            exit 1
+          if [ -n "$VELOGO_KEYSTORE_PASSWORD" ]; then
+            echo "presente=oui" >> "$GITHUB_OUTPUT"
+          else
+            echo "presente=non" >> "$GITHUB_OUTPUT"
+            echo "::warning::Secret VELOGO_KEYSTORE_PASSWORD absent : les tests sont passés mais aucun APK n'est publié. Ajoute-le dans Settings > Secrets and variables > Actions."
+            {
+              echo "### Aucun APK publié"
+              echo "Le secret \`VELOGO_KEYSTORE_PASSWORD\` n'existe pas encore dans ce dépôt."
+              echo "Ajoute-le dans **Settings > Secrets and variables > Actions**, puis relance ce workflow (bouton *Re-run all jobs*)."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: APK signé
+        if: steps.cle.outputs.presente == 'oui'
         env:
           VELOGO_KEYSTORE_PASSWORD: ${{ secrets.VELOGO_KEYSTORE_PASSWORD }}
         run: |
@@ -65,17 +76,19 @@ jobs:
             -Pvelogo.buildNumber=${{ github.run_number }} \
             -Pvelogo.githubRepo=${{ github.repository }}
           APK=app/build/outputs/apk/release/app-release.apk
-          test -f "$APK" || { echo "::error::APK signé introuvable"; ls -R app/build/outputs/apk; exit 1; }
+          test -f "$APK" || { echo "::error::APK signé introuvable (mot de passe de la clé incorrect ?)"; ls -R app/build/outputs/apk; exit 1; }
           BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
           "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | grep -i "SHA-256"
           cp "$APK" "VeloGo-${{ steps.version.outputs.name }}.apk"
 
       - uses: actions/upload-artifact@v7
+        if: steps.cle.outputs.presente == 'oui'
         with:
           name: VeloGo-${{ steps.version.outputs.name }}
           path: VeloGo-${{ steps.version.outputs.name }}.apk
 
       - name: Publier dans les Releases
+        if: steps.cle.outputs.presente == 'oui'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.name }}
@@ -89,7 +102,58 @@ jobs:
           } > notes.md
           gh release create "v$VERSION" "VeloGo-$VERSION.apk" \
             --title "VeloGo $VERSION" --notes-file notes.md --target "$GITHUB_SHA" --latest
+          echo "### VeloGo $VERSION publié" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/${{ github.repository }}/releases/tag/v$VERSION" >> "$GITHUB_STEP_SUMMARY"
           # On ne garde que les 8 dernières versions de l'appli (les Releases de cartes ne sont pas touchées).
           gh release list --limit 100 --json tagName,createdAt \
             --jq '[.[] | select(.tagName | startswith("v"))] | sort_by(.createdAt) | reverse | .[8:] | .[].tagName' \
             | while read -r TAG; do gh release delete "$TAG" --yes --cleanup-tag || true; done
+
+  essai:
+    name: Essai sur émulateur Android 15
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: SDK Android (plateforme 37.1)
+        run: |
+          SDKMANAGER="$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -n 1)"
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses > /dev/null || true
+            "$SDKMANAGER" "platforms;android-37.1" "build-tools;37.0.0" | grep -v '^\[' || true
+          fi
+
+      - name: APK d'essai (même code minifié que la version publiée)
+        run: ./gradlew :app:assembleSmoke --console=plain -Pvelogo.buildNumber=${{ github.run_number }}
+
+      - name: Accélération matérielle pour l'émulateur
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Sortie simulée sur émulateur
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: python3 outils/essai_emulateur.py app/build/outputs/apk/smoke/app-smoke.apk
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: essai-emulateur
+          path: essai/
+          if-no-files-found: warn

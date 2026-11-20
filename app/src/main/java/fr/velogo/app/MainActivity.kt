@@ -4,29 +4,33 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.getValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import fr.velogo.app.ui.theme.VeloGoTheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import fr.velogo.app.data.Settings
+import fr.velogo.app.ui.AppRoot
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import androidx.lifecycle.lifecycleScope
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splash = installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        val container = (application as VeloGoApp).container
+        // Les réglages (dont le thème) sont lus avant le premier affichage : l'écran d'accueil reste jusque-là,
+        // ce qui évite un éclair de mauvais thème au démarrage.
+        val settings = container.settings.settings
+            .map<Settings, Settings?> { it }
+            .stateIn(lifecycleScope, SharingStarted.Eagerly, null)
+        splash.setKeepOnScreenCondition { settings.value == null }
+
         setContent {
-            VeloGoTheme {
-                Surface(Modifier.fillMaxSize()) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("VeloGo", style = MaterialTheme.typography.displayLarge)
-                    }
-                }
-            }
+            val current by settings.collectAsStateWithLifecycle()
+            current?.let { AppRoot(container, it) }
         }
     }
 }

@@ -25,12 +25,14 @@ import fr.velogo.core.format.Formats
 import fr.velogo.core.ride.RideState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Service de premier plan qui enregistre la sortie, écran allumé ou éteint, appli visible ou non.
@@ -44,44 +46,59 @@ class RecordingService : LifecycleService() {
     private val container get() = (application as VeloGoApp).container
     private var wakeLock: PowerManager.WakeLock? = null
     private var recordingJob: Job? = null
-    private var stopping = false
+
+    /** Les commandes sont traitées une par une, dans l'ordre : pas de course entre « Terminer » et « Démarrer ». */
+    private val commands = Channel<String>(Channel.UNLIMITED)
+    private val queued = AtomicInteger(0)
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
+        lifecycleScope.launch {
+            for (command in commands) {
+                handle(command)
+                queued.decrementAndGet()
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        when (intent?.action) {
-            ACTION_STOP -> stopRecording()
-            ACTION_PAUSE -> {
-                startRecording()
-                lifecycleScope.launch { container.recorder.pause(); updateNotification() }
-            }
-            ACTION_RESUME -> {
-                startRecording()
-                lifecycleScope.launch { container.recorder.resume(); updateNotification() }
-            }
-            // ACTION_START, ou redémarrage par le système (intent nul) : on (re)prend l'enregistrement.
-            else -> startRecording()
-        }
+        // Intent nul : Android relance le service après l'avoir tué ; on tente de reprendre la sortie en cours.
+        val action = intent?.action ?: ACTION_RESTORE
+        // Android exige qu'un service démarré « au premier plan » le devienne aussitôt : on le fait ici, sans attendre.
+        if (action != ACTION_STOP) promoteToForeground()
+        queued.incrementAndGet()
+        commands.trySend(action)
         return START_STICKY
     }
 
-    private fun startRecording() {
-        if (stopping) return
-        if (!promoteToForeground()) {
-            stopSelf()
+    private suspend fun handle(command: String) {
+        if (command == ACTION_STOP) {
+            stopRecording()
+            // Rien d'autre en attente (pas de nouveau « Démarrer » arrivé entre-temps) : le service s'arrête.
+            if (queued.get() <= 1) finish()
             return
         }
-        acquireWakeLock()
-        if (recordingJob?.isActive == true) return
-        recordingJob = lifecycleScope.launch {
-            val recorder = container.recorder
-            recorder.startOrRestore(container.settings.settings.first().autoPause)
-            updateNotification()
+        if (!ensureRecording(allowNew = command == ACTION_START)) {
+            finish()
+            return
+        }
+        when (command) {
+            ACTION_PAUSE -> container.recorder.pause()
+            ACTION_RESUME -> container.recorder.resume()
+        }
+        updateNotification()
+    }
 
+    /** Met l'enregistrement en route s'il ne l'est pas déjà. Renvoie faux si c'est impossible. */
+    private suspend fun ensureRecording(allowNew: Boolean): Boolean {
+        if (recordingJob?.isActive == true) return true
+        if (!promoteToForeground()) return false
+        val recorder = container.recorder
+        if (!recorder.startOrRestore(container.settings.settings.first().autoPause, allowNew)) return false
+        acquireWakeLock()
+        recordingJob = lifecycleScope.launch {
             launch {
                 container.gps.fixes.collect { gps ->
                     // Une position restée en mémoire depuis une session précédente n'a rien à faire dans la trace.
@@ -92,13 +109,12 @@ class RecordingService : LifecycleService() {
                 container.settings.settings.map { it.autoPause }.distinctUntilChanged().collect { recorder.setAutoPause(it) }
             }
             launch {
-                var lastState: RideState? = null
-                recorder.snapshot.map { it.state }.distinctUntilChanged().collect { state ->
-                    if (lastState != null) updateNotification()
-                    lastState = state
+                var first = true
+                recorder.snapshot.map { it.state }.distinctUntilChanged().collect {
+                    if (!first) updateNotification()
+                    first = false
                 }
             }
-
             var seconds = 0
             var silentSeconds = 0
             while (isActive) {
@@ -114,22 +130,25 @@ class RecordingService : LifecycleService() {
                 }
             }
         }
+        return true
     }
 
-    private fun stopRecording() {
-        if (stopping) return
-        stopping = true
-        lifecycleScope.launch {
-            recordingJob?.cancelAndJoin()
-            recordingJob = null
-            container.recorder.stop()
-            releaseWakeLock()
-            ServiceCompat.stopForeground(this@RecordingService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-            stopSelf()
-        }
+    private suspend fun stopRecording() {
+        recordingJob?.cancelAndJoin()
+        recordingJob = null
+        container.recorder.stop()
+        releaseWakeLock()
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+    }
+
+    private fun finish() {
+        releaseWakeLock()
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     override fun onDestroy() {
+        commands.close()
         releaseWakeLock()
         super.onDestroy()
     }
@@ -176,7 +195,7 @@ class RecordingService : LifecycleService() {
     }
 
     private fun updateNotification() {
-        if (stopping) return
+        if (recordingJob?.isActive != true) return
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
@@ -232,6 +251,7 @@ class RecordingService : LifecycleService() {
         const val ACTION_PAUSE = "fr.velogo.app.action.PAUSE"
         const val ACTION_RESUME = "fr.velogo.app.action.REPRENDRE"
         const val ACTION_STOP = "fr.velogo.app.action.TERMINER"
+        private const val ACTION_RESTORE = "fr.velogo.app.action.RELANCE"
 
         private const val CHANNEL_ID = "enregistrement"
         private const val NOTIFICATION_ID = 1

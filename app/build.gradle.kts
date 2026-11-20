@@ -70,6 +70,18 @@ android {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
         }
+        // Variante d'essai pour l'émulateur de la CI : exactement le code minifié de la release, mais signée avec
+        // la clé de test et avec les bibliothèques natives x86_64 (l'émulateur n'est pas un téléphone arm64).
+        create("smoke") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            applicationIdSuffix = ".essai"
+            versionNameSuffix = "-essai"
+            matchingFallbacks += "release"
+            ndk {
+                abiFilters += "x86_64"
+            }
+        }
     }
 
     buildFeatures {
@@ -101,7 +113,7 @@ android {
     lint {
         abortOnError = true
         warningsAsErrors = false
-        disable += setOf("MissingTranslation", "GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion", "ChromeOsAbiSupport")
+        disable += setOf("MissingTranslation", "GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion", "ChromeOsAbiSupport", "ObsoleteSdkInt")
     }
 }
 

@@ -22,6 +22,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import fr.velogo.app.recording.RecordingService
 import fr.velogo.app.ui.LocalContainer
@@ -186,4 +187,4 @@ fun isIgnoringBatteryOptimizations(context: Context): Boolean =
 /** Fenêtre système « Autoriser l'appli à toujours s'exécuter en arrière-plan ? ». */
 @SuppressLint("BatteryLife")
 fun batteryExemptionIntent(context: Context): Intent =
-    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
+    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:${context.packageName}".toUri())

@@ -29,8 +29,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
@@ -84,6 +82,7 @@ import fr.velogo.app.ui.findActivity
 import fr.velogo.app.ui.theme.LabelCapsStyle
 import fr.velogo.app.ui.theme.LocalIsDark
 import fr.velogo.app.ui.theme.LocalRideColors
+import fr.velogo.app.ui.theme.ThemeMode
 import fr.velogo.app.ui.theme.VeloGoTheme
 import fr.velogo.app.ui.util.Dates
 import fr.velogo.app.ui.veloViewModel
@@ -217,85 +216,58 @@ fun RideScreen(
 
     Box(Modifier.fillMaxSize()) {
         VeloMap(mapState, spec, mapColors, Modifier.fillMaxSize())
-
-        VeloGoTheme(mode = settings.themeMode, sunlight = sunlight) {
-            // --- Mode carte : éléments flottants ---------------------------------------------------------
-            if (mode == RideMode.MAP) {
-                MapOverlays(
-                    snapshot = snapshot,
-                    attribution = layer.attribution,
-                    following = mapState.isFollowing,
-                    headingUp = settings.headingUp,
-                    hasLocationPermission = startRide.hasLocationPermission,
-                    topPadding = topInset + TOP_BAR_HEIGHT + 12.dp,
-                    bottomPadding = bottomPadding + CONTROLS_HEIGHT + 24.dp,
-                    onLayers = { showLayers = true },
-                    onRecenter = { mapState.follow() },
-                    onToggleHeading = { vm.setHeadingUp(!settings.headingUp) },
-                    onRequestPermission = startRide.requestLocationPermission,
-                )
-            }
-
-            // --- Mode données : le tableau de bord recouvre la carte --------------------------------------
-            AnimatedVisibility(
-                visible = mode == RideMode.DATA,
-                enter = fadeIn() + slideInVertically { it / 10 },
-                exit = fadeOut() + slideOutVertically { it / 10 },
-            ) {
-                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-                    Dashboard(
-                        snapshot = snapshot,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = topInset + TOP_BAR_HEIGHT + 6.dp, bottom = bottomPadding + CONTROLS_HEIGHT + 20.dp),
-                    )
+        RideChrome(
+            snapshot = snapshot,
+            mode = mode,
+            onMode = { mode = it },
+            themeMode = settings.themeMode,
+            sunlight = sunlight,
+            attribution = layer.attribution,
+            following = mapState.isFollowing,
+            headingUp = settings.headingUp,
+            hasLocationPermission = startRide.hasLocationPermission,
+            accuracyM = if (snapshot.isActive) snapshot.accuracyM else lastAccuracy,
+            topInset = topInset,
+            bottomPadding = bottomPadding,
+            snackbar = snackbar,
+            onLayers = { showLayers = true },
+            onRecenter = { mapState.follow() },
+            onToggleHeading = { vm.setHeadingUp(!settings.headingUp) },
+            onRequestPermission = startRide.requestLocationPermission,
+            onStart = startRide.start,
+            onPause = { RecordingService.pause(context) },
+            onResume = { RecordingService.resume(context) },
+            onStop = { RecordingService.stop(context) },
+            onStopHint = {
+                scope.launch {
+                    snackbar.currentSnackbarData?.dismiss()
+                    snackbar.showSnackbar("Maintiens « Terminer » appuyé pour arrêter la sortie.")
                 }
-            }
-
-            // --- Barre du haut : bascule Carte / Données et état du GPS -----------------------------------
-            TopBar(
-                mode = mode,
-                onMode = { mode = it },
-                snapshot = snapshot,
-                accuracyM = if (snapshot.isActive) snapshot.accuracyM else lastAccuracy,
-                hasLocationPermission = startRide.hasLocationPermission,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = topInset + 6.dp).padding(horizontal = 12.dp),
-            )
-
-            // --- Boutons de la sortie ---------------------------------------------------------------------
-            Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp).padding(bottom = bottomPadding + 10.dp)) {
-                SnackbarHost(snackbar, Modifier.padding(bottom = 8.dp))
-                RideControls(
-                    state = snapshot.state,
-                    onStart = startRide.start,
-                    onPause = { RecordingService.pause(context) },
-                    onResume = { RecordingService.resume(context) },
-                    onStop = { RecordingService.stop(context) },
-                    onStopHint = {
-                        scope.launch {
-                            snackbar.currentSnackbarData?.dismiss()
-                            snackbar.showSnackbar("Maintiens « Terminer » appuyé pour arrêter la sortie.")
-                        }
-                    },
-                )
-            }
-        }
+            },
+        )
     }
 
     if (showLayers) {
         ModalBottomSheet(onDismissRequest = { showLayers = false }) {
             Text("Fond de carte", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
             for (candidate in MapLayers.ALL) {
-                ListItem(
-                    headlineContent = { Text(candidate.title) },
-                    supportingContent = { Text(candidate.description) },
-                    trailingContent = { RadioButton(selected = candidate.id == layer.id, onClick = null) },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    modifier = Modifier.clickable {
-                        vm.setMapLayer(candidate.id)
-                        showLayers = false
-                    },
-                )
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            vm.setMapLayer(candidate.id)
+                            showLayers = false
+                        }
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(candidate.title, style = MaterialTheme.typography.titleMedium)
+                        Text(candidate.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    RadioButton(selected = candidate.id == layer.id, onClick = null)
+                }
             }
             Spacer(Modifier.height(24.dp))
         }
@@ -323,6 +295,97 @@ fun RideScreen(
     }
 }
 
+/**
+ * Tout ce qui se pose sur la carte : tableau de bord, barre du haut, boutons flottants, commandes.
+ * La carte elle-même n'en fait pas partie, ce qui permet de vérifier cet habillage en image, sans téléphone.
+ */
+@Composable
+fun RideChrome(
+    snapshot: RideSnapshot,
+    mode: RideMode,
+    onMode: (RideMode) -> Unit,
+    themeMode: ThemeMode,
+    sunlight: Boolean,
+    attribution: String,
+    following: Boolean,
+    headingUp: Boolean,
+    hasLocationPermission: Boolean,
+    accuracyM: Double?,
+    topInset: Dp,
+    bottomPadding: Dp,
+    snackbar: SnackbarHostState,
+    onLayers: () -> Unit,
+    onRecenter: () -> Unit,
+    onToggleHeading: () -> Unit,
+    onRequestPermission: () -> Unit,
+    onStart: () -> Unit,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onStop: () -> Unit,
+    onStopHint: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    VeloGoTheme(mode = themeMode, sunlight = sunlight) {
+        Box(modifier.fillMaxSize()) {
+            // --- Mode carte : éléments flottants ---------------------------------------------------------
+            if (mode == RideMode.MAP) {
+                MapOverlays(
+                    snapshot = snapshot,
+                    attribution = attribution,
+                    following = following,
+                    headingUp = headingUp,
+                    hasLocationPermission = hasLocationPermission,
+                    topPadding = topInset + TOP_BAR_HEIGHT + 12.dp,
+                    bottomPadding = bottomPadding + CONTROLS_HEIGHT + 24.dp,
+                    onLayers = onLayers,
+                    onRecenter = onRecenter,
+                    onToggleHeading = onToggleHeading,
+                    onRequestPermission = onRequestPermission,
+                )
+            }
+
+            // --- Mode données : le tableau de bord recouvre la carte --------------------------------------
+            AnimatedVisibility(
+                visible = mode == RideMode.DATA,
+                enter = fadeIn() + slideInVertically { it / 10 },
+                exit = fadeOut() + slideOutVertically { it / 10 },
+            ) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                    Dashboard(
+                        snapshot = snapshot,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = topInset + TOP_BAR_HEIGHT + 6.dp, bottom = bottomPadding + CONTROLS_HEIGHT + 20.dp),
+                    )
+                }
+            }
+
+            // --- Barre du haut : bascule Carte / Données et état du GPS -----------------------------------
+            TopBar(
+                mode = mode,
+                onMode = onMode,
+                snapshot = snapshot,
+                accuracyM = accuracyM,
+                hasLocationPermission = hasLocationPermission,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = topInset + 6.dp).padding(horizontal = 12.dp),
+            )
+
+            // --- Boutons de la sortie ---------------------------------------------------------------------
+            Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp).padding(bottom = bottomPadding + 10.dp)) {
+                SnackbarHost(snackbar, Modifier.padding(bottom = 8.dp))
+                RideControls(
+                    state = snapshot.state,
+                    onStart = onStart,
+                    onPause = onPause,
+                    onResume = onResume,
+                    onStop = onStop,
+                    onStopHint = onStopHint,
+                )
+            }
+        }
+    }
+}
+
 private val TOP_BAR_HEIGHT = 48.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -342,12 +405,14 @@ private fun TopBar(
                     selected = mode == RideMode.MAP,
                     onClick = { onMode(RideMode.MAP) },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    colors = brandSegmentColors(),
                     icon = { },
                 ) { Text("Carte") }
                 SegmentedButton(
                     selected = mode == RideMode.DATA,
                     onClick = { onMode(RideMode.DATA) },
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    colors = brandSegmentColors(),
                     icon = { },
                 ) { Text("Données") }
             }
@@ -357,11 +422,19 @@ private fun TopBar(
     }
 }
 
+/** Boutons segmentés aux couleurs de VeloGo (émeraude) plutôt qu'au bleu par défaut. */
+@Composable
+fun brandSegmentColors() = SegmentedButtonDefaults.colors(
+    activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
+    activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    inactiveContainerColor = MaterialTheme.colorScheme.surface,
+)
+
 /** État du signal GPS : précision en mètres, ou recherche en cours. */
 @Composable
 private fun GpsChip(snapshot: RideSnapshot, accuracyM: Double?) {
     val searching = accuracyM == null || (snapshot.isActive && !snapshot.hasSignal)
-    val weak = !searching && accuracyM != null && accuracyM > 15.0
+    val weak = accuracyM != null && !searching && accuracyM > 15.0
     val color = when {
         searching -> MaterialTheme.colorScheme.error
         weak -> LocalRideColors.current.paused

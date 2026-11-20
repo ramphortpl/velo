@@ -1,12 +1,9 @@
 package fr.velogo.app.ui.components
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,25 +36,40 @@ fun FittedNumber(
     color: Color = MaterialTheme.colorScheme.onSurface,
     align: Alignment.Horizontal = Alignment.CenterHorizontally,
     style: TextStyle = NumberStyle,
+    /** Unité écrite en petit juste après le nombre, sur la même ligne de base. */
+    unit: String = "",
+    unitColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    unitStyle: TextStyle = LabelCapsStyle.copy(fontSize = 17.sp),
 ) {
     val measurer = rememberTextMeasurer(cacheSize = 16)
     Spacer(
         modifier
-            .semantics { contentDescription = text }
+            .semantics { contentDescription = if (unit.isEmpty()) text else "$text $unit" }
             .drawWithCache {
+                val unitLayout = if (unit.isEmpty()) null else measurer.measure(unit, unitStyle, softWrap = false, maxLines = 1)
+                val gap = if (unitLayout == null) 0f else 5.dp.toPx()
+                val unitWidth = (unitLayout?.size?.width ?: 0) + gap
+                val available = (size.width - unitWidth).coerceAtLeast(1f)
+
                 val reference = measurer.measure(template, style.copy(fontSize = REFERENCE_PX.toSp()), softWrap = false, maxLines = 1)
                 val widthPerPx = reference.size.width / REFERENCE_PX
                 // Hauteur utile d'une ligne de chiffres : hauteur des capitales + la place de la virgule.
-                val fontPx = minOf(size.height / LINE_EM, if (widthPerPx > 0f) size.width / widthPerPx else size.height).coerceAtLeast(1f)
+                val fontPx = minOf(size.height / LINE_EM, if (widthPerPx > 0f) available / widthPerPx else size.height).coerceAtLeast(1f)
                 val layout = measurer.measure(text, style.copy(fontSize = fontPx.toSp()), softWrap = false, maxLines = 1)
+                val total = layout.size.width + unitWidth
                 val x = when (align) {
                     Alignment.Start -> 0f
-                    Alignment.End -> size.width - layout.size.width
-                    else -> (size.width - layout.size.width) / 2f
+                    Alignment.End -> size.width - total
+                    else -> (size.width - total) / 2f
                 }
                 val baseline = (size.height - LINE_EM * fontPx) / 2f + (TOP_EM + CAP_EM) * fontPx
                 val y = baseline - layout.firstBaseline
-                onDrawBehind { drawText(layout, color = color, topLeft = Offset(x, y)) }
+                onDrawBehind {
+                    drawText(layout, color = color, topLeft = Offset(x, y))
+                    if (unitLayout != null) {
+                        drawText(unitLayout, color = unitColor, topLeft = Offset(x + layout.size.width + gap, baseline - unitLayout.firstBaseline))
+                    }
+                }
             }
     )
 }
@@ -81,24 +93,13 @@ fun MetricCell(
 ) {
     Column(modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
         Text(label, style = LabelCapsStyle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-        Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.Bottom) {
-            FittedNumber(
-                text = value,
-                template = template,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                color = valueColor,
-                align = Alignment.Start,
-            )
-            if (unit.isNotEmpty()) {
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    unit,
-                    style = LabelCapsStyle.copy(fontSize = 17.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 6.dp),
-                    maxLines = 1,
-                )
-            }
-        }
+        FittedNumber(
+            text = value,
+            template = template,
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            color = valueColor,
+            align = Alignment.Start,
+            unit = unit,
+        )
     }
 }

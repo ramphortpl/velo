@@ -82,7 +82,6 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
     val vm = veloViewModel(key = "sortie-$rideId") { RideDetailViewModel(it, rideId) }
     val ride by vm.ride.collectAsStateWithLifecycle()
     val track by vm.track.collectAsStateWithLifecycle()
-    val container = LocalContainer.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -134,61 +133,15 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { inner ->
-        val current = ride
         val data = track
-        BoxWithConstraints(Modifier.fillMaxSize().padding(inner)) {
-            val wide = maxWidth > maxHeight
-            val marker = selected?.let { i -> data?.profile?.getOrNull(i) }?.let { LatLon(it.lat, it.lon) }
-            val map: @Composable (Modifier) -> Unit = { modifier -> RideMap(data, marker, modifier) }
-            val details: @Composable (Modifier) -> Unit = { modifier ->
-                Column(
-                    modifier.verticalScroll(rememberScrollState()).windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    if (current != null) {
-                        Header(current)
-                        StatsGrid(current)
-                    }
-                    if (data != null && data.profile.size >= 2) {
-                        Readout(data, selected)
-                        ChartCard("Altitude", "m") {
-                            ProfileChart(
-                                series = data.altitude,
-                                lineColor = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.fillMaxWidth().height(150.dp),
-                                selected = selected,
-                                onSelect = { selected = it },
-                                formatY = { Formats.meters(it.toDouble()) },
-                                formatX = { Formats.decimal(it.toDouble(), 1) + " km" },
-                            )
-                        }
-                        ChartCard("Vitesse", "km/h") {
-                            ProfileChart(
-                                series = data.speed,
-                                lineColor = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.fillMaxWidth().height(150.dp),
-                                selected = selected,
-                                onSelect = { selected = it },
-                                formatY = { Formats.decimal(it.toDouble(), 0) },
-                                formatX = { Formats.decimal(it.toDouble(), 1) + " km" },
-                                zeroBased = true,
-                            )
-                        }
-                    }
-                }
-            }
-            if (wide) {
-                Row(Modifier.fillMaxSize()) {
-                    map(Modifier.weight(1f).fillMaxHeight())
-                    details(Modifier.weight(1f).fillMaxHeight())
-                }
-            } else {
-                Column(Modifier.fillMaxSize()) {
-                    map(Modifier.fillMaxWidth().weight(0.4f))
-                    details(Modifier.fillMaxWidth().weight(0.6f))
-                }
-            }
-        }
+        val marker = selected?.let { i -> data?.profile?.getOrNull(i) }?.let { LatLon(it.lat, it.lon) }
+        RideDetailBody(
+            ride = ride,
+            data = data,
+            selected = selected,
+            onSelect = { selected = it },
+            modifier = Modifier.padding(inner),
+        ) { modifier -> RideMap(data, marker, modifier) }
     }
 
     if (renaming) {
@@ -224,9 +177,72 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
             dismissButton = { TextButton(onClick = { deleting = false }) { Text("Annuler") } },
         )
     }
+}
 
-    // Référence inutilisée ailleurs : garde le conteneur en vie pour les exports lancés depuis cet écran.
-    LaunchedEffect(container) { }
+/**
+ * Corps de l'écran : la carte (fournie par [map]) et, en dessous ou à côté, les chiffres et les graphiques.
+ * Séparé de l'accès aux données pour pouvoir être vérifié en image.
+ */
+@Composable
+fun RideDetailBody(
+    ride: RideEntity?,
+    data: RideTrackData?,
+    selected: Int?,
+    onSelect: (Int?) -> Unit,
+    modifier: Modifier = Modifier,
+    map: @Composable (Modifier) -> Unit,
+) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val wide = maxWidth > maxHeight
+        val details: @Composable (Modifier) -> Unit = { detailsModifier ->
+            Column(
+                detailsModifier.verticalScroll(rememberScrollState()).windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                if (ride != null) {
+                    Header(ride)
+                    StatsGrid(ride)
+                }
+                if (data != null && data.profile.size >= 2) {
+                    Readout(data, selected)
+                    ChartCard("Altitude", "m") {
+                        ProfileChart(
+                            series = data.altitude,
+                            lineColor = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.fillMaxWidth().height(150.dp),
+                            selected = selected,
+                            onSelect = onSelect,
+                            formatY = { Formats.meters(it.toDouble()) },
+                            formatX = { Formats.decimal(it.toDouble(), 1) + " km" },
+                        )
+                    }
+                    ChartCard("Vitesse", "km/h") {
+                        ProfileChart(
+                            series = data.speed,
+                            lineColor = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.fillMaxWidth().height(150.dp),
+                            selected = selected,
+                            onSelect = onSelect,
+                            formatY = { Formats.decimal(it.toDouble(), 0) },
+                            formatX = { Formats.decimal(it.toDouble(), 1) + " km" },
+                            zeroBased = true,
+                        )
+                    }
+                }
+            }
+        }
+        if (wide) {
+            Row(Modifier.fillMaxSize()) {
+                map(Modifier.weight(1f).fillMaxHeight())
+                details(Modifier.weight(1f).fillMaxHeight())
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                map(Modifier.fillMaxWidth().weight(0.4f))
+                details(Modifier.fillMaxWidth().weight(0.6f))
+            }
+        }
+    }
 }
 
 @Composable

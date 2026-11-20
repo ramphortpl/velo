@@ -71,13 +71,18 @@ class RideRecorder(private val repository: RideRepository) {
 
     val isActive: Boolean get() = _snapshot.value.isActive
 
-    /** Démarre une nouvelle sortie, ou reprend celle qui était en cours si l'appli avait été arrêtée. */
-    suspend fun startOrRestore(autoPause: Boolean) = withContext(serial) {
-        if (engine.state != RideState.IDLE) return@withContext
+    /**
+     * Démarre une sortie, ou reprend celle qui était en cours si l'appli avait été arrêtée.
+     * Avec [allowNew] à faux, on se contente de reprendre : s'il n'y a rien à reprendre, rien ne démarre.
+     * Renvoie vrai si un enregistrement est actif à la sortie de la fonction.
+     */
+    suspend fun startOrRestore(autoPause: Boolean, allowNew: Boolean): Boolean = withContext(serial) {
+        if (engine.state != RideState.IDLE) return@withContext true
         val nowMono = SystemClock.elapsedRealtime()
         val nowWall = System.currentTimeMillis()
         val config = RideConfig(autoPause = autoPause, altitudeSource = AltitudeSource.GNSS)
         val unfinished = repository.unfinishedRide()
+        if (unfinished == null && !allowNew) return@withContext false
         engine = RideEngine(config)
         pending.clear()
         if (unfinished != null) {
@@ -96,6 +101,7 @@ class RideRecorder(private val repository: RideRepository) {
         }
         lastFlushMonoMs = nowMono
         publish()
+        true
     }
 
     suspend fun onFix(fix: Fix) = withContext(serial) {

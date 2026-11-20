@@ -261,20 +261,22 @@ class VeloMapState {
                 Expression.eq(Expression.get("bicycle"), Expression.literal("designated")),
             ),
         )
-        val width = Expression.interpolate(
+        // Une expression de zoom doit rester au premier niveau : on écrit donc deux échelles plutôt qu'un produit.
+        fun widthAt(factor: Float) = Expression.interpolate(
             Expression.exponential(1.5f), Expression.zoom(),
-            Expression.stop(11, 0.8f), Expression.stop(14, 2.2f), Expression.stop(17, 4.5f), Expression.stop(20, 10f),
+            Expression.stop(11, 0.8f * factor), Expression.stop(14, 2.2f * factor),
+            Expression.stop(17, 4.5f * factor), Expression.stop(20, 10f * factor),
         )
         val casing = LineLayer("velogo-pistes-liseré", OPENMAPTILES_SOURCE).withProperties(
             PropertyFactory.lineColor(Color.WHITE),
             PropertyFactory.lineOpacity(0.75f),
-            PropertyFactory.lineWidth(Expression.product(width, Expression.literal(1.8f))),
+            PropertyFactory.lineWidth(widthAt(1.8f)),
             PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
             PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
         )
         val fill = LineLayer("velogo-pistes", OPENMAPTILES_SOURCE).withProperties(
             PropertyFactory.lineColor(c.cycleway),
-            PropertyFactory.lineWidth(width),
+            PropertyFactory.lineWidth(widthAt(1f)),
             PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
             PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
         )
