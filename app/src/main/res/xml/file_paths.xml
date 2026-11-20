@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Fichiers GPX exportés, partagés avec d'autres applis. -->
+    <cache-path name="exports" path="exports/" />
+</paths>

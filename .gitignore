@@ -1,0 +1,18 @@
+# Gradle / Android
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.jks
+*.keystore
+# La clé de signature chiffrée EST versionnée (signing/velogo-release.p12) ; son mot de passe jamais.
+*.password
+keystore-password*
+.DS_Store

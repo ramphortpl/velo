@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="velogo_night">#0B2239</color>
+    <color name="velogo_emerald">#1FD39A</color>
+    <color name="window_background_light">#F7FBF8</color>
+    <color name="window_background_dark">#0B131A</color>
+</resources>
