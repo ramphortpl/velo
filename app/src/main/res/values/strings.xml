@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VeloGo</string>
+
+    <!-- Notification d'enregistrement -->
+    <string name="notification_channel_recording">Enregistrement de la sortie</string>
+    <string name="notification_channel_recording_description">Notification silencieuse affichée pendant qu\'une sortie est enregistrée.</string>
+    <string name="notification_recording">Enregistrement en cours</string>
+    <string name="notification_paused">Sortie en pause</string>
+    <string name="notification_auto_paused">À l\'arrêt — reprise automatique</string>
+    <string name="notification_summary">%1$s km · %2$s</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_resume">Reprendre</string>
 </resources>

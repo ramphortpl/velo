@@ -15,7 +15,9 @@ coreLocationAltitude = "1.0.1"
 splashscreen = "1.2.0"
 coroutines = "1.11.0"
 serialization = "1.13.0"
-okhttp = "5.5.1"
+# Même version que celle embarquée par MapLibre 13.7.1 (qui s'en sert pour charger les tuiles) : on évite
+# de lui imposer OkHttp 5 sans pouvoir le vérifier sur un vrai téléphone.
+okhttp = "4.12.0"
 # Variante OpenGL ES : la variante Vulkan par défaut reçoit encore des correctifs pour les GPU Adreno 6xx.
 maplibre = "13.7.1"
 junit = "4.13.2"
@@ -68,3 +70,4 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }
+room3 = { id = "androidx.room3", version.ref = "room3" }

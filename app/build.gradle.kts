@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.roborazzi)
+    alias(libs.plugins.room3)
 }
 
 // Version = MAJEUR.MINEUR (version.properties) + numéro de build GitHub (croissant à chaque push),
@@ -104,8 +105,10 @@ android {
     }
 }
 
-ksp {
-    arg("room.generateKotlin", "true")
+// Les schémas de la base sont versionnés : ils servent aux migrations d'un jalon au suivant,
+// pour que les sorties déjà enregistrées survivent aux mises à jour.
+room3 {
+    schemaDirectory("$projectDir/schemas")
 }
 
 dependencies {
