@@ -46,6 +46,7 @@ jobs:
       regions: ${{ steps.plan.outputs.regions }}
       build: ${{ steps.plan.outputs.build }}
       osm: ${{ steps.plan.outputs.osm }}
+      osm_secours: ${{ steps.plan.outputs.osm_secours }}
     steps:
       - uses: actions/checkout@v7
       - id: plan
@@ -57,10 +58,13 @@ jobs:
           BUILD="$(curl -fsSL https://build-metadata.protomaps.dev/builds.json | python3 -c 'import json,sys; print(sorted(b["key"] for b in json.load(sys.stdin))[-1])')"
           echo "build=$BUILD" >> "$GITHUB_OUTPUT"
           # Pour un essai sur la seule Corse, inutile de traiter les 5 Go de la France entière.
+          # Deux serveurs d'extraits OpenStreetMap, l'un servant de secours à l'autre.
           if [ "$REGIONS" = '["corse"]' ]; then
-            echo "osm=https://download.geofabrik.de/europe/france/corse-latest.osm.pbf" >> "$GITHUB_OUTPUT"
+            echo "osm=https://download.openstreetmap.fr/extracts/europe/france/corse-latest.osm.pbf" >> "$GITHUB_OUTPUT"
+            echo "osm_secours=https://download.geofabrik.de/europe/france/corse-latest.osm.pbf" >> "$GITHUB_OUTPUT"
           else
             echo "osm=https://download.geofabrik.de/europe/france-latest.osm.pbf" >> "$GITHUB_OUTPUT"
+            echo "osm_secours=https://download.openstreetmap.fr/extracts/europe/france-latest.osm.pbf" >> "$GITHUB_OUTPUT"
           fi
           echo "Régions : $REGIONS — fond Protomaps : $BUILD" >> "$GITHUB_STEP_SUMMARY"
       - name: Release « cartes »
@@ -86,7 +90,8 @@ jobs:
       - name: Extrait OpenStreetMap
         run: |
           mkdir -p travail
-          curl -fSL --retry 4 --retry-delay 20 -o travail/extrait.osm.pbf "${{ needs.preparation.outputs.osm }}"
+          curl -fSL --retry 3 --retry-delay 20 -A "VeloGo-cartes (GitHub Actions)" -o travail/extrait.osm.pbf "${{ needs.preparation.outputs.osm }}" \
+            || curl -fSL --retry 3 --retry-delay 20 -A "VeloGo-cartes (GitHub Actions)" -o travail/extrait.osm.pbf "${{ needs.preparation.outputs.osm_secours }}"
           ls -la travail
       - name: Planetiler
         run: |
