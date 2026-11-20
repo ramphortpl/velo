@@ -48,6 +48,16 @@ private val DATA = listOf(
         "https://www.cyclosm.org",
     ),
     Credit(
+        "Protomaps",
+        "Carte « Vélo hors ligne » : fond de carte Protomaps (données OpenStreetMap), style et icônes sous licence BSD. La surcouche vélo est produite par VeloGo à partir d'OpenStreetMap.",
+        "https://protomaps.com",
+    ),
+    Credit(
+        "Mapterhorn",
+        "Relief de la carte hors ligne, altitude et pente sans réseau : MNT LiDAR HD et RGE ALTI® de l'IGN (Licence Ouverte 2.0), assemblés par Mapterhorn.",
+        "https://mapterhorn.com/attribution",
+    ),
+    Credit(
         "IGN – Géoplateforme",
         "Plan IGN, photos aériennes et altitudes (RGE ALTI®) : Institut national de l'information géographique et forestière, Licence Ouverte 2.0.",
         "https://cartes.gouv.fr",
@@ -58,7 +68,9 @@ private val SOFTWARE = listOf(
     Credit("MapLibre Native", "Moteur d'affichage des cartes. Licence BSD à 2 clauses.", "https://maplibre.org"),
     Credit("Android Jetpack et Kotlin", "Jetpack Compose, Room, DataStore, Navigation ; langage Kotlin. Licence Apache 2.0.", "https://developer.android.com/jetpack"),
     Credit("OkHttp", "Client HTTP de Square. Licence Apache 2.0.", "https://square.github.io/okhttp/"),
+    Credit("Planetiler", "Fabrique la surcouche vélo des cartes hors ligne (sur les serveurs de GitHub, pas dans l'appli). Licence Apache 2.0.", "https://github.com/onthegomap/planetiler"),
     Credit("Barlow Condensed", "Police des chiffres, par Jeremy Tribby. SIL Open Font License 1.1.", "https://github.com/jpt/barlow"),
+    Credit("Noto Sans", "Police des noms sur la carte hors ligne. SIL Open Font License 1.1.", "https://fonts.google.com/noto"),
     Credit("Material Symbols", "Icônes de Google. Licence Apache 2.0.", "https://fonts.google.com/icons"),
 )
 

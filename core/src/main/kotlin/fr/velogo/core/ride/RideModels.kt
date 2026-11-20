@@ -18,6 +18,11 @@ data class Fix(
     val verticalAccuracyM: Double? = null,
     /** Cap de déplacement en degrés. */
     val bearingDeg: Double? = null,
+    /**
+     * Altitude du sol à cet endroit d'après un modèle de relief (pack hors ligne), si l'on en a un.
+     * Bien plus stable que l'altitude GPS : quand elle est là, c'est elle qui alimente l'affichage en direct.
+     */
+    val terrainAltitudeM: Double? = null,
 )
 
 /** Un point de trace tel qu'il est enregistré dans l'historique. */

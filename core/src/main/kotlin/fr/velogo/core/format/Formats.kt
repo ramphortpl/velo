@@ -51,6 +51,13 @@ object Formats {
     fun distanceAuto(meters: Double): String =
         if (meters < 995) "${decimal(meters, 0)} m" else "${decimal(meters / 1000.0, if (meters < 99_950) 1 else 0)} km"
 
+    /** Taille de fichier lisible : « 850 ko », « 47 Mo », « 1,3 Go » (unités décimales, comme sur le téléphone). */
+    fun fileSize(bytes: Long): String = when {
+        bytes < 1_000_000 -> "${decimal(bytes / 1_000.0, 0)} ko"
+        bytes < 999_500_000 -> "${decimal(bytes / 1_000_000.0, 0)} Mo"
+        else -> "${decimal(bytes / 1_000_000_000.0, 1)} Go"
+    }
+
     /** Altitude ou dénivelé en mètres entiers. */
     fun meters(value: Double?): String = if (value == null) NO_VALUE else decimal(value, 0)
 

@@ -189,6 +189,7 @@ class VeloMapState {
         isStyleLoaded = false
         locationShown = false
         appliedChunks = -1
+        MapInit.setOfflineLayer(spec.layer.offline)
         val uri = spec.uri
         val builder = if (uri != null) Style.Builder().fromUri(uri) else Style.Builder().fromJson(spec.json.orEmpty())
         map.setStyle(builder) { loaded ->
@@ -381,6 +382,9 @@ class VeloMapState {
                 .foregroundTintColor(c.puck)
                 .bearingTintColor(c.puck)
                 .backgroundTintColor(Color.WHITE)
+                // Repère plus gros que d'origine : il doit se voir d'un coup d'œil sur un guidon, en plein jour.
+                .minZoomIconScale(PUCK_SCALE_FAR)
+                .maxZoomIconScale(PUCK_SCALE_NEAR)
                 .trackingGesturesManagement(true)
                 .build()
             component.activateLocationComponent(
@@ -474,6 +478,8 @@ class VeloMapState {
         const val MAX_ZOOM = 19.5
         const val FOLLOW_ZOOM = 15.5
         const val PUCK_FPS = 30
+        const val PUCK_SCALE_FAR = 1.0f
+        const val PUCK_SCALE_NEAR = 1.5f
         const val MOVING_SPEED_MPS = 1.2f
     }
 }

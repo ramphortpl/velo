@@ -50,6 +50,16 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
+        <!-- Prévenu par Android quand un téléchargement de carte hors ligne se termine, même appli fermée.
+             Seul le système peut émettre cette annonce. -->
+        <receiver
+            android:name=".offline.DownloadCompleteReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"

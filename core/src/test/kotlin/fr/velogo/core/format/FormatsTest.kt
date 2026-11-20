@@ -85,4 +85,13 @@ class FormatsTest {
         assertEquals("0 min", Formats.durationWords(10_000))
         assertEquals("3 h 00", Formats.durationWords(180 * 60_000L))
     }
+
+    @Test
+    fun `tailles de fichiers`() {
+        assertEquals("850 ko", Formats.fileSize(850_000))
+        assertEquals("47 Mo", Formats.fileSize(47_300_000))
+        assertEquals("812 Mo", Formats.fileSize(811_700_000))
+        assertEquals("1,0 Go", Formats.fileSize(999_700_000))
+        assertEquals("1,3 Go", Formats.fileSize(1_260_000_000))
+    }
 }

@@ -151,6 +151,22 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: python3 outils/essai_emulateur.py app/build/outputs/apk/smoke/app-smoke.apk
 
+      # Le rendu logiciel de l'émulateur n'affiche pas les textes de la carte vectorielle. Pour vérifier que cela
+      # vient de lui et non de l'appli, on refait deux captures avec son autre moteur graphique (ANGLE).
+      - name: Rendu de la carte avec l'autre moteur graphique de l'émulateur
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 12
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swangle_indirect -noaudio -no-boot-anim -camera-back none
+          script: python3 outils/rendu_carte.py app/build/outputs/apk/smoke/app-smoke.apk angle
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:

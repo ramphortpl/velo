@@ -46,7 +46,11 @@ sealed interface RecorderEvent {
  * les positions GPS, le chrono et les boutons.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class RideRecorder(private val repository: RideRepository) {
+class RideRecorder(
+    private val repository: RideRepository,
+    /** Altitude du sol en un point d'après les cartes hors ligne, ou null si aucune ne couvre l'endroit. */
+    private val terrainAltitude: (lat: Double, lon: Double) -> Double? = { _, _ -> null },
+) {
 
     private val serial = Dispatchers.Default.limitedParallelism(1)
 
@@ -106,7 +110,9 @@ class RideRecorder(private val repository: RideRepository) {
 
     suspend fun onFix(fix: Fix) = withContext(serial) {
         if (engine.state == RideState.IDLE) return@withContext
-        val point = engine.onFix(fix)
+        // Avec un pack de relief, l'altitude affichée vient du terrain : bien plus fiable que celle du GPS.
+        val terrain = runCatching { terrainAltitude(fix.lat, fix.lon) }.getOrNull()
+        val point = engine.onFix(if (terrain != null) fix.copy(terrainAltitudeM = terrain) else fix)
         if (point != null) {
             pending.add(point)
             appendToTrack(point)

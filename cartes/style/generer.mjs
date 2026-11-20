@@ -139,7 +139,7 @@ function etiquettesVelo(p) {
       paint: { "text-color": p.national, "text-halo-color": p.halo, "text-halo-width": 1.6 },
     },
     {
-      id: "velo_col", type: "symbol", source: "velo", "source-layer": "points", minzoom: 9,
+      id: "velo_col", type: "symbol", source: "velo", "source-layer": "points", minzoom: 10,
       filter: ["==", ["get", "type"], "col"],
       layout: {
         "icon-image": "peak", "icon-size": 0.9,
@@ -185,9 +185,10 @@ function style(nom, p) {
     glyphs: `${HOTE}/polices/{fontstack}/{range}.pbf`,
     sprite: `${HOTE}/sprites/${p.flavor}`,
     sources: {
-      fond: { type: "vector", tiles: [`${HOTE}/fond/{z}/{x}/{y}.mvt`], minzoom: 0, maxzoom: 15, attribution: "© OpenStreetMap · Protomaps" },
-      velo: { type: "vector", tiles: [`${HOTE}/velo/{z}/{x}/{y}.mvt`], minzoom: 6, maxzoom: 14 },
-      relief: { type: "raster-dem", tiles: [`${HOTE}/relief/{z}/{x}/{y}.webp`], encoding: "terrarium", tileSize: 512, minzoom: 0, maxzoom: 12 },
+      // « volatile » : ces tuiles sont déjà sur le téléphone, inutile que la carte en garde une copie dans son cache.
+      fond: { type: "vector", tiles: [`${HOTE}/fond/{z}/{x}/{y}.mvt`], minzoom: 0, maxzoom: 15, volatile: true, attribution: "© OpenStreetMap · Protomaps" },
+      velo: { type: "vector", tiles: [`${HOTE}/velo/{z}/{x}/{y}.mvt`], minzoom: 6, maxzoom: 14, volatile: true },
+      relief: { type: "raster-dem", tiles: [`${HOTE}/relief/{z}/{x}/{y}.webp`], encoding: "terrarium", tileSize: 512, minzoom: 0, maxzoom: 12, volatile: true },
     },
     layers: couches,
   };

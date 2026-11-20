@@ -47,7 +47,13 @@ class RideEngine(config: RideConfig = RideConfig()) {
     private var slopePct: Double? = null
     private var lastAccuracyM: Double? = null
 
+    /** Altitude mesurée (GPS) lissée : c'est elle qu'on enregistre, elle sert ensuite à repérer viaducs et tunnels. */
     private var altitudeFilter = AltitudeFilter(config.altitudeSource.accelNoise)
+    /** Altitude du relief hors ligne, quand il couvre l'endroit où l'on roule. */
+    private var terrainFilter = AltitudeFilter(AltitudeSource.TERRAIN.accelNoise)
+    /** Vrai tant que l'affichage (altitude, pente, dénivelé) s'appuie sur le relief plutôt que sur le GPS. */
+    private var onTerrain = false
+    private var liveAltitudeM: Double? = null
     private var ascent = AscentAccumulator(config.altitudeSource.ascentThresholdM)
     private var slope = SlopeEstimator(config.altitudeSource.slopeWindowM)
 
@@ -118,13 +124,29 @@ class RideEngine(config: RideConfig = RideConfig()) {
         }
     }
 
-    /** Change la source d'altitude (par exemple quand un pack de relief devient disponible). */
+    /** Change la nature de l'altitude mesurée (GPS seul, ou capteur précis comme un baromètre). */
     fun setAltitudeSource(source: AltitudeSource) {
         if (source == config.altitudeSource) return
         config = config.copy(altitudeSource = source)
+        altitudeFilter = AltitudeFilter(source.accelNoise)
+        if (!onTerrain) rebaseLiveAltitude(source)
+    }
+
+    /**
+     * Bascule l'affichage entre l'altitude mesurée et celle du relief (entrée ou sortie d'une zone couverte par
+     * un pack hors ligne). Les deux altitudes diffèrent de quelques mètres : on repart donc d'une nouvelle
+     * référence, sans compter cet écart comme du dénivelé.
+     */
+    private fun useTerrain(enabled: Boolean) {
+        if (enabled == onTerrain) return
+        onTerrain = enabled
+        if (enabled) terrainFilter = AltitudeFilter(AltitudeSource.TERRAIN.accelNoise)
+        rebaseLiveAltitude(if (enabled) AltitudeSource.TERRAIN else config.altitudeSource)
+    }
+
+    private fun rebaseLiveAltitude(source: AltitudeSource) {
         val a = ascent.ascentM
         val d = ascent.descentM
-        altitudeFilter = AltitudeFilter(source.accelNoise)
         ascent = AscentAccumulator(source.ascentThresholdM).also { it.restore(a, d) }
         slope = SlopeEstimator(source.slopeWindowM)
         slopePct = null
@@ -171,10 +193,16 @@ class RideEngine(config: RideConfig = RideConfig()) {
         smoothedSpeed = speed
 
         val source = config.altitudeSource
-        val altitude = if (fix.altitudeM != null) {
+        val measuredAltitude = if (fix.altitudeM != null) {
             val sigma = max(fix.verticalAccuracyM ?: source.defaultSigmaM, source.minSigmaM)
             altitudeFilter.update(fix.monoMs, fix.altitudeM, sigma)
         } else altitudeFilter.altitudeM
+        // Avec un pack de relief, l'affichage suit le terrain (précis au mètre) ; sinon, l'altitude mesurée.
+        useTerrain(fix.terrainAltitudeM != null)
+        val altitude = if (fix.terrainAltitudeM != null) {
+            terrainFilter.update(fix.monoMs, fix.terrainAltitudeM, AltitudeSource.TERRAIN.defaultSigmaM)
+        } else measuredAltitude
+        liveAltitudeM = altitude
 
         var recorded: TrackPoint? = null
         if (state == RideState.RECORDING || state == RideState.AUTO_PAUSED) {
@@ -200,7 +228,8 @@ class RideEngine(config: RideConfig = RideConfig()) {
                 }
                 val accurate = fix.accuracyM == null || fix.accuracyM <= MAX_SPEED_ACCURACY_M
                 if (accurate && speed > maxSpeedMps && speed <= config.maxPlausibleSpeedMps) maxSpeedMps = speed
-                recorded = TrackPoint(fix.timeMs, fix.lat, fix.lon, altitude, speed, fix.accuracyM, segment)
+                // La trace garde l'altitude mesurée quand il y en a une : le recalage de fin de sortie en a besoin.
+                recorded = TrackPoint(fix.timeMs, fix.lat, fix.lon, measuredAltitude ?: altitude, speed, fix.accuracyM, segment)
             } else if (!config.autoPause) {
                 // Pause automatique désactivée : le chrono continue à l'arrêt, mais la distance ne bouge pas.
                 val counted = countedUntilMonoMs
@@ -282,7 +311,7 @@ class RideEngine(config: RideConfig = RideConfig()) {
             startTimeMs = startTimeMs,
             totals = totals(),
             speedMps = displayedSpeed,
-            altitudeM = altitudeFilter.altitudeM,
+            altitudeM = liveAltitudeM,
             slopePct = if (state == RideState.RECORDING && signal) slopePct else null,
             accuracyM = if (signal) lastAccuracyM else null,
             hasSignal = signal,
@@ -298,9 +327,14 @@ class RideEngine(config: RideConfig = RideConfig()) {
         smoothedSpeed = null; lastFix = null; anchor = null; countedUntilMonoMs = null; stopped = false; slowSinceMonoMs = null
         fastCount = 0; jumpCount = 0; segment = 0; slopePct = null; lastAccuracyM = null
         altitudeFilter = AltitudeFilter(config.altitudeSource.accelNoise)
+        terrainFilter = AltitudeFilter(AltitudeSource.TERRAIN.accelNoise)
+        onTerrain = false; liveAltitudeM = null
         ascent = AscentAccumulator(config.altitudeSource.ascentThresholdM)
         slope = SlopeEstimator(config.altitudeSource.slopeWindowM)
     }
+
+    /** Vrai si l'altitude affichée vient du relief hors ligne (et non du GPS). */
+    val usesTerrain: Boolean get() = onTerrain
 
     private companion object {
         /** Constante de temps du lissage de la vitesse affichée. */

@@ -45,6 +45,7 @@ import fr.velogo.app.R
 import fr.velogo.app.data.Settings
 import fr.velogo.app.ui.history.HistoryScreen
 import fr.velogo.app.ui.history.RideDetailScreen
+import fr.velogo.app.ui.offline.OfflineMapsScreen
 import fr.velogo.app.ui.ride.RideScreen
 import fr.velogo.app.ui.settings.AboutScreen
 import fr.velogo.app.ui.settings.SettingsScreen
@@ -63,6 +64,9 @@ data object SettingsKey : NavKey
 
 @Serializable
 data object AboutKey : NavKey
+
+@Serializable
+data object OfflineMapsKey : NavKey
 
 /** Les onglets du bas. « Rouler » est l'écran principal : la carte et l'enregistrement. */
 enum class Tab(val label: String, val icon: Int, val selectedIcon: Int) {
@@ -134,6 +138,13 @@ fun AppRoot(container: AppContainer, settings: Settings) {
                             }
                             tab = Tab.HISTORY
                         },
+                        onOpenOfflineMaps = {
+                            Snapshot.withMutableSnapshot {
+                                backStack.resetTo(SettingsKey)
+                                backStack.add(OfflineMapsKey)
+                            }
+                            tab = Tab.SETTINGS
+                        },
                     )
 
                     AnimatedVisibility(visible = tab != Tab.RIDE, enter = fadeIn(), exit = fadeOut()) {
@@ -153,7 +164,14 @@ fun AppRoot(container: AppContainer, settings: Settings) {
                                         RideDetailScreen(rideId = key.rideId, onBack = { backStack.removeLastOrNull() })
                                     }
                                     entry<SettingsKey> {
-                                        SettingsScreen(onOpenAbout = { backStack.add(AboutKey) }, contentPadding = padding)
+                                        SettingsScreen(
+                                            onOpenAbout = { backStack.add(AboutKey) },
+                                            onOpenOfflineMaps = { backStack.add(OfflineMapsKey) },
+                                            contentPadding = padding,
+                                        )
+                                    }
+                                    entry<OfflineMapsKey> {
+                                        OfflineMapsScreen(onBack = { backStack.removeLastOrNull() })
                                     }
                                     entry<AboutKey> {
                                         AboutScreen(onBack = { backStack.removeLastOrNull() })

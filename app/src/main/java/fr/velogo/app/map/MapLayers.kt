@@ -18,17 +18,22 @@ data class MapLayer(
     val rasterMaxZoom: Int = 19,
     /** Vrai si le fond utilise le schéma OpenMapTiles : on peut y surligner les pistes cyclables. */
     val highlightCycleways: Boolean = false,
+    /** Vrai pour la carte servie depuis les packs du téléphone : elle n'a besoin d'aucun réseau. */
+    val offline: Boolean = false,
 )
 
-/** Ce que la carte doit charger : un style distant, ou un style JSON fabriqué ici. */
-data class MapStyleSpec(val layer: MapLayer, val dark: Boolean) {
+/**
+ * Ce que la carte doit charger : un style distant, ou un style JSON fabriqué ici.
+ * [revision] change quand les cartes hors ligne installées changent, pour forcer un rechargement.
+ */
+data class MapStyleSpec(val layer: MapLayer, val dark: Boolean, val revision: Int = 0) {
     val uri: String? get() = if (dark) layer.darkStyleUri ?: layer.lightStyleUri else layer.lightStyleUri
     val json: String? get() = if (uri == null) MapLayers.rasterStyle(layer, dark) else null
 }
 
 /**
- * Fonds de carte en ligne. Tous sont gratuits et sans clé ; aucun n'est téléchargé en masse :
- * seules les tuiles affichées sont demandées, puis gardées en cache.
+ * Fonds de carte. Ceux en ligne sont tous gratuits et sans clé ; aucun n'est téléchargé en masse :
+ * seules les tuiles affichées sont demandées, puis gardées en cache. Le dernier fonctionne sans réseau.
  */
 object MapLayers {
     private const val IGN_WMTS = "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0" +
@@ -71,9 +76,33 @@ object MapLayers {
         rasterMaxZoom = 19,
     )
 
-    val ALL = listOf(OPENFREEMAP, CYCLOSM, PLAN_IGN, ORTHO_IGN)
+    /**
+     * Carte vélo de VeloGo, dessinée sur le téléphone à partir des régions téléchargées. Son style est embarqué
+     * dans l'appli (assets/hors-ligne) ; tuiles, polices et icônes sont servies sur place par OfflineRouter.
+     */
+    val OFFLINE = MapLayer(
+        id = "hors_ligne",
+        title = "Vélo hors ligne",
+        description = "Carte vélo de VeloGo : pistes, revêtements, véloroutes, cols et relief, sans réseau.",
+        attribution = "© OpenStreetMap · Protomaps · Mapterhorn (IGN)",
+        lightStyleUri = "asset://hors-ligne/style-clair.json",
+        darkStyleUri = "asset://hors-ligne/style-sombre.json",
+        offline = true,
+    )
+
+    val ALL = listOf(OPENFREEMAP, CYCLOSM, PLAN_IGN, ORTHO_IGN, OFFLINE)
 
     fun byId(id: String?): MapLayer = ALL.firstOrNull { it.id == id } ?: OPENFREEMAP
+
+    /**
+     * Fond réellement affiché. Si la carte hors ligne est choisie alors qu'aucune région n'est installée
+     * (tout a été supprimé), on revient au plan en ligne plutôt que de montrer une carte vide.
+     * [offlineRevision] vaut 0 tant que les cartes du téléphone n'ont pas encore été relues au démarrage.
+     */
+    fun effective(id: String?, offlineRevision: Int, offlineInstalled: Boolean): MapLayer {
+        val chosen = byId(id)
+        return if (chosen.offline && offlineRevision > 0 && !offlineInstalled) OPENFREEMAP else chosen
+    }
 
     /** Style MapLibre minimal pour un fond en images. En thème sombre, l'image est assombrie pour ne pas éblouir. */
     fun rasterStyle(layer: MapLayer, dark: Boolean): String {

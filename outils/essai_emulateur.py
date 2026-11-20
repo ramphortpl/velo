@@ -18,8 +18,10 @@ import xml.etree.ElementTree as ET
 PACKAGE = "fr.velogo.app.essai"
 ACTIVITY = "fr.velogo.app.MainActivity"
 OUT = "essai"
-# Bord du lac d'Annecy : point de départ de la sortie simulée.
-START_LAT, START_LON = 45.8992, 6.1294
+# Corte, au centre de la Corse : point de départ des sorties simulées. La Corse est la plus petite région de
+# cartes hors ligne (80 Mo) : on peut la télécharger pendant l'essai.
+START_LAT, START_LON = 42.3060, 9.1500
+REGION = "Corse"
 SPEED_MPS = 7.0
 
 failures = []
@@ -179,6 +181,104 @@ def read_km():
     return None
 
 
+def read_altitude():
+    """Lit l'altitude affichée sur l'écran guidon : la plus grande valeur en mètres (l'autre est le dénivelé)."""
+    values = []
+    for text, description, _ in nodes():
+        for value in (text, description):
+            match = re.fullmatch(r"(\d[\d\u202f ]*) m", value)
+            if match:
+                values.append(int(re.sub(r"\D", "", match.group(1))))
+    return max(values) if values else None
+
+
+def offline_maps(gps):
+    """Télécharge la carte d'une région, l'affiche, puis vérifie que tout marche en mode avion."""
+    log("cartes hors ligne : téléchargement d'une région")
+    tap("Réglages")
+    time.sleep(1)
+    # L'écran des réglages a pu rester défilé vers le bas : on remonte en haut de page.
+    for _ in range(3):
+        shell("input swipe 540 700 540 2000 250")
+        time.sleep(0.6)
+    tap("Ouvrir")
+    if not wait_for("Cartes hors ligne", 10):
+        fail("l'écran des cartes hors ligne ne s'ouvre pas")
+        return
+    if not wait_for(f"Télécharger {REGION}", 40):
+        shot("cartes_liste_indisponible")
+        fail("la liste des cartes hors ligne ne s'affiche pas (catalogue introuvable ?)")
+        shell("input keyevent KEYCODE_BACK")
+        return
+    shot("cartes_hors_ligne_liste")
+    tap(f"Télécharger {REGION}")
+    time.sleep(5)
+    shot("cartes_hors_ligne_telechargement")
+    installed = False
+    deadline = time.time() + 420
+    while time.time() < deadline:
+        if find(f"Supprimer {REGION}"):
+            installed = True
+            break
+        if find("Réessayer"):
+            break
+        time.sleep(4)
+    shot("cartes_hors_ligne_installee")
+    if not installed:
+        fail("la carte hors ligne n'a pas été installée (téléchargement trop long ou en échec)")
+        shell("input keyevent KEYCODE_BACK")
+        return
+    log("carte hors ligne installée")
+    if not tap("Utiliser la carte hors ligne", timeout=10):
+        return
+    shell("input keyevent KEYCODE_BACK")
+    time.sleep(1)
+    tap("Rouler")
+    gps.stand(10)
+    shot("carte_velo_hors_ligne")
+    check_alive("avec la carte hors ligne")
+
+    log("mode avion : la carte et l'altitude doivent fonctionner sans réseau")
+    shell("cmd connectivity airplane-mode enable")
+    try:
+        time.sleep(3)
+        shell(f"am force-stop {PACKAGE}")
+        time.sleep(2)
+        shell(f"am start -W -n {PACKAGE}/{ACTIVITY}", timeout=120)
+        gps.stand(12)
+        shot("mode_avion_carte")
+        if not check_alive("au redémarrage en mode avion"):
+            return
+        tap("Démarrer")
+        if wait_for("Plus tard", 4):
+            tap("Plus tard")
+        if not wait_for("Pause", 15):
+            fail("la sortie en mode avion ne démarre pas")
+            return
+        gps.ride(45, bearing_deg=200.0)
+        altitude = read_altitude()
+        log(f"altitude affichée en mode avion : {altitude} m")
+        shot("mode_avion_guidon")
+        # Le GPS simulé ne donne aucune altitude : si un nombre s'affiche, il vient du relief hors ligne.
+        if altitude is None or not (300 <= altitude <= 800):
+            fail(f"altitude hors ligne absente ou invraisemblable à Corte : {altitude}")
+        tap("Carte")
+        gps.ride(6, bearing_deg=200.0)
+        shot("mode_avion_carte_en_roulant")
+        tap("Données")
+        long_press("Terminer")
+        time.sleep(8)
+        shot("mode_avion_detail_de_la_sortie")
+        if not wait_for("Altitude issue du relief hors ligne", 15):
+            fail("la sortie n'a pas été recalée sur le relief hors ligne")
+        shell("input keyevent KEYCODE_BACK")
+        time.sleep(1)
+        tap("Rouler")
+    finally:
+        shell("cmd connectivity airplane-mode disable")
+        time.sleep(8)
+
+
 def main():
     apk = sys.argv[1]
     os.makedirs(OUT, exist_ok=True)
@@ -282,10 +382,16 @@ def main():
     tap("Réglages")
     time.sleep(1)
     shot("reglages")
-    tap("Voir", required=False)
-    time.sleep(1)
-    shot("sources_et_licences")
-    shell("input keyevent KEYCODE_BACK")
+    for _ in range(3):
+        shell("input swipe 540 1900 540 500 250")
+        time.sleep(0.6)
+    if tap("Voir", required=False):
+        time.sleep(1)
+        shot("sources_et_licences")
+        shell("input keyevent KEYCODE_BACK")
+        time.sleep(1)
+    else:
+        fail("le bouton « Voir » des sources et licences est introuvable")
 
     log("fonds de carte")
     tap("Rouler")
@@ -297,7 +403,10 @@ def main():
             shot(f"fond_{name}")
             check_alive(f"avec le fond {layer}")
 
+    offline_maps(gps)
+
     log("sortie interrompue (appli tuée pendant l'enregistrement)")
+    tap("Rouler", required=False)
     tap("Démarrer")
     if wait_for("Plus tard", 4):
         tap("Plus tard")

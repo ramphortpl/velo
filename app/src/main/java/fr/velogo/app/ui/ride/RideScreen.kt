@@ -106,6 +106,7 @@ fun RideScreen(
     isForeground: Boolean,
     bottomPadding: Dp,
     onRideSaved: (Long) -> Unit,
+    onOpenOfflineMaps: () -> Unit,
 ) {
     val container = LocalContainer.current
     val vm = veloViewModel { RideViewModel(it) }
@@ -132,8 +133,12 @@ fun RideScreen(
             end = Color(0xFFD32F2F).toArgb(),
         )
     }
-    val layer = MapLayers.byId(settings.mapLayer)
-    val spec = remember(layer, dark) { MapStyleSpec(layer, dark) }
+    // Cartes hors ligne : la carte se recharge quand une région est installée ou supprimée.
+    val offlineRevision by container.offline.store.epoch.collectAsStateWithLifecycle()
+    val offlineFiles by container.offline.store.installed.collectAsStateWithLifecycle()
+    val offlineInstalled = offlineFiles.keys.any { it.startsWith("fond-") }
+    val layer = MapLayers.effective(settings.mapLayer, offlineRevision, offlineInstalled)
+    val spec = remember(layer, dark, offlineRevision) { MapStyleSpec(layer, dark, if (layer.offline) offlineRevision else 0) }
 
     val startRide = rememberStartRide(
         batteryHintShown = settings.batteryHintShown,
@@ -251,25 +256,42 @@ fun RideScreen(
         ModalBottomSheet(onDismissRequest = { showLayers = false }) {
             Text("Fond de carte", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
             for (candidate in MapLayers.ALL) {
+                // La carte hors ligne ne peut être choisie qu'une fois une région téléchargée.
+                val needsDownload = candidate.offline && !offlineInstalled
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .clickable {
-                            vm.setMapLayer(candidate.id)
                             showLayers = false
+                            if (needsDownload) onOpenOfflineMaps() else vm.setMapLayer(candidate.id)
                         }
                         .padding(horizontal = 24.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(candidate.title, style = MaterialTheme.typography.titleMedium)
-                        Text(candidate.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            if (needsDownload) "Télécharge d'abord une région pour rouler sans réseau." else candidate.description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     Spacer(Modifier.width(12.dp))
-                    RadioButton(selected = candidate.id == layer.id, onClick = null)
+                    if (needsDownload) {
+                        Icon(painterResource(R.drawable.ic_download), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    } else {
+                        RadioButton(selected = candidate.id == layer.id, onClick = null)
+                    }
                 }
             }
-            Spacer(Modifier.height(24.dp))
+            TextButton(
+                onClick = {
+                    showLayers = false
+                    onOpenOfflineMaps()
+                },
+                modifier = Modifier.padding(horizontal = 12.dp),
+            ) { Text("Gérer les cartes hors ligne") }
+            Spacer(Modifier.height(16.dp))
         }
     }
 

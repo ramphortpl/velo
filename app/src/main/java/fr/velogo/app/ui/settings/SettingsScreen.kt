@@ -114,7 +114,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel(), Sett
 }
 
 @Composable
-fun SettingsScreen(onOpenAbout: () -> Unit, contentPadding: PaddingValues) {
+fun SettingsScreen(onOpenAbout: () -> Unit, onOpenOfflineMaps: () -> Unit, contentPadding: PaddingValues) {
     val vm = veloViewModel { SettingsViewModel(it) }
     val settings by vm.settings.collectAsStateWithLifecycle()
     val update by vm.update.collectAsStateWithLifecycle()
@@ -139,6 +139,7 @@ fun SettingsScreen(onOpenAbout: () -> Unit, contentPadding: PaddingValues) {
         isSamsung = Build.MANUFACTURER.equals("samsung", ignoreCase = true),
         actions = vm,
         onOpenAbout = onOpenAbout,
+        onOpenOfflineMaps = onOpenOfflineMaps,
         contentPadding = contentPadding,
     )
 }
@@ -155,6 +156,7 @@ fun SettingsContent(
     isSamsung: Boolean,
     actions: SettingsActions,
     onOpenAbout: () -> Unit,
+    onOpenOfflineMaps: () -> Unit,
     contentPadding: PaddingValues,
 ) {
     val context = LocalContext.current
@@ -200,6 +202,15 @@ fun SettingsContent(
                 SwitchRow("Écran guidon « plein soleil »", "Chiffres noirs sur fond blanc pur, le plus lisible en extérieur.", settings.sunlightDashboard, vm::setSunlight)
             }
 
+            Section("Cartes") {
+                ActionRow(
+                    "Cartes hors ligne",
+                    "Télécharge tes régions pour rouler sans réseau : carte vélo, relief, altitude et pente précises.",
+                    "Ouvrir",
+                    onOpenOfflineMaps,
+                )
+            }
+
             Section("Affichage") {
                 Text("Thème", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -217,8 +228,8 @@ fun SettingsContent(
 
             Section("Altitude et dénivelé") {
                 SwitchRow(
-                    "Recaler sur le relief IGN",
-                    "À la fin d'une sortie, l'altitude est corrigée avec le relief de l'IGN (quelques secondes de réseau). Sans cela, le dénivelé vient du GPS seul et reste approximatif : ton téléphone n'a pas de baromètre.",
+                    "Recaler sur le relief IGN en ligne",
+                    "À la fin d'une sortie, l'altitude est corrigée avec le relief le plus fin de l'IGN (quelques secondes de réseau). Sans réseau, c'est le relief des cartes hors ligne qui sert. Sans l'un ni l'autre, le dénivelé vient du GPS seul et reste approximatif : ton téléphone n'a pas de baromètre.",
                     settings.ignAltitudeCorrection, vm::setIgnCorrection,
                 )
             }

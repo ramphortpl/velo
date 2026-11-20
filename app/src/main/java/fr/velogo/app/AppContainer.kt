@@ -6,7 +6,9 @@ import fr.velogo.app.data.SettingsRepository
 import fr.velogo.app.data.db.VeloGoDatabase
 import fr.velogo.app.elevation.ElevationCorrector
 import fr.velogo.app.elevation.IgnAltimetry
+import fr.velogo.app.elevation.ReliefSource
 import fr.velogo.app.location.GpsSource
+import fr.velogo.app.offline.OfflineMaps
 import fr.velogo.app.recording.RecorderEvent
 import fr.velogo.app.recording.RideRecorder
 import fr.velogo.app.update.UpdateChecker
@@ -14,6 +16,7 @@ import fr.velogo.app.update.UpdateInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -33,7 +36,7 @@ class AppContainer(private val app: Application) {
     val rides: RideRepository by lazy { RideRepository(database) }
     val settings: SettingsRepository by lazy { SettingsRepository(app) }
     val gps: GpsSource by lazy { GpsSource(app, appScope) }
-    val recorder: RideRecorder by lazy { RideRecorder(rides) }
+    val recorder: RideRecorder by lazy { RideRecorder(rides) { lat, lon -> relief.altitude(lat, lon) } }
 
     /**
      * Client HTTP de l'appli. Le User-Agent identifie VeloGo, comme l'exigent les serveurs de tuiles
@@ -49,7 +52,13 @@ class AppContainer(private val app: Application) {
             .build()
     }
 
-    val elevationCorrector: ElevationCorrector by lazy { ElevationCorrector(rides, IgnAltimetry(http)) }
+    /** Cartes hors ligne : catalogue, fichiers installés, téléchargements. */
+    val offline: OfflineMaps by lazy { OfflineMaps(app, http, settings, appScope) }
+
+    /** Altitude du sol d'après les packs de relief installés. */
+    val relief: ReliefSource by lazy { ReliefSource { offline.store.tiles } }
+
+    val elevationCorrector: ElevationCorrector by lazy { ElevationCorrector(rides, IgnAltimetry(http), relief) }
     val updateChecker: UpdateChecker by lazy { UpdateChecker(http) }
 
     private val _update = MutableStateFlow<UpdateInfo?>(null)
@@ -58,12 +67,22 @@ class AppContainer(private val app: Application) {
 
     /** Tâches de fond lancées une fois pour toutes au démarrage de l'appli. */
     fun start() {
-        // Dès qu'une sortie est enregistrée, on recale son altitude sur le relief IGN (si le réglage est actif).
+        offline.start()
+        // Dès qu'une sortie est enregistrée, on recale son altitude sur le relief : celui de l'IGN en ligne si le
+        // réglage est actif, sinon (ou sans réseau) celui des cartes hors ligne.
         appScope.launch {
             recorder.events.collect { event ->
-                if (event is RecorderEvent.Saved && settings.settings.first().ignAltitudeCorrection) {
-                    launch { runCatching { elevationCorrector.correct(event.rideId) } }
+                if (event is RecorderEvent.Saved) {
+                    val online = settings.settings.first().ignAltitudeCorrection
+                    launch { runCatching { elevationCorrector.correct(event.rideId, online) } }
                 }
+            }
+        }
+        // Les sorties récentes qui n'avaient pas pu être recalées (pas de réseau ce jour-là) sont retentées.
+        appScope.launch {
+            delay(STARTUP_RETRY_DELAY_MS)
+            if (!recorder.isActive) {
+                runCatching { elevationCorrector.retryPending(online = settings.settings.first().ignAltitudeCorrection) }
             }
         }
         // Vérification discrète des mises à jour, au plus deux fois par jour.
@@ -88,6 +107,7 @@ class AppContainer(private val app: Application) {
 
     companion object {
         private const val UPDATE_CHECK_PERIOD_MS = 12 * 60 * 60 * 1000L
+        private const val STARTUP_RETRY_DELAY_MS = 20_000L
         val USER_AGENT = "VeloGo/${BuildConfig.VERSION_NAME} (Android ; application personnelle non commerciale)"
     }
 }

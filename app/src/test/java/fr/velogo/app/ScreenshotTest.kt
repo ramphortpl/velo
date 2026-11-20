@@ -38,6 +38,13 @@ import fr.velogo.core.ride.RideTotals
 import fr.velogo.core.ride.TrackPoint
 import org.junit.Test
 import org.junit.runner.RunWith
+import fr.velogo.app.offline.StorageChoice
+import fr.velogo.app.ui.offline.OfflineMapsActions
+import fr.velogo.app.ui.offline.OfflineMapsContent
+import fr.velogo.app.ui.offline.OfflineMapsUiState
+import fr.velogo.app.ui.offline.RegionRow
+import fr.velogo.app.ui.offline.RegionStatus
+import java.io.File
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
@@ -174,6 +181,7 @@ class ScreenshotTest {
                     isSamsung = true,
                     actions = NoActions,
                     onOpenAbout = {},
+                    onOpenOfflineMaps = {},
                     contentPadding = PaddingValues(bottom = 80.dp),
                 )
             }
@@ -192,6 +200,51 @@ class ScreenshotTest {
     }
 
     /** Une boucle vallonnée de 40 km environ, pour les vignettes et les graphiques. */
+    @Test
+    fun cartes_hors_ligne() = captureRoboImage("$OUT/cartes_hors_ligne.png") {
+        fun region(name: String, size: Long, status: RegionStatus, done: Long = 0, update: Long = 0, message: String? = null) =
+            RegionRow(name.lowercase(), name, size, status, done, update, message)
+        VeloGoTheme(mode = ThemeMode.LIGHT) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                OfflineMapsContent(
+                    state = OfflineMapsUiState(
+                        regions = listOf(
+                            region("Auvergne-Rhône-Alpes", 1_240_000_000, RegionStatus.INSTALLED),
+                            region("Bourgogne-Franche-Comté", 710_000_000, RegionStatus.DOWNLOADING, done = 312_000_000),
+                            // (Pas d'état « vérification » ici : sa barre animée sans fin bloquerait la capture.)
+                            region("Bretagne", 540_000_000, RegionStatus.WAITING, done = 96_000_000, message = "En attente du Wi-Fi"),
+                            region("Corse", 81_000_000, RegionStatus.UPDATE_AVAILABLE, update = 47_000_000),
+                            region("Grand Est", 890_000_000, RegionStatus.AVAILABLE),
+                            region("Occitanie", 1_100_000_000, RegionStatus.FAILED, message = "Plus assez de place sur le téléphone."),
+                        ),
+                        catalogDate = "20/11/2026",
+                        usedBytes = 1_321_000_000,
+                        storages = listOf(
+                            StorageChoice(0, "Téléphone", File("/"), 41_300_000_000),
+                            StorageChoice(1, "Carte SD", File("/"), 12_800_000_000),
+                        ),
+                        selectedStorage = 0,
+                        wifiOnly = true,
+                        offlineLayerActive = false,
+                    ),
+                    actions = NoOfflineActions,
+                    snackbar = SnackbarHostState(),
+                    onBack = {},
+                )
+            }
+        }
+    }
+
+    private object NoOfflineActions : OfflineMapsActions {
+        override fun refresh() = Unit
+        override fun download(regionId: String) = Unit
+        override fun cancel(regionId: String) = Unit
+        override fun delete(regionId: String) = Unit
+        override fun setWifiOnly(value: Boolean) = Unit
+        override fun setStorage(index: Int) = Unit
+        override fun useOfflineLayer() = Unit
+    }
+
     private fun samplePoints(seed: Int = 0): List<TrackPoint> {
         val out = ArrayList<TrackPoint>()
         var position = LatLon(45.90 + seed * 0.01, 6.12)

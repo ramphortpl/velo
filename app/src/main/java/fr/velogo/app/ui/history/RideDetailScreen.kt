@@ -253,7 +253,9 @@ private fun RideMap(data: RideTrackData?, marker: LatLon?, modifier: Modifier) {
     val rideColors = LocalRideColors.current
     var layerId by remember { mutableStateOf(MapLayers.OPENFREEMAP.id) }
     LaunchedEffect(Unit) { layerId = container.settings.settings.first().mapLayer }
-    val layer = MapLayers.byId(layerId)
+    val offlineRevision by container.offline.store.epoch.collectAsStateWithLifecycle()
+    val offlineFiles by container.offline.store.installed.collectAsStateWithLifecycle()
+    val layer = MapLayers.effective(layerId, offlineRevision, offlineFiles.keys.any { it.startsWith("fond-") })
     val colors = remember(dark, rideColors) {
         MapColors(
             track = rideColors.track.toArgb(),
@@ -273,7 +275,7 @@ private fun RideMap(data: RideTrackData?, marker: LatLon?, modifier: Modifier) {
     }
     LaunchedEffect(marker) { mapState.setMarker(marker) }
     Box(modifier) {
-        VeloMap(mapState, MapStyleSpec(layer, dark), colors, Modifier.fillMaxSize())
+        VeloMap(mapState, MapStyleSpec(layer, dark, if (layer.offline) offlineRevision else 0), colors, Modifier.fillMaxSize())
         Text(
             layer.attribution,
             style = MaterialTheme.typography.labelSmall,

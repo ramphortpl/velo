@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -34,6 +35,10 @@ data class Settings(
     val batteryHintShown: Boolean = false,
     val checkUpdates: Boolean = true,
     val lastUpdateCheckMs: Long = 0,
+    /** Ne télécharger les cartes hors ligne qu'en Wi-Fi. */
+    val offlineWifiOnly: Boolean = true,
+    /** Emplacement des cartes hors ligne : 0 = mémoire du téléphone, 1 = carte SD. */
+    val offlineStorage: Int = 0,
 )
 
 class SettingsRepository(context: Context) {
@@ -55,6 +60,8 @@ class SettingsRepository(context: Context) {
                 batteryHintShown = p[BATTERY_HINT] ?: d.batteryHintShown,
                 checkUpdates = p[CHECK_UPDATES] ?: d.checkUpdates,
                 lastUpdateCheckMs = p[LAST_UPDATE_CHECK] ?: d.lastUpdateCheckMs,
+                offlineWifiOnly = p[OFFLINE_WIFI_ONLY] ?: d.offlineWifiOnly,
+                offlineStorage = p[OFFLINE_STORAGE] ?: d.offlineStorage,
             )
         }
 
@@ -69,6 +76,8 @@ class SettingsRepository(context: Context) {
     suspend fun setBatteryHintShown(value: Boolean) = store.edit { it[BATTERY_HINT] = value }.let { }
     suspend fun setCheckUpdates(value: Boolean) = store.edit { it[CHECK_UPDATES] = value }.let { }
     suspend fun setLastUpdateCheck(timeMs: Long) = store.edit { it[LAST_UPDATE_CHECK] = timeMs }.let { }
+    suspend fun setOfflineWifiOnly(value: Boolean) = store.edit { it[OFFLINE_WIFI_ONLY] = value }.let { }
+    suspend fun setOfflineStorage(index: Int) = store.edit { it[OFFLINE_STORAGE] = index }.let { }
 
     private companion object {
         val THEME = stringPreferencesKey("theme")
@@ -82,5 +91,7 @@ class SettingsRepository(context: Context) {
         val BATTERY_HINT = booleanPreferencesKey("conseil_batterie_vu")
         val CHECK_UPDATES = booleanPreferencesKey("verifier_mises_a_jour")
         val LAST_UPDATE_CHECK = longPreferencesKey("derniere_verification")
+        val OFFLINE_WIFI_ONLY = booleanPreferencesKey("cartes_wifi_seulement")
+        val OFFLINE_STORAGE = intPreferencesKey("cartes_emplacement")
     }
 }

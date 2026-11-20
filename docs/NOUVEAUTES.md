@@ -1,5 +1,33 @@
 # Nouveautés de VeloGo
 
+## Jalon 2 — Cartes hors ligne
+
+- **Cartes hors ligne par région** (Réglages > Cartes hors ligne) : chaque région se télécharge en Wi-Fi, reprend
+  toute seule après une coupure et fonctionne ensuite en mode avion.
+- **Nouveau fond « Vélo hors ligne »**, dessiné pour le vélo : pistes et voies vertes en vert, bandes cyclables en
+  pointillé, véloroutes surlignées (nationales, régionales, locales, VTT), chemins selon leur revêtement, voies
+  interdites aux vélos, cols avec leur altitude, points d'eau, ateliers et magasins de vélos. Clair ou sombre,
+  avec le relief en ombrage.
+- **Altitude, pente et dénivelé précis en direct**, même sans réseau : dans une région téléchargée, ils viennent du
+  relief de l'IGN (au mètre près) et non plus du seul GPS.
+- **Recalage de fin de sortie sans réseau** : sans connexion, l'altitude de la sortie est corrigée avec le relief
+  hors ligne ; avec connexion, toujours avec le service de l'IGN.
+- Les cartes sont régénérées chaque mois à partir d'OpenStreetMap ; l'appli propose alors la mise à jour.
+- Repère de position plus gros sur la carte ; écran guidon plus sobre tant que le GPS n'a pas de position.
+
+### À tester sur le téléphone
+
+1. Réglages > Cartes hors ligne : télécharge ta région (en Wi-Fi), puis touche « Utiliser la carte hors ligne ».
+2. Passe en mode avion, ferme puis rouvre VeloGo : la carte doit s'afficher et se déplacer normalement.
+3. Démarre une sortie en mode avion : l'altitude s'affiche tout de suite et la pente réagit dans les côtes.
+4. Termine la sortie : le détail indique « Altitude issue du relief hors ligne ».
+
+### Limites connues
+
+- Hors des régions téléchargées, la carte hors ligne ne montre que les grands axes (vue d'ensemble de la France).
+- Le calcul d'itinéraire hors ligne arrive au jalon 3 (les données nécessaires sont déjà publiées).
+- Affichage en portrait uniquement pour l'instant.
+
 ## Jalon 1 — Carte, enregistrement, historique
 
 - **Carte en ligne**, limitée à la France : Plan (clair ou sombre, pistes cyclables surlignées), CyclOSM, Plan IGN,

@@ -140,4 +140,33 @@ class PmTilesTest {
             file.delete()
         }
     }
+
+    @Test
+    fun `plusieurs archives se comportent comme une seule carte`() {
+        PmTilesReader.open(fixture()).use { reader ->
+            val set = TileSet(listOf(reader))
+            assertFalse(set.isEmpty)
+            assertEquals(reader.header.maxZoom, set.maxZoom)
+            val e = expected.first()
+            // La tuile rendue est décompressée : c'est un protobuf de tuile vectorielle, pas du gzip.
+            val tile = set.tile(e.z, e.x, e.y)!!
+            assertEquals(e.size, tile.size)
+            assertEquals(e.sha, sha(tile))
+            assertFalse(tile[0] == 0x1f.toByte() && tile[1] == 0x8b.toByte())
+            assertNull(set.tile(12, 0, 0))
+        }
+        assertTrue(TileSet.EMPTY.isEmpty)
+        assertEquals(-1, TileSet.EMPTY.maxZoom)
+        assertNull(TileSet.EMPTY.tile(3, 4, 2))
+    }
+
+    @Test
+    fun `une archive fermee ne fait pas planter la lecture`() {
+        val reader = PmTilesReader.open(fixture())
+        val set = TileSet(listOf(reader))
+        val e = expected.first()
+        assertNotNull(set.tile(e.z, e.x, e.y))
+        set.close()
+        assertNull(set.tile(e.z, e.x, e.y))
+    }
 }

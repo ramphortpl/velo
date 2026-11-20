@@ -16,6 +16,7 @@ Ce fichier résume l'architecture et les décisions. Il est tenu à jour à chaq
 ./gradlew :app:assembleRelease # APK release (signé seulement si VELOGO_KEYSTORE_PASSWORD est défini)
 ./gradlew :app:recordRoborazziDebug  # captures d'écran des écrans (PNG dans app/build/outputs/roborazzi/)
 ./gradlew :app:assembleSmoke   # APK d'essai pour émulateur (code minifié de la release, clé de test, x86_64)
+cd cartes/style && npm install && npm run generer   # régénère le style de la carte hors ligne (assets/hors-ligne)
 ```
 
 SDK requis : plateforme `android-37.1`, build-tools 37, JDK 21.
@@ -24,12 +25,16 @@ SDK requis : plateforme `android-37.1`, build-tools 37, JDK 21.
 
 | Module | Rôle |
 |---|---|
-| `core` | Kotlin pur, aucune dépendance Android : géodésie, moteur de sortie, altitude/pente/dénivelé, GPX, mise en forme. Tout calcul y vit pour être testé sur JVM. |
+| `core` | Kotlin pur, aucune dépendance Android : géodésie, moteur de sortie, altitude/pente/dénivelé, GPX, mise en forme, lecture des fichiers PMTiles et du relief. Tout calcul y vit pour être testé sur JVM. |
 | `app` | Android : Compose, service d'enregistrement, carte MapLibre, base Room, réglages. |
 
 Paquets de `app` (`fr.velogo.app`) : `ui/` (écrans Compose, thème), `recording/` (service de premier plan,
 enregistreur), `data/` (Room, DataStore, export GPX), `map/` (MapLibre), `location/` (GPS), `elevation/`
-(recalage d'altitude IGN), `update/` (mises à jour via les Releases GitHub).
+(recalage d'altitude IGN, relief hors ligne), `offline/` (cartes hors ligne : catalogue, téléchargements, serveur
+de tuiles local), `update/` (mises à jour via les Releases GitHub).
+
+Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetiler, contours des régions, style),
+`outils/` (essai sur émulateur), `.github/workflows/` (`build.yml` pour l'APK, `cartes.yml` pour les cartes).
 
 ## Architecture de l'appli
 
@@ -48,20 +53,39 @@ enregistreur), `data/` (Room, DataStore, export GPX), `map/` (MapLibre), `locati
 - **Navigation** : l'écran « Rouler » (carte + enregistrement) reste composé en permanence sous les autres ;
   Historique et Réglages se posent par-dessus via Navigation 3 (`AppRoot`). La carte n'est jamais recréée en
   changeant d'onglet ; son rendu est coupé dès qu'elle est recouverte.
+- **Cartes hors ligne** : `OfflineMaps` réunit le catalogue (`catalogue.json` de la Release `cartes`), les
+  fichiers installés (`OfflineStore`, dossier privé de l'appli sur le stockage partagé ou la carte SD, une notice
+  `.json` par fichier vérifié) et les téléchargements (`PackDownloader`, qui s'appuie sur le `DownloadManager`
+  d'Android puis vérifie le SHA-256). Le fond « Vélo hors ligne » charge un style embarqué
+  (`assets/hors-ligne/style-*.json`) dont les tuiles, polices et icônes pointent vers l'adresse fictive
+  `https://hors-ligne.velogo.invalid/…` : `OfflineTileInterceptor` (dans le client OkHttp de MapLibre) y répond
+  depuis les PMTiles du téléphone via `OfflineRouter`, sans réseau. `ReliefSource` lit l'altitude du sol dans les
+  packs de relief ; `RideRecorder` la joint à chaque position (`Fix.terrainAltitudeM`).
 - **Textes** : interface uniquement en français, textes écrits directement dans les composables (seuls ceux
   du service et de la notification sont dans `strings.xml`).
 - **Écrans testables** : chaque écran a un composable « contenu » sans accès aux données (`RideChrome`,
-  `HistoryContent`, `RideDetailBody`, `SettingsContent`) rendu en image par `ScreenshotTest`.
+  `HistoryContent`, `RideDetailBody`, `SettingsContent`, `OfflineMapsContent`) rendu en image par `ScreenshotTest`.
+  Attention : une animation sans fin (barre de progression indéterminée) bloque la capture.
 
 ## Vérification sans téléphone
 
 Il n'y a pas d'émulateur dans l'environnement de développement. Trois niveaux de vérification :
 
-1. `core` : tests unitaires des calculs (sorties simulées, références GeographicLib).
-2. `app` : `ScreenshotTest` (Robolectric + Roborazzi) rend les écrans en PNG au format du Galaxy A05s.
-3. CI : le job « Essai sur émulateur » installe l'APK `smoke` sur un émulateur Android 15, simule une sortie
-   au GPS (`outils/essai_emulateur.py`), vérifie la distance affichée, la pause automatique, l'historique,
-   les fonds de carte, la reprise après arrêt forcé, et publie des captures d'écran en artefact.
+1. `core` : tests unitaires des calculs (sorties simulées, références GeographicLib, tuiles PMTiles comparées à
+   l'outil officiel `pmtiles`).
+2. `app` : `ScreenshotTest` (Robolectric + Roborazzi) rend les écrans en PNG au format du Galaxy A05s ; tests du
+   serveur de tuiles local, du catalogue et de `ReliefSource` (une vraie tuile de relief, altitudes comparées à
+   celles du service de l'IGN).
+3. CI : le job « Essai sur émulateur » installe l'APK `smoke` sur un émulateur Android 15 et déroule
+   `outils/essai_emulateur.py` : sortie simulée à Corte (positions envoyées par le fournisseur de test d'Android,
+   plus fiable que le GPS simulé de l'émulateur), distance affichée, pause automatique, historique, fonds de carte,
+   téléchargement de la carte de Corse, carte et altitude en mode avion, reprise après arrêt forcé. Les captures
+   d'écran sont publiées en artefact.
+
+Constat sur l'émulateur de la CI (rendu logiciel SwiftShader) : les textes et le repère de position des cartes
+vectorielles MapLibre n'y apparaissent pas correctement. Le job refait donc deux captures avec l'autre moteur
+graphique de l'émulateur (ANGLE, `outils/rendu_carte.py`) pour distinguer un défaut de l'émulateur d'un défaut de
+l'appli. Tant que ce point n'est pas tranché, les noms de rues et le repère restent à vérifier sur le téléphone.
 
 Le comportement réel sur le Galaxy A05s (GPS, économie de batterie Samsung, lisibilité au soleil) ne peut être
 validé que par l'utilisateur.
@@ -87,9 +111,25 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
 - **Musique** : l'appli ne demande jamais le focus audio ; la notification d'enregistrement est silencieuse.
 - **Données** : tout est local (Room). Pas de sauvegarde cloud (`allowBackup=false`), transfert d'appareil autorisé.
 - **France uniquement** : carte bornée à `Geo.FRANCE`, interface en français seulement (`localeFilters`).
-- **Recalage d'altitude** : à la fin d'une sortie, l'altitude est remplacée par celle du relief IGN
-  (`ElevationCorrector`, API altimétrie de la Géoplateforme), en gommant viaducs et tunnels grâce à l'altitude GPS
-  (`TerrainCorrection.fuse`). Sans réseau, la sortie garde son altitude GPS (source `GNSS`).
+- **Recalage d'altitude** : à la fin d'une sortie, l'altitude est remplacée par celle du relief
+  (`ElevationCorrector`) : API altimétrie de la Géoplateforme IGN si le réseau répond, sinon relief des cartes
+  hors ligne, en gommant viaducs et tunnels grâce à l'altitude GPS (`TerrainCorrection.fuse`). Sans réseau ni carte,
+  la sortie garde son altitude GPS (source `GNSS`) et le recalage est retenté aux lancements suivants.
+- **Altitude en direct** : dans une région téléchargée, l'affichage (altitude, pente, dénivelé) suit le relief
+  hors ligne (réglage `TERRAIN`) ; ailleurs, le GPS. La trace enregistre toujours l'altitude GPS quand elle existe,
+  car le recalage de fin de sortie s'en sert. Le relief hors ligne (zoom 12, ~13 m par pixel) s'écarte de moins
+  d'un mètre du service de l'IGN sur les points vérifiés.
+- **Cartes hors ligne : trois fichiers par région** dans la Release GitHub `cartes` : `fond-<région>.pmtiles`
+  (extrait du basemap Protomaps, zooms 0 à 15), `velo-<région>.pmtiles` (surcouche vélo Planetiler, zooms 6 à 14,
+  couches `itineraires`, `voies`, `points`), `relief-<région>.pmtiles` (Mapterhorn, terrarium WebP 512 px, zooms 0
+  à 12), plus une vue d'ensemble de la France et les dalles BRouter `.rd5` pour le jalon 3. Les fichiers publiés
+  portent le début de leur empreinte dans leur nom : une régénération ne casse jamais un téléchargement en cours.
+- **Pas de `pmtiles://` dans MapLibre** : la prise en charge native est encore jeune et ne sait pas réunir
+  plusieurs régions dans une seule source. Notre lecteur PMTiles (`core/tiles`) et l'intercepteur OkHttp font le
+  même travail en restant sous notre contrôle (tuile absente = 404, plage de polices absente = réponse vide).
+  Quand le fond hors ligne est affiché, `MapLibre.setConnected(true)` empêche MapLibre d'attendre le réseau.
+- **Téléchargements confiés au `DownloadManager` d'Android** plutôt qu'à WorkManager : reprise après coupure,
+  attente du Wi-Fi et notification sont gérées par le système, sans service ni autorisation supplémentaires.
 - **Portrait uniquement** pour l'instant (`screenOrientation="portrait"`) : la disposition paysage de l'écran
   guidon n'est pas au point ; à reprendre aux finitions si besoin.
 - **R8** : la release est minifiée. Les clés de navigation (`*Key`) sont gardées explicitement.
@@ -106,10 +146,29 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   par-dessus le précédent. Le mineur de `version.properties` suit les jalons.
 - Les notes de version viennent de la première section de `docs/NOUVEAUTES.md`.
 
+## Fabrication des cartes hors ligne
+
+`.github/workflows/cartes.yml` (manuel, à chaque changement de `cartes/selection.txt` ou du profil, et le 4 de
+chaque mois une fois la branche fusionnée dans `main`) :
+
+1. `preparation` : liste des régions (`cartes/selection.txt` : `toutes` ou des identifiants), dernier build Protomaps.
+2. `surcouche` : Planetiler lit l'extrait OpenStreetMap de la France (Geofabrik, OSM France en secours) avec
+   `cartes/SurcoucheVelo.java` et produit `velo-france.pmtiles`.
+3. `region` (une tâche par région) : `pmtiles extract` découpe fond, surcouche vélo et relief selon
+   `cartes/contours/<région>.geojson` (région + 12 km de marge), puis publie dans la Release `cartes`.
+4. `france` : vue d'ensemble (fond zooms 0 à 8, relief 0 à 7) et miroir des dalles BRouter (seules celles qui ont
+   changé sur brouter.de sont retéléchargées).
+5. `catalogue` : assemble `catalogue.json` (`cartes/outils/catalogue.py`), le publie, puis supprime les anciennes
+   versions des fichiers.
+
+Tout est gratuit : calcul sur les runners GitHub Actions, hébergement dans les Releases d'un dépôt public
+(moins de 2 Gio par fichier). Aucun téléchargement en masse de serveurs de tuiles : on lit des fichiers prévus
+pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
+
 ## Jalons
 
-1. Carte en ligne + enregistrement + écran guidon + historique *(en cours)*
-2. Cartes hors ligne (packs régionaux : fond Protomaps, surcouche vélo Planetiler, relief Mapterhorn)
+1. Carte en ligne + enregistrement + écran guidon + historique *(fait)*
+2. Cartes hors ligne (packs régionaux : fond Protomaps, surcouche vélo Planetiler, relief Mapterhorn) *(fait)*
 3. Itinéraires BRouter embarqué + guidage
 4. Météo Open-Meteo (modèles Météo-France AROME)
 5. Stats, records, segments, finitions
@@ -118,5 +177,6 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
 
 OpenStreetMap (ODbL) · OpenFreeMap / OpenMapTiles · CyclOSM (serveurs OSM France : en ligne uniquement,
 User-Agent identifiant l'appli, pas de téléchargement en masse) · IGN Géoplateforme (Plan IGN, photos aériennes,
-adresses, altitude ; Licence Ouverte 2.0) · Open-Meteo (CC BY 4.0) · Protomaps · Mapterhorn · BRouter (MIT).
+adresses, altitude ; Licence Ouverte 2.0) · Open-Meteo (CC BY 4.0) · Protomaps (BSD, données OSM) · Mapterhorn
+(MNT LiDAR HD et RGE ALTI® de l'IGN, Licence Ouverte 2.0) · Noto Sans (OFL) · BRouter (MIT).
 Les cartes IGN TOP 25 (SCAN 25) sont interdites aux particuliers : non utilisées.
