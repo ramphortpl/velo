@@ -21,6 +21,7 @@ on:
       - "cartes/regions.json"
       - "cartes/contours/**"
       - "cartes/outils/catalogue.py"
+      - "cartes/outils/dalles.py"
       - ".github/workflows/cartes.yml"
   schedule:
     - cron: "23 2 4 * *"

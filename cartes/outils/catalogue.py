@@ -5,17 +5,22 @@
   catalogue.py fragment <id> <f>...   -> décrit les fichiers d'une région (taille, empreinte) dans fragment-<id>.json
                                          et leur donne leur nom de publication (avec le début de l'empreinte)
   catalogue.py publier <fragment>...  -> envoie dans la Release les fichiers qui n'y sont pas déjà
-  catalogue.py dalles                 -> récupère sur brouter.de les données d'itinéraire qui ont changé
+  catalogue.py dalles                 -> récupère sur brouter.de les données d'itinéraire qui ont changé et les
+                                         redécoupe en carrés d'un degré (dalles.py)
   catalogue.py assembler <dossier>    -> assemble catalogue.json à partir des fragments
 """
 import datetime
 import glob
 import hashlib
 import json
+import math
 import os
+import re
 import subprocess
 import sys
 import urllib.request
+
+import dalles as decoupe
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -107,49 +112,73 @@ def publier(fragments):
                 print(f"{nom} : conservé tel quel (inchangé)")
 
 
-def dalles():
-    """Données d'itinéraire BRouter (fichiers .rd5) : on ne retélécharge que celles qui ont changé sur brouter.de.
+def source_de(carre):
+    """Dalle BRouter de 5° x 5° qui contient un carré d'un degré (« E8_N42 » -> « E5_N40 »)."""
+    trouve = re.fullmatch(r"([EW])(\d+)_([NS])(\d+)", carre)
+    lon = int(trouve.group(2)) * (1 if trouve.group(1) == "E" else -1)
+    lat = int(trouve.group(4)) * (1 if trouve.group(3) == "N" else -1)
+    lon5 = math.floor(lon / 5) * 5
+    lat5 = math.floor(lat / 5) * 5
+    return ("E" if lon5 >= 0 else "W") + str(abs(lon5)) + "_" + ("N" if lat5 >= 0 else "S") + str(abs(lat5))
 
-    Le catalogue précédent (catalogue-precedent.json) garde la date de chaque dalle ; une dalle inchangée reste telle
-    quelle dans la Release. On évite ainsi de redemander 800 Mo au serveur de BRouter à chaque passage.
+
+def dalles():
+    """Données d'itinéraire BRouter, redécoupées en carrés d'un degré (voir dalles.py).
+
+    BRouter publie des dalles de 5° x 5°. On ne retélécharge que celles qui ont changé sur brouter.de depuis le
+    dernier passage (le catalogue précédent garde leur date), et on n'en garde que les carrés que touche au moins
+    une région : inutile d'héberger l'Espagne ou l'Italie.
     """
-    voulues = sorted({d for r in regions() for d in r["dalles"]})
-    anciennes = {}
+    voulus = sorted({d for r in regions() for d in r["dalles"]})
+    par_source = {}
+    for carre in voulus:
+        par_source.setdefault(source_de(carre), set()).add(f"dalle-{carre}.rd5")
+    anciens, anciennes_sources = [], {}
     if os.path.exists("catalogue-precedent.json"):
         try:
             with open("catalogue-precedent.json", encoding="utf-8") as f:
-                anciennes = {d["nom"]: d for d in json.load(f).get("dalles", [])}
+                ancien = json.load(f)
+            anciens = [d for d in ancien.get("dalles", []) if d.get("fichier") and d.get("source")]
+            anciennes_sources = ancien.get("sources_dalles", {})
         except (ValueError, KeyError):
-            anciennes = {}
-    fichiers = []
-    for dalle in voulues:
-        nom = f"{dalle}.rd5"
-        url = f"https://brouter.de/brouter/segments4/{nom}"
+            pass
+    fichiers, sources = [], {}
+    for source in sorted(par_source):
+        url = f"https://brouter.de/brouter/segments4/{source}.rd5"
         requete = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "VeloGo-cartes (GitHub Actions)"})
         with urllib.request.urlopen(requete, timeout=60) as reponse:
-            modifie = reponse.headers.get("Last-Modified", "")
-            taille = int(reponse.headers.get("Content-Length", "0") or 0)
-        ancienne = anciennes.get(nom)
-        if ancienne and modifie and ancienne.get("fichier") and ancienne.get("modifie") == modifie and ancienne.get("taille") == taille:
-            print(f"{nom} : inchangée depuis le dernier passage")
-            fichiers.append(ancienne)
+            etat = {"modifie": reponse.headers.get("Last-Modified", ""), "taille": int(reponse.headers.get("Content-Length", "0") or 0)}
+        sources[source] = etat
+        if etat["modifie"] and anciennes_sources.get(source) == etat:
+            repris = [d for d in anciens if d["source"] == source and d["nom"] in par_source[source]]
+            print(f"{source} : inchangée depuis le dernier passage ({len(repris)} carrés repris)")
+            fichiers += repris
             continue
-        print(f"{nom} : téléchargement ({taille / 1e6:.0f} Mo, {modifie})", flush=True)
-        subprocess.run(["curl", "-fSL", "--retry", "4", "--retry-delay", "15", "-A", "VeloGo-cartes (GitHub Actions)", "-o", nom, url], check=True)
-        description = decrire(nom)
-        description["modifie"] = modifie
-        fichiers.append(description)
+        print(f"{source} : téléchargement ({etat['taille'] / 1e6:.0f} Mo, {etat['modifie']})", flush=True)
+        subprocess.run(["curl", "-fSL", "--retry", "4", "--retry-delay", "15", "-A", "VeloGo-cartes (GitHub Actions)", "-o", f"{source}.rd5", url], check=True)
+        for morceau in decoupe.decouper(f"{source}.rd5", "."):
+            if os.path.basename(morceau) in par_source[source]:
+                description = decrire(morceau)
+                description["source"] = source
+                fichiers.append(description)
+            else:
+                os.remove(morceau)
+        os.remove(f"{source}.rd5")
+    fichiers.sort(key=lambda d: d["nom"])
     with open("fragment-dalles.json", "w", encoding="utf-8") as f:
-        json.dump({"id": "dalles", "fichiers": fichiers}, f, ensure_ascii=False, indent=2)
-    print(f"{len(fichiers)} dalles, {sum(x['taille'] for x in fichiers) / 1e6:.0f} Mo")
+        json.dump({"id": "dalles", "fichiers": fichiers, "sources": sources}, f, ensure_ascii=False, indent=2)
+    print(f"{len(fichiers)} carrés d'itinéraire, {sum(x['taille'] for x in fichiers) / 1e6:.0f} Mo")
 
 
 def assembler(dossier):
     fragments = {}
+    sources_dalles = None
     for chemin in glob.glob(os.path.join(dossier, "**", "fragment-*.json"), recursive=True):
         with open(chemin, encoding="utf-8") as f:
             contenu = json.load(f)
         fragments[contenu["id"]] = contenu["fichiers"]
+        if contenu["id"] == "dalles":
+            sources_dalles = contenu.get("sources", {})
     catalogue = {
         "version": 1,
         "date": datetime.date.today().isoformat(),
@@ -160,6 +189,8 @@ def assembler(dossier):
         },
         "france": fragments.get("france", []),
         "dalles": fragments.get("dalles", []),
+        # État des dalles d'origine sur brouter.de : sert à ne retélécharger que ce qui a changé.
+        "sources_dalles": sources_dalles or {},
         "regions": [],
     }
     # Les régions qui n'ont pas été régénérées cette fois gardent leur description précédente.
@@ -173,8 +204,9 @@ def assembler(dossier):
             precedent = {r["id"]: r["fichiers"] for r in ancien.get("regions", []) if complet(r["fichiers"])}
             if not catalogue["france"] and complet(ancien.get("france")):
                 catalogue["france"] = ancien["france"]
-            if not catalogue["dalles"] and complet(ancien.get("dalles")):
+            if sources_dalles is None and complet(ancien.get("dalles")):
                 catalogue["dalles"] = ancien["dalles"]
+                catalogue["sources_dalles"] = ancien.get("sources_dalles", {})
         except (ValueError, KeyError):
             precedent = {}
     for region in regions():
@@ -213,7 +245,7 @@ def assembler(dossier):
         f.write("Ces fichiers sont téléchargés par l'appli (Réglages > Cartes hors ligne) : inutile de les récupérer à la main.\n\n")
         f.write("\n".join(lignes) + "\n\n")
         f.write(f"Vue d'ensemble de la France : {mo(sum(x['taille'] for x in catalogue['france']))}. ")
-        f.write(f"Données d'itinéraire BRouter : {mo(sum(x['taille'] for x in catalogue['dalles']))} pour toute la France.\n\n")
+        f.write(f"Données d'itinéraire BRouter : {mo(sum(x['taille'] for x in catalogue['dalles']))} pour toute la France, en {len(catalogue['dalles'])} carrés d'un degré.\n\n")
         f.write("Données © les contributeurs d'OpenStreetMap (ODbL) ; fond Protomaps ; relief Mapterhorn (IGN, Licence Ouverte) ; BRouter.\n")
     print(open("resume.md", encoding="utf-8").read())
 

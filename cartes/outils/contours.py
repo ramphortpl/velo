@@ -30,12 +30,16 @@ def slug(nom):
 
 
 def dalles_brouter(geometrie):
-    """Dalles BRouter de 5° x 5° (nommées par leur coin sud-ouest) que touche la région."""
+    """Carrés d'un degré de côté (nommés par leur coin sud-ouest, comme chez BRouter) que touche la région.
+
+    BRouter range ses données d'itinéraire par dalles de 5° x 5° (jusqu'à 250 Mo). Le pipeline les redécoupe en
+    carrés de 1° (cartes/outils/dalles.py) : une région ne télécharge ainsi que ce dont elle a besoin.
+    """
     ouest, sud, est, nord = geometrie.bounds
     dalles = []
-    for lon in range(int(math.floor(ouest / 5.0)) * 5, int(math.floor(est / 5.0)) * 5 + 1, 5):
-        for lat in range(int(math.floor(sud / 5.0)) * 5, int(math.floor(nord / 5.0)) * 5 + 1, 5):
-            if geometrie.intersects(box(lon, lat, lon + 5, lat + 5)):
+    for lon in range(int(math.floor(ouest)), int(math.floor(est)) + 1):
+        for lat in range(int(math.floor(sud)), int(math.floor(nord)) + 1):
+            if geometrie.intersects(box(lon, lat, lon + 1, lat + 1)):
                 dalles.append(("E" if lon >= 0 else "W") + str(abs(lon)) + "_" + ("N" if lat >= 0 else "S") + str(abs(lat)))
     return sorted(dalles)
 
@@ -65,8 +69,9 @@ def main():
             "nom": nom,
             "code": code,
             "emprise": [round(ouest, 3), round(sud, 3), round(est, 3), round(nord, 3)],
-            # Dalles d'itinéraire : d'après le territoire réel, pas la marge (inutile de télécharger 180 Mo pour 1 km).
-            "dalles": dalles_brouter(geometrie),
+            # Données d'itinéraire : les carrés de 1° que touche la région élargie (on peut ainsi partir de chez
+            # soi vers la région voisine sans que l'itinéraire s'arrête à la frontière administrative).
+            "dalles": dalles_brouter(contour),
         })
     regions.sort(key=lambda r: r["nom"])
     with open(os.path.join(RACINE, "regions.json"), "w", encoding="utf-8") as f:
