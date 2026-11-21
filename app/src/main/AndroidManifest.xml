@@ -18,6 +18,16 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Guidage : vibration à chaque consigne. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Guidage vocal : permet de trouver la synthèse vocale installée sur le téléphone. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".VeloGoApp"
         android:allowBackup="false"

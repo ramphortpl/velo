@@ -95,6 +95,18 @@ def wait_for(label, timeout=20, exact=True):
     return None
 
 
+def wait_for_pattern(pattern, timeout=20):
+    """Attend un élément dont le texte ou la description correspond à l'expression régulière."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        for text, description, bounds in nodes():
+            for value in (text, description):
+                if re.fullmatch(pattern, value):
+                    return value
+        time.sleep(1)
+    return None
+
+
 def tap(label, timeout=20, exact=True, required=True):
     bounds = wait_for(label, timeout, exact)
     if not bounds:
@@ -192,6 +204,46 @@ def read_altitude():
     return max(values) if values else None
 
 
+def route_by_address():
+    """Itinéraire vers une adresse cherchée en ligne, calculé sur le téléphone, puis début de guidage."""
+    log("itinéraire : recherche d'adresse, calcul, guidage")
+    if not tap("Itinéraire"):
+        return
+    if not wait_for("Calculer l'itinéraire", 10):
+        fail("le panneau d'itinéraire ne s'ouvre pas")
+        return
+    tap("Choisir l'arrivée")
+    time.sleep(2)
+    shell('input text "gare%sde%scorte"')
+    if not wait_for("Gare de Corte", 25):
+        shot("itineraire_recherche_sans_resultat")
+        fail("la recherche d'adresse ne propose pas la gare de Corte")
+        shell("input keyevent KEYCODE_BACK")
+        shell("input keyevent KEYCODE_BACK")
+        tap("Fermer l'itinéraire", required=False)
+        return
+    shot("itineraire_recherche")
+    tap("Gare de Corte")
+    time.sleep(1)
+    tap("Calculer l'itinéraire")
+    found = wait_for_pattern(r"\d itinéraires?", 60)
+    shot("itineraire_propositions")
+    if not found:
+        fail("aucun itinéraire calculé vers la gare de Corte")
+        tap("Fermer l'itinéraire", required=False)
+        return
+    log(f"propositions : {found}")
+    tap("Démarrer le guidage")
+    if wait_for("Pas maintenant", 6):
+        tap("Pas maintenant")
+    if not wait_for("Guidage :", 10, exact=False):
+        fail("le bandeau de guidage n'apparaît pas")
+    time.sleep(3)
+    shot("guidage_sur_la_carte")
+    tap("Arrêter le guidage")
+    check_alive("après le guidage")
+
+
 def offline_maps(gps):
     """Télécharge la carte d'une région, l'affiche, puis vérifie que tout marche en mode avion."""
     log("cartes hors ligne : téléchargement d'une région")
@@ -238,6 +290,8 @@ def offline_maps(gps):
     shot("carte_velo_hors_ligne")
     check_alive("avec la carte hors ligne")
 
+    route_by_address()
+
     log("mode avion : la carte et l'altitude doivent fonctionner sans réseau")
     shell("cmd connectivity airplane-mode enable")
     try:
@@ -249,12 +303,41 @@ def offline_maps(gps):
         shot("mode_avion_carte")
         if not check_alive("au redémarrage en mode avion"):
             return
-        tap("Démarrer")
+
+        log("mode avion : itinéraire vers un point touché sur la carte, puis guidage avec enregistrement")
+        guided = False
+        if tap("Itinéraire"):
+            time.sleep(2)
+            # Appui long sur la carte, quelques centaines de mètres au nord de la position.
+            shell("input swipe 540 640 540 640 1400")
+            time.sleep(1)
+            if find("Aller ici"):
+                tap("Aller ici")
+            if wait_for("Calculer l'itinéraire", 10):
+                tap("Calculer l'itinéraire")
+                found = wait_for_pattern(r"\d itinéraires?", 60)
+                shot("mode_avion_itineraire")
+                if found:
+                    tap("Démarrer le guidage")
+                    # Le guidage propose d'enregistrer la sortie : on accepte, c'est elle qui sert à la suite.
+                    if wait_for("Enregistrer aussi la sortie ?", 6):
+                        tap("Enregistrer")
+                        guided = True
+                else:
+                    fail("aucun itinéraire calculé hors ligne")
+                    tap("Fermer l'itinéraire", required=False)
+            else:
+                fail("le point touché sur la carte n'a pas été pris comme arrivée")
+                tap("Fermer l'itinéraire", required=False)
+        if not guided:
+            tap("Démarrer")
         if wait_for("Plus tard", 4):
             tap("Plus tard")
         if not wait_for("Pause", 15):
             fail("la sortie en mode avion ne démarre pas")
             return
+        if guided and not wait_for("Guidage :", 10, exact=False):
+            fail("le guidage hors ligne n'est pas affiché pendant la sortie")
         gps.ride(45, bearing_deg=200.0)
         altitude = read_altitude()
         log(f"altitude affichée en mode avion : {altitude} m")
@@ -265,6 +348,7 @@ def offline_maps(gps):
         tap("Carte")
         gps.ride(6, bearing_deg=200.0)
         shot("mode_avion_carte_en_roulant")
+        tap("Arrêter le guidage", timeout=3, required=False)
         tap("Données")
         long_press("Terminer")
         time.sleep(8)

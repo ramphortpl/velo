@@ -1,6 +1,29 @@
 package fr.velogo.app.ui.ride
 
 import android.view.WindowManager
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalWindowInfo
+import fr.velogo.app.data.SavedRouteRepository
+import fr.velogo.app.map.PlanMarker
+import fr.velogo.app.nav.GuidanceState
+import fr.velogo.app.ui.nav.GUIDANCE_BANNER_HEIGHT
+import fr.velogo.app.ui.nav.GuidanceBanner
+import fr.velogo.app.ui.nav.PlaceSearchDialog
+import fr.velogo.app.ui.nav.PlanTarget
+import fr.velogo.app.ui.nav.PlannerActions
+import fr.velogo.app.ui.nav.PlannerPanel
+import fr.velogo.app.ui.nav.SavedRoutesList
+import fr.velogo.core.geo.BoundingBox
+import fr.velogo.core.geo.Geo
+import fr.velogo.core.geo.LatLon
+import fr.velogo.core.gpx.Gpx
+import fr.velogo.core.nav.BikeType
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -45,6 +68,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -131,8 +155,20 @@ fun RideScreen(
             cycleway = (if (dark) Color(0xFF37D39A) else Color(0xFF0B8A5C)).toArgb(),
             start = Color(0xFF12A150).toArgb(),
             end = Color(0xFFD32F2F).toArgb(),
+            route = rideColors.route.toArgb(),
         )
     }
+
+    // Itinéraires : préparation et guidage vivent dans le conteneur de l'appli, pas dans cet écran.
+    val navigation = container.navigation
+    val planner by navigation.planner.collectAsStateWithLifecycle()
+    val guidance by navigation.guidance.collectAsStateWithLifecycle()
+    var searchTarget by remember { mutableStateOf<PlanTarget?>(null) }
+    var pressedPoint by remember { mutableStateOf<LatLon?>(null) }
+    var showSavedRoutes by remember { mutableStateOf(false) }
+    var routeNameDraft by remember { mutableStateOf<String?>(null) }
+    var proposeRecording by remember { mutableStateOf(false) }
+    var panelHeightPx by remember { mutableIntStateOf(0) }
     // Cartes hors ligne : la carte se recharge quand une région est installée ou supprimée.
     val offlineRevision by container.offline.store.epoch.collectAsStateWithLifecycle()
     val offlineFiles by container.offline.store.installed.collectAsStateWithLifecycle()
@@ -161,6 +197,68 @@ fun RideScreen(
     LaunchedEffect(Unit) { vm.track.collect { mapState.setLiveTrack(it) } }
     LaunchedEffect(settings.headingUp) { mapState.setHeadingUp(settings.headingUp) }
 
+    // --- Itinéraires sur la carte --------------------------------------------------------------------------
+    val screenHeightPx = LocalWindowInfo.current.containerSize.height
+    val fitPaddingPx = with(LocalDensity.current) { 48.dp.roundToPx() }
+    LaunchedEffect(planner.open, planner.options, planner.selected, guidance?.route) {
+        val current = guidance
+        when {
+            current != null -> mapState.setRoutes(listOf(current.route.points), 0)
+            planner.open && planner.options.isNotEmpty() -> mapState.setRoutes(planner.options.map { it.route.points }, planner.selected)
+            else -> mapState.setRoutes(emptyList(), 0)
+        }
+    }
+    LaunchedEffect(planner.open, planner.start, planner.vias, planner.end, planner.options, guidance?.route) {
+        val current = guidance
+        val shown = planner.selectedOption?.route
+        mapState.setPlanMarkers(
+            when {
+                current != null -> waypointMarkers(current.route.waypoints, withStart = false)
+                planner.open && planner.isImported && shown != null -> waypointMarkers(shown.waypoints, withStart = true)
+                planner.open -> listOfNotNull(planner.start?.let { PlanMarker(it.position, PlanMarker.Kind.START) }) +
+                    planner.vias.map { PlanMarker(it.position, PlanMarker.Kind.VIA) } +
+                    listOfNotNull(planner.end?.let { PlanMarker(it.position, PlanMarker.Kind.END) })
+                else -> emptyList()
+            }
+        )
+    }
+    // Quand des propositions arrivent, la carte se cadre dessus, au-dessus du panneau.
+    LaunchedEffect(planner.options) {
+        if (planner.open && planner.options.isNotEmpty()) {
+            BoundingBox.of(planner.options.flatMap { it.route.points })?.let { box ->
+                mapState.fit(box, fitPaddingPx, topPx = fitPaddingPx * 3, bottomPx = (screenHeightPx * 0.55f).toInt())
+            }
+        }
+    }
+    LaunchedEffect(planner.open) { if (planner.open) mode = RideMode.MAP }
+    LaunchedEffect(guidance != null) { if (guidance != null) mapState.follow() }
+    // Un appui long sur la carte place un point d'itinéraire.
+    DisposableEffect(mapState, planner.open, planner.end == null, planner.options.isEmpty()) {
+        mapState.onLongPress = { point ->
+            if (Geo.FRANCE.contains(point.lat, point.lon)) {
+                if (planner.open && planner.options.isEmpty() && planner.end == null) navigation.setEnd(point) else pressedPoint = point
+            }
+        }
+        onDispose { mapState.onLongPress = null }
+    }
+    val gpxPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val imported = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) cursor.getString(0) else null
+                        }?.removeSuffix(".gpx")?.removeSuffix(".GPX")
+                        val file = context.contentResolver.openInputStream(uri)?.use { Gpx.read(it) }
+                        (file?.name ?: name) to file?.allPoints.orEmpty()
+                    }.getOrNull()
+                }
+                if (imported == null) snackbar.showSnackbar("Ce fichier n'est pas une trace GPX lisible.")
+                else navigation.importTrack(imported.first, imported.second)
+            }
+        }
+    }
+
     // La carte cesse d'être dessinée dès qu'elle est recouverte (après la fin de l'animation).
     val mapVisible = isForeground && mode == RideMode.MAP
     LaunchedEffect(mapVisible) {
@@ -187,7 +285,7 @@ fun RideScreen(
 
     // Écran toujours allumé et luminosité maximale pendant une sortie, selon les réglages.
     val view = LocalView.current
-    val keepScreenOn = isForeground && snapshot.isActive && settings.keepScreenOn
+    val keepScreenOn = isForeground && (snapshot.isActive || guidance != null) && settings.keepScreenOn
     DisposableEffect(keepScreenOn) {
         view.keepScreenOn = keepScreenOn
         onDispose { view.keepScreenOn = false }
@@ -214,10 +312,46 @@ fun RideScreen(
     }
 
     BackHandler(enabled = isForeground && mode == RideMode.DATA && !snapshot.isActive) { mode = RideMode.MAP }
+    // Retour : des propositions vers les points, puis fermeture du panneau d'itinéraire.
+    BackHandler(enabled = isForeground && planner.open) {
+        if (planner.options.isNotEmpty() && !planner.isImported) navigation.editPoints() else navigation.closePlanner()
+    }
 
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val density = LocalDensity.current
     LaunchedEffect(topInset) { mapState.setTopInset(with(density) { (topInset + TOP_BAR_HEIGHT + 8.dp).roundToPx() }) }
+
+    val plannerActions = object : PlannerActions {
+        override fun close() = navigation.closePlanner()
+        override fun setBike(bike: BikeType) = navigation.setBike(bike)
+        override fun pick(target: PlanTarget) { searchTarget = target }
+        override fun useMyPosition() = navigation.setStart(null)
+        override fun removeVia(index: Int) = navigation.removeVia(index)
+        override fun removeEnd() = navigation.removeEnd()
+        override fun reverse() = navigation.reverse()
+        override fun compute() = navigation.compute()
+        override fun edit() = navigation.editPoints()
+        override fun select(index: Int) = navigation.select(index)
+        override fun startGuidance() {
+            navigation.startGuidance()
+            // Sans enregistrement, le guidage s'arrête quand l'écran s'éteint : on propose d'enregistrer aussi.
+            if (!snapshot.isActive) proposeRecording = true
+        }
+        override fun toggleVoice() { vm.setVoiceGuidance(!settings.voiceGuidance) }
+        override fun save() { routeNameDraft = planner.importedName ?: planner.end?.label ?: "Itinéraire" }
+        override fun share() {
+            val route = planner.selectedOption?.route ?: return
+            val name = planner.importedName ?: planner.end?.label?.let { "Vers $it" } ?: "Itinéraire VeloGo"
+            scope.launch { runCatching { context.startActivity(SavedRouteRepository.shareIntent(context, name, route)) } }
+        }
+        override fun importGpx() { runCatching { gpxPicker.launch(arrayOf("*/*")) } }
+        override fun openSaved() { showSavedRoutes = true }
+        override fun openOfflineMaps() {
+            navigation.closePlanner()
+            onOpenOfflineMaps()
+        }
+    }
+    val panelHeight = with(density) { panelHeightPx.toDp() }
 
     Box(Modifier.fillMaxSize()) {
         VeloMap(mapState, spec, mapColors, Modifier.fillMaxSize())
@@ -235,6 +369,11 @@ fun RideScreen(
             topInset = topInset,
             bottomPadding = bottomPadding,
             snackbar = snackbar,
+            guidance = guidance,
+            plannerOpen = planner.open,
+            plannerHeight = if (planner.open) panelHeight else 0.dp,
+            onRoute = { navigation.openPlanner() },
+            onStopGuidance = { navigation.stopGuidance() },
             onLayers = { showLayers = true },
             onRecenter = { mapState.follow() },
             onToggleHeading = { vm.setHeadingUp(!settings.headingUp) },
@@ -249,6 +388,139 @@ fun RideScreen(
                     snackbar.showSnackbar("Maintiens « Terminer » appuyé pour arrêter la sortie.")
                 }
             },
+        )
+
+        // --- Panneau d'itinéraire, posé au-dessus de la barre d'onglets -------------------------------
+        AnimatedVisibility(
+            visible = planner.open && isForeground,
+            enter = slideInVertically { it },
+            exit = slideOutVertically { it },
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = bottomPadding),
+        ) {
+            PlannerPanel(
+                state = planner,
+                hasRoutingData = offlineFiles.keys.any { it.endsWith(".rd5") },
+                voiceEnabled = settings.voiceGuidance,
+                actions = plannerActions,
+                maxHeight = with(density) { (screenHeightPx * 0.6f).toDp() },
+                modifier = Modifier.onSizeChanged { panelHeightPx = it.height },
+            )
+        }
+    }
+
+    searchTarget?.let { target ->
+        PlaceSearchDialog(
+            title = when (target) {
+                PlanTarget.START -> "Point de départ"
+                PlanTarget.VIA -> "Passer par…"
+                PlanTarget.END -> "Où vas-tu ?"
+            },
+            offerMyPosition = target == PlanTarget.START,
+            search = { text -> runCatching { navigation.search(text, mapState.center()) }.getOrNull() },
+            onPlace = { place ->
+                when (target) {
+                    PlanTarget.START -> navigation.setStart(place.position, place.title)
+                    PlanTarget.VIA -> navigation.addVia(place.position, place.title)
+                    PlanTarget.END -> navigation.setEnd(place.position, place.title)
+                }
+                searchTarget = null
+            },
+            onMyPosition = {
+                navigation.setStart(null)
+                searchTarget = null
+            },
+            onDismiss = { searchTarget = null },
+        )
+    }
+
+    pressedPoint?.let { point ->
+        AlertDialog(
+            onDismissRequest = { pressedPoint = null },
+            title = { Text("Ce point sur la carte") },
+            text = {
+                Column {
+                    TextButton(onClick = {
+                        if (!planner.open) navigation.openPlanner()
+                        navigation.setEnd(point)
+                        pressedPoint = null
+                    }) { Text("Aller ici") }
+                    if (planner.open && !planner.isImported) {
+                        if (planner.end != null) {
+                            TextButton(onClick = {
+                                navigation.addVia(point)
+                                pressedPoint = null
+                            }) { Text("Passer par ici") }
+                        }
+                        TextButton(onClick = {
+                            navigation.setStart(point)
+                            pressedPoint = null
+                        }) { Text("Partir d'ici") }
+                    }
+                }
+            },
+            confirmButton = { },
+            dismissButton = { TextButton(onClick = { pressedPoint = null }) { Text("Annuler") } },
+        )
+    }
+
+    routeNameDraft?.let { draft ->
+        AlertDialog(
+            onDismissRequest = { routeNameDraft = null },
+            title = { Text("Enregistrer l'itinéraire") },
+            text = {
+                OutlinedTextField(value = draft, onValueChange = { routeNameDraft = it.take(60) }, singleLine = true, label = { Text("Nom") })
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val route = planner.selectedOption?.route
+                    routeNameDraft = null
+                    if (route != null) {
+                        scope.launch {
+                            container.savedRoutes.save(draft, route, planner.bike)
+                            snackbar.showSnackbar("Itinéraire enregistré. Tu le retrouves avec le signet du panneau d'itinéraire.")
+                        }
+                    }
+                }) { Text("Enregistrer") }
+            },
+            dismissButton = { TextButton(onClick = { routeNameDraft = null }) { Text("Annuler") } },
+        )
+    }
+
+    if (showSavedRoutes) {
+        val saved by container.savedRoutes.observe().collectAsStateWithLifecycle(initialValue = emptyList())
+        ModalBottomSheet(onDismissRequest = { showSavedRoutes = false }) {
+            SavedRoutesList(
+                routes = saved,
+                onOpen = { id ->
+                    showSavedRoutes = false
+                    scope.launch {
+                        val loaded = container.savedRoutes.load(id)
+                        if (loaded == null) snackbar.showSnackbar("Cet itinéraire n'est plus lisible.")
+                        else navigation.showSaved(loaded.first.name, loaded.second, BikeType.entries.firstOrNull { it.name == loaded.first.bike } ?: BikeType.HYBRID)
+                    }
+                },
+                onDelete = { id -> scope.launch { container.savedRoutes.delete(id) } },
+            )
+        }
+    }
+
+    if (proposeRecording && !snapshot.isActive && guidance != null) {
+        AlertDialog(
+            onDismissRequest = { proposeRecording = false },
+            title = { Text("Enregistrer aussi la sortie ?") },
+            text = {
+                Text(
+                    "Avec l'enregistrement, le guidage continue quand l'écran s'éteint ou que tu changes d'appli. " +
+                        "Sans lui, il s'arrête dès que VeloGo n'est plus affichée."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    proposeRecording = false
+                    startRide.start()
+                }) { Text("Enregistrer") }
+            },
+            dismissButton = { TextButton(onClick = { proposeRecording = false }) { Text("Pas maintenant") } },
         )
     }
 
@@ -317,6 +589,16 @@ fun RideScreen(
     }
 }
 
+/** Repères d'un itinéraire déjà calculé : étapes et arrivée, et le départ si on le demande. */
+private fun waypointMarkers(waypoints: List<LatLon>, withStart: Boolean): List<PlanMarker> =
+    waypoints.mapIndexedNotNull { index, point ->
+        when {
+            index == 0 -> if (withStart) PlanMarker(point, PlanMarker.Kind.START) else null
+            index == waypoints.size - 1 -> PlanMarker(point, PlanMarker.Kind.END)
+            else -> PlanMarker(point, PlanMarker.Kind.VIA)
+        }
+    }
+
 /**
  * Tout ce qui se pose sur la carte : tableau de bord, barre du haut, boutons flottants, commandes.
  * La carte elle-même n'en fait pas partie, ce qui permet de vérifier cet habillage en image, sans téléphone.
@@ -346,9 +628,17 @@ fun RideChrome(
     onStop: () -> Unit,
     onStopHint: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Guidage en cours, s'il y en a un : son bandeau s'affiche sous la barre du haut. */
+    guidance: GuidanceState? = null,
+    /** Le panneau d'itinéraire est ouvert : il remplace les boutons de la sortie, sur [plannerHeight]. */
+    plannerOpen: Boolean = false,
+    plannerHeight: Dp = 0.dp,
+    onRoute: () -> Unit = {},
+    onStopGuidance: () -> Unit = {},
 ) {
     VeloGoTheme(mode = themeMode, sunlight = sunlight) {
         Box(modifier.fillMaxSize()) {
+            val bannerSpace = if (guidance != null) GUIDANCE_BANNER_HEIGHT + 8.dp else 0.dp
             // --- Mode carte : éléments flottants ---------------------------------------------------------
             if (mode == RideMode.MAP) {
                 MapOverlays(
@@ -357,12 +647,14 @@ fun RideChrome(
                     following = following,
                     headingUp = headingUp,
                     hasLocationPermission = hasLocationPermission,
-                    topPadding = topInset + TOP_BAR_HEIGHT + 12.dp,
-                    bottomPadding = bottomPadding + CONTROLS_HEIGHT + 24.dp,
+                    topPadding = topInset + TOP_BAR_HEIGHT + 12.dp + bannerSpace,
+                    bottomPadding = bottomPadding + (if (plannerOpen) plannerHeight + 12.dp else CONTROLS_HEIGHT + 24.dp),
+                    showRouteButton = !plannerOpen,
                     onLayers = onLayers,
                     onRecenter = onRecenter,
                     onToggleHeading = onToggleHeading,
                     onRequestPermission = onRequestPermission,
+                    onRoute = onRoute,
                 )
             }
 
@@ -377,7 +669,7 @@ fun RideChrome(
                         snapshot = snapshot,
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(top = topInset + TOP_BAR_HEIGHT + 6.dp, bottom = bottomPadding + CONTROLS_HEIGHT + 20.dp),
+                            .padding(top = topInset + TOP_BAR_HEIGHT + 6.dp + bannerSpace, bottom = bottomPadding + CONTROLS_HEIGHT + 20.dp),
                     )
                 }
             }
@@ -392,17 +684,31 @@ fun RideChrome(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = topInset + 6.dp).padding(horizontal = 12.dp),
             )
 
-            // --- Boutons de la sortie ---------------------------------------------------------------------
-            Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp).padding(bottom = bottomPadding + 10.dp)) {
-                SnackbarHost(snackbar, Modifier.padding(bottom = 8.dp))
-                RideControls(
-                    state = snapshot.state,
-                    onStart = onStart,
-                    onPause = onPause,
-                    onResume = onResume,
-                    onStop = onStop,
-                    onStopHint = onStopHint,
+            // --- Guidage : prochaine manœuvre --------------------------------------------------------------
+            if (guidance != null) {
+                GuidanceBanner(
+                    guidance = guidance,
+                    onStop = onStopGuidance,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = topInset + TOP_BAR_HEIGHT + 12.dp).padding(horizontal = 12.dp),
                 )
+            }
+
+            // --- Boutons de la sortie ---------------------------------------------------------------------
+            Column(
+                Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp)
+                    .padding(bottom = bottomPadding + (if (plannerOpen) plannerHeight else 0.dp) + 10.dp)
+            ) {
+                SnackbarHost(snackbar, Modifier.padding(bottom = 8.dp))
+                if (!plannerOpen) {
+                    RideControls(
+                        state = snapshot.state,
+                        onStart = onStart,
+                        onPause = onPause,
+                        onResume = onResume,
+                        onStop = onStop,
+                        onStopHint = onStopHint,
+                    )
+                }
             }
         }
     }
@@ -485,15 +791,26 @@ private fun MapOverlays(
     hasLocationPermission: Boolean,
     topPadding: Dp,
     bottomPadding: Dp,
+    showRouteButton: Boolean,
     onLayers: () -> Unit,
     onRecenter: () -> Unit,
     onToggleHeading: () -> Unit,
     onRequestPermission: () -> Unit,
+    onRoute: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().padding(top = topPadding, bottom = bottomPadding).padding(horizontal = 12.dp)) {
         if (snapshot.isActive) MapStatsStrip(snapshot, Modifier.align(Alignment.TopStart))
 
         Column(Modifier.align(Alignment.BottomEnd), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (showRouteButton) {
+                SmallFloatingActionButton(
+                    onClick = onRoute,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ) {
+                    Icon(painterResource(R.drawable.ic_route), contentDescription = "Itinéraire")
+                }
+            }
             SmallFloatingActionButton(onClick = onLayers, containerColor = MaterialTheme.colorScheme.surface) {
                 Icon(painterResource(R.drawable.ic_layers), contentDescription = "Changer de fond de carte")
             }

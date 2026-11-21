@@ -1,5 +1,36 @@
 # Nouveautés de VeloGo
 
+## Jalon 3 — Itinéraires et guidage
+
+- **Itinéraires vélo calculés sur le téléphone**, sans réseau, dans les régions téléchargées (leurs données
+  d'itinéraire viennent maintenant avec la carte : pense à mettre à jour tes régions).
+- **Trois propositions** : le plus rapide, le plus sûr (à l'écart de la circulation), le moins de dénivelé, avec
+  pour chacune la distance, la durée, le dénivelé, le profil d'altitude et la nature des voies (pistes cyclables,
+  petites routes, routes, grands axes, chemins, part non revêtue).
+- **Trois types de vélo** : route, VTC · gravel, VTT.
+- **Départ, étapes, arrivée** par recherche d'adresse ou de lieu (IGN, en ligne) ou par appui long sur la carte.
+- **Guidage** : prochaine manœuvre en gros sur la carte comme sur l'écran guidon, distance et temps restants,
+  alerte et recalcul automatique si tu t'écartes de l'itinéraire.
+- **Voix en option** (bouton haut-parleur) : pendant une consigne, ta musique baisse un instant puis remonte ;
+  elle n'est jamais coupée. Vibration à chaque consigne, désactivable.
+- **Préparer un itinéraire pendant une sortie** : l'enregistrement continue sans interruption.
+- **Itinéraires enregistrés**, **import d'une trace GPX** à suivre, **export GPX** d'un itinéraire.
+
+### À tester sur le téléphone
+
+1. Réglages > Cartes hors ligne : mets à jour ta région (les données d'itinéraire s'ajoutent).
+2. Sur la carte, touche le bouton « Itinéraire », choisis une arrivée (recherche ou appui long), puis « Calculer ».
+3. Compare les propositions, puis « Démarrer le guidage » et accepte d'enregistrer la sortie.
+4. Roule : vérifie les consignes aux carrefours, puis quitte volontairement l'itinéraire pour voir le recalcul.
+5. Avec de la musique et la voix activée : la musique doit baisser pendant la phrase, sans se couper.
+
+### Limites connues
+
+- Les consignes n'indiquent pas le nom des rues (les données d'itinéraire n'en contiennent pas).
+- Une trace GPX importée est suivie à la ligne, avec alerte d'écart mais sans consignes de virage.
+- Sans enregistrement en cours, le guidage s'arrête quand l'écran s'éteint ou que tu changes d'appli.
+- La recherche d'adresse demande du réseau ; hors ligne, place tes points par appui long sur la carte.
+
 ## Jalon 2 — Cartes hors ligne
 
 - **Cartes hors ligne par région** (Réglages > Cartes hors ligne) : chaque région se télécharge en Wi-Fi, reprend

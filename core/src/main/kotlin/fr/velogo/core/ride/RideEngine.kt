@@ -288,7 +288,9 @@ class RideEngine(config: RideConfig = RideConfig()) {
         distanceM = distanceM,
         movingMs = movingMs,
         elapsedMs = elapsedMs(),
-        maxSpeedMps = maxSpeedMps,
+        // La vitesse max est lissée, la moyenne non : sur quelques dizaines de secondes à allure constante, la
+        // moyenne peut la dépasser d'un cheveu. On n'affiche jamais une max inférieure à la moyenne.
+        maxSpeedMps = max(maxSpeedMps, if (movingMs >= MIN_AVERAGE_MS) (distanceM / (movingMs / 1000.0)).coerceAtMost(config.maxPlausibleSpeedMps) else 0.0),
         ascentM = ascent.ascentM,
         descentM = ascent.descentM,
         minAltitudeM = minAltitudeM,
@@ -347,5 +349,6 @@ class RideEngine(config: RideConfig = RideConfig()) {
         const val RESUME_FIXES = 2
         const val SIGNAL_TIMEOUT_MS = 6_000L
         const val MIN_DISPLAY_SPEED_MPS = 0.3
+        const val MIN_AVERAGE_MS = 10_000L
     }
 }

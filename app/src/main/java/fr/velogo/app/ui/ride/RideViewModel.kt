@@ -53,4 +53,5 @@ class RideViewModel(private val container: AppContainer) : ViewModel() {
     fun setMapLayer(id: String) = viewModelScope.launch { container.settings.setMapLayer(id) }
     fun setHeadingUp(value: Boolean) = viewModelScope.launch { container.settings.setHeadingUp(value) }
     fun setBatteryHintShown() = viewModelScope.launch { container.settings.setBatteryHintShown(true) }
+    fun setVoiceGuidance(value: Boolean) = viewModelScope.launch { container.settings.setVoiceGuidance(value) }
 }

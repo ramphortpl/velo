@@ -11,6 +11,7 @@ Ce fichier résume l'architecture et les décisions. Il est tenu à jour à chaq
 ```bash
 ./gradlew test                 # tous les tests (core + app)
 ./gradlew :core:test           # calculs seuls : rapide, sans Android
+./gradlew :routing:test        # itinéraires : vrais calculs BRouter sur un petit fichier de données réelles
 ./gradlew lintDebug            # vérifications Android (bloquant en CI)
 ./gradlew :app:assembleDebug   # APK de test
 ./gradlew :app:assembleRelease # APK release (signé seulement si VELOGO_KEYSTORE_PASSWORD est défini)
@@ -26,12 +27,15 @@ SDK requis : plateforme `android-37.1`, build-tools 37, JDK 21.
 | Module | Rôle |
 |---|---|
 | `core` | Kotlin pur, aucune dépendance Android : géodésie, moteur de sortie, altitude/pente/dénivelé, GPX, mise en forme, lecture des fichiers PMTiles et du relief. Tout calcul y vit pour être testé sur JVM. |
-| `app` | Android : Compose, service d'enregistrement, carte MapLibre, base Room, réglages. |
+| `brouter` | Sources Java du moteur d'itinéraire BRouter 1.7.10 (MIT), copiées telles quelles : il n'existe pas sur Maven. Deux écarts avec l'original, décrits dans `brouter/README.md`. |
+| `routing` | Kotlin pur : habillage de BRouter (`BRouterPlanner`), choix des profils selon le vélo et la préférence (`RoutingProfiles`), classement des voies. Profils et `lookups.dat` en ressources. |
+| `app` | Android : Compose, service d'enregistrement, carte MapLibre, base Room, réglages, itinéraires et guidage. |
 
 Paquets de `app` (`fr.velogo.app`) : `ui/` (écrans Compose, thème), `recording/` (service de premier plan,
 enregistreur), `data/` (Room, DataStore, export GPX), `map/` (MapLibre), `location/` (GPS), `elevation/`
 (recalage d'altitude IGN, relief hors ligne), `offline/` (cartes hors ligne : catalogue, téléchargements, serveur
-de tuiles local), `update/` (mises à jour via les Releases GitHub).
+de tuiles local), `nav/` (itinéraires : calcul, guidage, voix, itinéraires enregistrés), `search/` (recherche
+d'adresses IGN), `update/` (mises à jour via les Releases GitHub).
 
 Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetiler, contours des régions, style),
 `outils/` (essai sur émulateur), `.github/workflows/` (`build.yml` pour l'APK, `cartes.yml` pour les cartes).
@@ -61,10 +65,18 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
   `https://hors-ligne.velogo.invalid/…` : `OfflineTileInterceptor` (dans le client OkHttp de MapLibre) y répond
   depuis les PMTiles du téléphone via `OfflineRouter`, sans réseau. `ReliefSource` lit l'altitude du sol dans les
   packs de relief ; `RideRecorder` la joint à chaque position (`Fix.terrainAltitudeM`).
+- **Itinéraires et guidage** : `NavigationController` (dans le conteneur, indépendant des écrans) tient
+  l'itinéraire en préparation (`PlannerState`) et le guidage en cours (`GuidanceState`). `RouteService` calcule
+  les trois propositions avec `BRouterPlanner` (rapide, sûr, peu de dénivelé ; doublons réunis, variantes en
+  complément) et remplace le profil d'altitude par celui du relief hors ligne quand il existe. Le suivi lui-même
+  est dans `core/nav` : `RouteFollower` (progression, sortie d'itinéraire), `GuidanceAnnouncer` et
+  `GuidancePhrases` (quand parler, et quoi dire). `VoiceGuide` est le seul endroit qui touche au son.
+  L'écran « Rouler » affiche `PlannerPanel` en bas de la carte et `GuidanceBanner` sous la barre du haut.
 - **Textes** : interface uniquement en français, textes écrits directement dans les composables (seuls ceux
   du service et de la notification sont dans `strings.xml`).
 - **Écrans testables** : chaque écran a un composable « contenu » sans accès aux données (`RideChrome`,
-  `HistoryContent`, `RideDetailBody`, `SettingsContent`, `OfflineMapsContent`) rendu en image par `ScreenshotTest`.
+  `HistoryContent`, `RideDetailBody`, `SettingsContent`, `OfflineMapsContent`, `PlannerPanel`, `PlaceSearchContent`,
+  `SavedRoutesList`) rendu en image par `ScreenshotTest`.
   Attention : une animation sans fin (barre de progression indéterminée) bloque la capture.
 
 ## Vérification sans téléphone
@@ -76,16 +88,18 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Trois niveaux 
 2. `app` : `ScreenshotTest` (Robolectric + Roborazzi) rend les écrans en PNG au format du Galaxy A05s ; tests du
    serveur de tuiles local, du catalogue et de `ReliefSource` (une vraie tuile de relief, altitudes comparées à
    celles du service de l'IGN).
-3. CI : le job « Essai sur émulateur » installe l'APK `smoke` sur un émulateur Android 15 et déroule
+3. `routing` : itinéraires calculés pour de vrai autour de Corte avec `src/test/resources/dalles` (80 Ko de
+   données BRouter réelles) : profils, étapes, évitement des grands axes, consignes, données manquantes.
+4. CI : le job « Essai sur émulateur » installe l'APK `smoke` sur un émulateur Android 15 et déroule
    `outils/essai_emulateur.py` : sortie simulée à Corte (positions envoyées par le fournisseur de test d'Android,
    plus fiable que le GPS simulé de l'émulateur), distance affichée, pause automatique, historique, fonds de carte,
-   téléchargement de la carte de Corse, carte et altitude en mode avion, reprise après arrêt forcé. Les captures
-   d'écran sont publiées en artefact.
+   téléchargement de la carte de Corse, itinéraire vers une adresse et guidage, puis en mode avion : carte,
+   altitude, itinéraire vers un point de la carte, guidage avec enregistrement ; enfin reprise après arrêt forcé.
+   Les captures d'écran sont publiées en artefact.
 
-Constat sur l'émulateur de la CI (rendu logiciel SwiftShader) : les textes et le repère de position des cartes
-vectorielles MapLibre n'y apparaissent pas correctement. Le job refait donc deux captures avec l'autre moteur
-graphique de l'émulateur (ANGLE, `outils/rendu_carte.py`) pour distinguer un défaut de l'émulateur d'un défaut de
-l'appli. Tant que ce point n'est pas tranché, les noms de rues et le repère restent à vérifier sur le téléphone.
+L'émulateur de la CI doit tourner avec le moteur graphique ANGLE (`-gpu swangle_indirect`) : avec son rendu
+logiciel par défaut (`swiftshader_indirect`), les textes et le repère de position des cartes MapLibre ne
+s'affichent pas, alors que la même appli les affiche parfaitement avec ANGLE (vérifié le 20/11/2026).
 
 Le comportement réel sur le Galaxy A05s (GPS, économie de batterie Samsung, lisibilité au soleil) ne peut être
 validé que par l'utilisateur.
@@ -128,6 +142,19 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   plusieurs régions dans une seule source. Notre lecteur PMTiles (`core/tiles`) et l'intercepteur OkHttp font le
   même travail en restant sous notre contrôle (tuile absente = 404, plage de polices absente = réponse vide).
   Quand le fond hors ligne est affiché, `MapLibre.setConnected(true)` empêche MapLibre d'attendre le réseau.
+- **BRouter embarqué en sources** (module `brouter`), R8 le garde entier (`-keep class btools.**`) car il crée
+  des classes par leur nom. Version de `lookups.dat` (11.2) à garder identique à celle des données de brouter.de.
+- **Données d'itinéraire par carrés d'un degré** : `cartes/outils/dalles.py` redécoupe les dalles de 5° de BRouter
+  en fichiers `dalle-<carré>.rd5` au même format (un bloc par fichier) ; `NodesCache.fileForSegment` cherche ces
+  noms-là. Une région liste ses carrés (`dalles` dans `cartes/regions.json`) et les télécharge avec ses cartes ;
+  les carrés partagés entre régions voisines ne sont supprimés que quand plus aucune ne s'en sert.
+- **Profils** : route = `fastbike`, VTC/gravel = `trekking`, VTT = `mtb` ; « sûr » pousse l'évitement du trafic,
+  « peu de dénivelé » renchérit les montées (`RoutingProfiles.choose`). Les paramètres injectés sont toujours
+  numériques (1/0). La durée vient du modèle cinématique de BRouter avec la puissance du réglage « Allure ».
+- **Guidage vocal** : synthèse vocale d'Android, focus audio `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` le temps de la
+  phrase (la musique baisse, ne s'arrête pas), désactivé par défaut. Aucune autre demande de focus dans l'appli.
+- **Pas de nom de rue dans les consignes** : les données BRouter n'en contiennent pas.
+- **Base Room en version 2** (table `saved_routes`, migration automatique depuis la version 1).
 - **Téléchargements confiés au `DownloadManager` d'Android** plutôt qu'à WorkManager : reprise après coupure,
   attente du Wi-Fi et notification sont gérées par le système, sans service ni autorisation supplémentaires.
 - **Portrait uniquement** pour l'instant (`screenOrientation="portrait"`) : la disposition paysage de l'écran
@@ -156,8 +183,8 @@ chaque mois une fois la branche fusionnée dans `main`) :
    `cartes/SurcoucheVelo.java` et produit `velo-france.pmtiles`.
 3. `region` (une tâche par région) : `pmtiles extract` découpe fond, surcouche vélo et relief selon
    `cartes/contours/<région>.geojson` (région + 12 km de marge), puis publie dans la Release `cartes`.
-4. `france` : vue d'ensemble (fond zooms 0 à 8, relief 0 à 7) et miroir des dalles BRouter (seules celles qui ont
-   changé sur brouter.de sont retéléchargées).
+4. `france` : vue d'ensemble (fond zooms 0 à 8, relief 0 à 7) et données d'itinéraire BRouter, redécoupées en
+   carrés d'un degré (seules les dalles qui ont changé sur brouter.de sont retéléchargées).
 5. `catalogue` : assemble `catalogue.json` (`cartes/outils/catalogue.py`), le publie, puis supprime les anciennes
    versions des fichiers.
 
@@ -169,7 +196,7 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
 
 1. Carte en ligne + enregistrement + écran guidon + historique *(fait)*
 2. Cartes hors ligne (packs régionaux : fond Protomaps, surcouche vélo Planetiler, relief Mapterhorn) *(fait)*
-3. Itinéraires BRouter embarqué + guidage
+3. Itinéraires BRouter embarqué + guidage *(fait)*
 4. Météo Open-Meteo (modèles Météo-France AROME)
 5. Stats, records, segments, finitions
 

@@ -64,3 +64,18 @@ data class TrackPointEntity(
     val accuracyM: Float?,
     val segment: Int,
 )
+
+/** Un itinéraire enregistré pour être repris plus tard (ou hors ligne). */
+@Entity(tableName = "saved_routes")
+data class SavedRouteEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val createdAtMs: Long,
+    /** Type de vélo pour lequel il a été calculé (nom d'un BikeType). */
+    val bike: String,
+    val distanceM: Double,
+    val ascentM: Double,
+    val durationS: Double,
+    /** L'itinéraire complet (trace, altitudes, consignes), encodé par RouteCodec. */
+    val data: String,
+)

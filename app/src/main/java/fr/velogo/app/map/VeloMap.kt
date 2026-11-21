@@ -56,7 +56,18 @@ data class MapColors(
     val cycleway: Int,
     val start: Int,
     val end: Int,
+    /** Itinéraire choisi (ou suivi). */
+    val route: Int = 0xFF1565C0.toInt(),
+    /** Autres itinéraires proposés. */
+    val routeOther: Int = 0xFF78909C.toInt(),
+    /** Étapes d'un itinéraire. */
+    val via: Int = 0xFFEF6C00.toInt(),
 )
+
+/** Un point d'itinéraire à dessiner sur la carte. */
+data class PlanMarker(val position: LatLon, val kind: Kind) {
+    enum class Kind { START, VIA, END }
+}
 
 /**
  * Pilote d'une carte : c'est par lui que les écrans changent le fond, dessinent une trace, déplacent la position.
@@ -89,7 +100,13 @@ class VeloMapState {
     private var appliedChunks = -1
     private var ride: List<List<LatLon>> = emptyList()
     private var marker: LatLon? = null
-    private var pendingFit: Pair<BoundingBox, Int>? = null
+    private var routes: List<List<LatLon>> = emptyList()
+    private var routeSelected = 0
+    private var planMarkers: List<PlanMarker> = emptyList()
+    private var pendingFit: Fit? = null
+
+    /** Appelé quand on appuie longuement sur la carte (pour y placer un point d'itinéraire). */
+    var onLongPress: ((LatLon) -> Unit)? = null
     private var topInsetPx = 0
 
     private val trackingListener = object : OnCameraTrackingChangedListener {
@@ -125,6 +142,11 @@ class VeloMapState {
         map.setLatLngBoundsForCameraTarget(LatLngBounds.from(f.maxLat + 0.4, f.maxLon + 0.4, f.minLat - 0.4, f.minLon - 0.4))
         map.setMinZoomPreference(MIN_ZOOM)
         map.setMaxZoomPreference(MAX_ZOOM)
+        map.addOnMapLongClickListener { point ->
+            val listener = onLongPress
+            listener?.invoke(LatLon(point.latitude, point.longitude))
+            listener != null
+        }
         spec?.let { loadStyle(it) }
     }
 
@@ -198,11 +220,13 @@ class VeloMapState {
             style = loaded
             installOverlays(loaded, spec)
             isStyleLoaded = true
+            applyRoutes()
+            applyPlanMarkers()
             applyRide()
             applyLiveTrack()
             applyMarker()
             location?.let { pushLocation(it) }
-            pendingFit?.let { (box, padding) -> fit(box, padding) }
+            pendingFit?.let { fit(it.box, it.paddingPx, it.topPx, it.bottomPx) }
         }
     }
 
@@ -210,6 +234,15 @@ class VeloMapState {
         val c = colors ?: return
         val labels = firstLabelLayerId(style)
         if (spec.layer.highlightCycleways) addCycleways(style, c, labels)
+
+        // Itinéraires : dessinés sous la trace de la sortie, qui doit rester lisible par-dessus.
+        style.addSource(GeoJsonSource(SRC_ROUTES_OTHER, FeatureCollection.fromFeatures(emptyList<Feature>())))
+        style.addSource(GeoJsonSource(SRC_ROUTE, FeatureCollection.fromFeatures(emptyList<Feature>())))
+        style.addSource(GeoJsonSource(SRC_PLAN, FeatureCollection.fromFeatures(emptyList<Feature>())))
+        style.addLayer(line("$SRC_ROUTES_OTHER-liseré", SRC_ROUTES_OTHER, c.trackCasing, ROUTE_WIDTH + 2.5f))
+        style.addLayer(line("$SRC_ROUTES_OTHER-trait", SRC_ROUTES_OTHER, c.routeOther, ROUTE_WIDTH - 1f))
+        style.addLayer(line("$SRC_ROUTE-liseré", SRC_ROUTE, c.trackCasing, ROUTE_WIDTH + 3.5f))
+        style.addLayer(line("$SRC_ROUTE-trait", SRC_ROUTE, c.route, ROUTE_WIDTH))
 
         style.addSource(GeoJsonSource(SRC_RIDE, FeatureCollection.fromFeatures(emptyList<Feature>())))
         style.addSource(GeoJsonSource(SRC_FROZEN, FeatureCollection.fromFeatures(emptyList<Feature>())))
@@ -232,6 +265,21 @@ class VeloMapState {
                 ),
                 PropertyFactory.circleStrokeColor(Color.WHITE),
                 PropertyFactory.circleStrokeWidth(2.5f),
+            )
+        )
+        style.addLayer(
+            CircleLayer("$SRC_PLAN-points", SRC_PLAN).withProperties(
+                PropertyFactory.circleRadius(9f),
+                PropertyFactory.circleColor(
+                    Expression.match(
+                        Expression.get("kind"),
+                        Expression.literal("START"), Expression.color(c.start),
+                        Expression.literal("VIA"), Expression.color(c.via),
+                        Expression.color(c.end),
+                    )
+                ),
+                PropertyFactory.circleStrokeColor(Color.WHITE),
+                PropertyFactory.circleStrokeWidth(3f),
             )
         )
         style.addLayer(
@@ -341,6 +389,41 @@ class VeloMapState {
         (style.getSource(SRC_ENDS) as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(ends))
     }
 
+    /** Itinéraires proposés : celui de rang [selected] est mis en avant, les autres restent en retrait. */
+    fun setRoutes(options: List<List<LatLon>>, selected: Int) {
+        routes = options
+        routeSelected = selected
+        applyRoutes()
+    }
+
+    private fun applyRoutes() {
+        val style = style ?: return
+        fun collection(lines: List<List<LatLon>>) =
+            if (lines.isEmpty()) FeatureCollection.fromFeatures(emptyList<Feature>())
+            else FeatureCollection.fromFeature(
+                Feature.fromGeometry(MultiLineString.fromLineStrings(lines.map { line -> LineString.fromLngLats(line.map { it.toPoint() }) }))
+            )
+        val main = routes.getOrNull(routeSelected)?.takeIf { it.size >= 2 }
+        val others = routes.filterIndexed { i, line -> i != routeSelected && line.size >= 2 }
+        (style.getSource(SRC_ROUTES_OTHER) as? GeoJsonSource)?.setGeoJson(collection(others))
+        (style.getSource(SRC_ROUTE) as? GeoJsonSource)?.setGeoJson(collection(listOfNotNull(main)))
+    }
+
+    /** Départ, étapes et arrivée d'un itinéraire en préparation. */
+    fun setPlanMarkers(markers: List<PlanMarker>) {
+        planMarkers = markers
+        applyPlanMarkers()
+    }
+
+    private fun applyPlanMarkers() {
+        val style = style ?: return
+        val features = planMarkers.map { m -> Feature.fromGeometry(m.position.toPoint()).apply { addStringProperty("kind", m.kind.name) } }
+        (style.getSource(SRC_PLAN) as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(features))
+    }
+
+    /** Centre de la carte affichée (pour chercher une adresse « près d'ici »), ou null si elle n'est pas prête. */
+    fun center(): LatLon? = map?.cameraPosition?.target?.let { LatLon(it.latitude, it.longitude) }
+
     /** Repère mobile (point survolé sur un graphique), ou null pour l'effacer. */
     fun setMarker(position: LatLon?) {
         marker = position
@@ -435,8 +518,12 @@ class VeloMapState {
     }
 
     /** Cadre la carte sur une emprise (par exemple toute une sortie). */
-    fun fit(box: BoundingBox, paddingPx: Int) {
-        pendingFit = box to paddingPx
+    /**
+     * Cadre la carte sur une emprise (par exemple toute une sortie). [topPx] et [bottomPx] réservent la place
+     * de ce qui recouvre la carte en haut et en bas (bandeau, panneau d'itinéraire).
+     */
+    fun fit(box: BoundingBox, paddingPx: Int, topPx: Int = paddingPx, bottomPx: Int = paddingPx) {
+        pendingFit = Fit(box, paddingPx, topPx, bottomPx)
         val map = map ?: return
         if (style == null) return
         isFollowing = false
@@ -446,10 +533,14 @@ class VeloMapState {
             map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng((box.minLat + box.maxLat) / 2, (box.minLon + box.maxLon) / 2), 15.0))
         } else {
             val bounds = LatLngBounds.from(box.maxLat, box.maxLon, box.minLat, box.minLon)
-            map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, paddingPx))
+            // Si les marges demandées ne laissent pas de place (très petit écran), on retombe sur un cadrage simple.
+            runCatching { map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, paddingPx, topPx, paddingPx, bottomPx)) }
+                .onFailure { runCatching { map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, paddingPx)) } }
         }
         pendingFit = null
     }
+
+    private class Fit(val box: BoundingBox, val paddingPx: Int, val topPx: Int, val bottomPx: Int)
 
     fun setTopInset(px: Int) {
         if (topInsetPx == px) return
@@ -472,6 +563,10 @@ class VeloMapState {
         const val SRC_TAIL = "velogo-trace-fin"
         const val SRC_ENDS = "velogo-extremites"
         const val SRC_MARKER = "velogo-repere"
+        const val SRC_ROUTES_OTHER = "velogo-itineraires"
+        const val SRC_ROUTE = "velogo-itineraire"
+        const val SRC_PLAN = "velogo-etapes"
+        const val ROUTE_WIDTH = 6f
         const val OPENMAPTILES_SOURCE = "openmaptiles"
         const val TRACK_WIDTH = 4.5f
         const val MIN_ZOOM = 4.4

@@ -21,4 +21,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "VeloGo"
-include(":app", ":core")
+include(":app", ":core", ":brouter", ":routing")

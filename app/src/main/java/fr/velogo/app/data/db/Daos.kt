@@ -48,3 +48,19 @@ interface TrackPointDao {
     @Query("SELECT COUNT(*) FROM track_points WHERE rideId = :rideId")
     suspend fun count(rideId: Long): Int
 }
+
+@Dao
+interface SavedRouteDao {
+    @Insert
+    suspend fun insert(route: SavedRouteEntity): Long
+
+    /** La liste, sans le contenu des itinéraires (plusieurs centaines de Ko chacun). */
+    @Query("SELECT id, name, createdAtMs, bike, distanceM, ascentM, durationS, '' AS data FROM saved_routes ORDER BY createdAtMs DESC")
+    fun observeSummaries(): Flow<List<SavedRouteEntity>>
+
+    @Query("SELECT * FROM saved_routes WHERE id = :id")
+    suspend fun get(id: Long): SavedRouteEntity?
+
+    @Query("DELETE FROM saved_routes WHERE id = :id")
+    suspend fun delete(id: Long)
+}

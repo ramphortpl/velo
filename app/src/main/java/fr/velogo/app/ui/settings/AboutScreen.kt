@@ -59,7 +59,7 @@ private val DATA = listOf(
     ),
     Credit(
         "IGN – Géoplateforme",
-        "Plan IGN, photos aériennes et altitudes (RGE ALTI®) : Institut national de l'information géographique et forestière, Licence Ouverte 2.0.",
+        "Plan IGN, photos aériennes, recherche d'adresses et de lieux, altitudes (RGE ALTI®) : Institut national de l'information géographique et forestière, Licence Ouverte 2.0.",
         "https://cartes.gouv.fr",
     ),
 )
@@ -68,6 +68,7 @@ private val SOFTWARE = listOf(
     Credit("MapLibre Native", "Moteur d'affichage des cartes. Licence BSD à 2 clauses.", "https://maplibre.org"),
     Credit("Android Jetpack et Kotlin", "Jetpack Compose, Room, DataStore, Navigation ; langage Kotlin. Licence Apache 2.0.", "https://developer.android.com/jetpack"),
     Credit("OkHttp", "Client HTTP de Square. Licence Apache 2.0.", "https://square.github.io/okhttp/"),
+    Credit("BRouter", "Calcul des itinéraires vélo, embarqué dans l'appli : il fonctionne sans réseau à partir des données OpenStreetMap des régions téléchargées. Licence MIT.", "https://brouter.de"),
     Credit("Planetiler", "Fabrique la surcouche vélo des cartes hors ligne (sur les serveurs de GitHub, pas dans l'appli). Licence Apache 2.0.", "https://github.com/onthegomap/planetiler"),
     Credit("Barlow Condensed", "Police des chiffres, par Jeremy Tribby. SIL Open Font License 1.1.", "https://github.com/jpt/barlow"),
     Credit("Noto Sans", "Police des noms sur la carte hors ligne. SIL Open Font License 1.1.", "https://fonts.google.com/noto"),

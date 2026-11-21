@@ -39,6 +39,14 @@ data class Settings(
     val offlineWifiOnly: Boolean = true,
     /** Emplacement des cartes hors ligne : 0 = mémoire du téléphone, 1 = carte SD. */
     val offlineStorage: Int = 0,
+    /** Consignes de guidage dites à voix haute (la musique baisse un instant, sans s'arrêter). */
+    val voiceGuidance: Boolean = false,
+    /** Vibration à chaque consigne et en cas de sortie d'itinéraire. */
+    val vibrateGuidance: Boolean = true,
+    /** Type de vélo choisi pour les itinéraires (nom d'un BikeType). */
+    val bikeType: String = "HYBRID",
+    /** Puissance moyenne du cycliste en watts : sert à estimer la durée des itinéraires. */
+    val riderPowerW: Int = 140,
 )
 
 class SettingsRepository(context: Context) {
@@ -62,6 +70,10 @@ class SettingsRepository(context: Context) {
                 lastUpdateCheckMs = p[LAST_UPDATE_CHECK] ?: d.lastUpdateCheckMs,
                 offlineWifiOnly = p[OFFLINE_WIFI_ONLY] ?: d.offlineWifiOnly,
                 offlineStorage = p[OFFLINE_STORAGE] ?: d.offlineStorage,
+                voiceGuidance = p[VOICE_GUIDANCE] ?: d.voiceGuidance,
+                vibrateGuidance = p[VIBRATE_GUIDANCE] ?: d.vibrateGuidance,
+                bikeType = p[BIKE_TYPE] ?: d.bikeType,
+                riderPowerW = p[RIDER_POWER] ?: d.riderPowerW,
             )
         }
 
@@ -78,6 +90,10 @@ class SettingsRepository(context: Context) {
     suspend fun setLastUpdateCheck(timeMs: Long) = store.edit { it[LAST_UPDATE_CHECK] = timeMs }.let { }
     suspend fun setOfflineWifiOnly(value: Boolean) = store.edit { it[OFFLINE_WIFI_ONLY] = value }.let { }
     suspend fun setOfflineStorage(index: Int) = store.edit { it[OFFLINE_STORAGE] = index }.let { }
+    suspend fun setVoiceGuidance(value: Boolean) = store.edit { it[VOICE_GUIDANCE] = value }.let { }
+    suspend fun setVibrateGuidance(value: Boolean) = store.edit { it[VIBRATE_GUIDANCE] = value }.let { }
+    suspend fun setBikeType(name: String) = store.edit { it[BIKE_TYPE] = name }.let { }
+    suspend fun setRiderPower(watts: Int) = store.edit { it[RIDER_POWER] = watts }.let { }
 
     private companion object {
         val THEME = stringPreferencesKey("theme")
@@ -93,5 +109,9 @@ class SettingsRepository(context: Context) {
         val LAST_UPDATE_CHECK = longPreferencesKey("derniere_verification")
         val OFFLINE_WIFI_ONLY = booleanPreferencesKey("cartes_wifi_seulement")
         val OFFLINE_STORAGE = intPreferencesKey("cartes_emplacement")
+        val VOICE_GUIDANCE = booleanPreferencesKey("guidage_vocal")
+        val VIBRATE_GUIDANCE = booleanPreferencesKey("guidage_vibration")
+        val BIKE_TYPE = stringPreferencesKey("type_de_velo")
+        val RIDER_POWER = intPreferencesKey("puissance_cycliste")
     }
 }

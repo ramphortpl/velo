@@ -83,6 +83,9 @@ interface SettingsActions {
     fun setIgnCorrection(value: Boolean)
     fun setCheckUpdates(value: Boolean)
     fun checkNow()
+    fun setVoiceGuidance(value: Boolean)
+    fun setVibrateGuidance(value: Boolean)
+    fun setRiderPower(watts: Int)
 }
 
 class SettingsViewModel(private val container: AppContainer) : ViewModel(), SettingsActions {
@@ -99,6 +102,9 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel(), Sett
     override fun setAutoPause(value: Boolean) { viewModelScope.launch { container.settings.setAutoPause(value) } }
     override fun setIgnCorrection(value: Boolean) { viewModelScope.launch { container.settings.setIgnAltitudeCorrection(value) } }
     override fun setCheckUpdates(value: Boolean) { viewModelScope.launch { container.settings.setCheckUpdates(value) } }
+    override fun setVoiceGuidance(value: Boolean) { viewModelScope.launch { container.settings.setVoiceGuidance(value) } }
+    override fun setVibrateGuidance(value: Boolean) { viewModelScope.launch { container.settings.setVibrateGuidance(value) } }
+    override fun setRiderPower(watts: Int) { viewModelScope.launch { container.settings.setRiderPower(watts) } }
 
     override fun checkNow() {
         viewModelScope.launch {
@@ -209,6 +215,39 @@ fun SettingsContent(
                     "Ouvrir",
                     onOpenOfflineMaps,
                 )
+            }
+
+            Section("Itinéraires et guidage") {
+                SwitchRow(
+                    "Guidage vocal",
+                    "Les consignes sont dites à voix haute. Ta musique baisse un instant pendant la phrase, sans jamais s'arrêter.",
+                    settings.voiceGuidance, vm::setVoiceGuidance,
+                )
+                SwitchRow(
+                    "Vibration",
+                    "Une vibration à chaque consigne et quand tu t'écartes de l'itinéraire.",
+                    settings.vibrateGuidance, vm::setVibrateGuidance,
+                )
+                Text("Allure", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp))
+                Text(
+                    "Sert à estimer la durée des itinéraires, montées comprises.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    val paces = listOf(100 to "Tranquille", 140 to "Normale", 190 to "Sportive")
+                    // Une valeur intermédiaire (ancien réglage) est rattachée au choix le plus proche.
+                    val current = paces.minBy { kotlin.math.abs(it.first - settings.riderPowerW) }.first
+                    paces.forEachIndexed { index, (watts, label) ->
+                        SegmentedButton(
+                            selected = current == watts,
+                            onClick = { vm.setRiderPower(watts) },
+                            shape = SegmentedButtonDefaults.itemShape(index, paces.size),
+                            colors = brandSegmentColors(),
+                        ) { Text(label) }
+                    }
+                }
             }
 
             Section("Affichage") {

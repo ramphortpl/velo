@@ -2,15 +2,20 @@ package fr.velogo.app
 
 import android.app.Application
 import fr.velogo.app.data.RideRepository
+import fr.velogo.app.data.SavedRouteRepository
 import fr.velogo.app.data.SettingsRepository
 import fr.velogo.app.data.db.VeloGoDatabase
 import fr.velogo.app.elevation.ElevationCorrector
 import fr.velogo.app.elevation.IgnAltimetry
 import fr.velogo.app.elevation.ReliefSource
 import fr.velogo.app.location.GpsSource
+import fr.velogo.app.nav.NavigationController
+import fr.velogo.app.nav.RouteService
+import fr.velogo.app.nav.VoiceGuide
 import fr.velogo.app.offline.OfflineMaps
 import fr.velogo.app.recording.RecorderEvent
 import fr.velogo.app.recording.RideRecorder
+import fr.velogo.app.search.IgnGeocoder
 import fr.velogo.app.update.UpdateChecker
 import fr.velogo.app.update.UpdateInfo
 import kotlinx.coroutines.CoroutineScope
@@ -34,6 +39,7 @@ class AppContainer(private val app: Application) {
 
     val database: VeloGoDatabase by lazy { VeloGoDatabase.create(app) }
     val rides: RideRepository by lazy { RideRepository(database) }
+    val savedRoutes: SavedRouteRepository by lazy { SavedRouteRepository(database) }
     val settings: SettingsRepository by lazy { SettingsRepository(app) }
     val gps: GpsSource by lazy { GpsSource(app, appScope) }
     val recorder: RideRecorder by lazy { RideRecorder(rides) { lat, lon -> relief.altitude(lat, lon) } }
@@ -59,6 +65,13 @@ class AppContainer(private val app: Application) {
     val relief: ReliefSource by lazy { ReliefSource { offline.store.tiles } }
 
     val elevationCorrector: ElevationCorrector by lazy { ElevationCorrector(rides, IgnAltimetry(http), relief) }
+
+    /** Itinéraires : calcul hors ligne, recherche d'adresses, guidage. */
+    val routeService: RouteService by lazy { RouteService(app, offline.store, relief) }
+    val geocoder: IgnGeocoder by lazy { IgnGeocoder(http) }
+    val navigation: NavigationController by lazy {
+        NavigationController(appScope, gps, routeService, geocoder, settings, VoiceGuide(app))
+    }
     val updateChecker: UpdateChecker by lazy { UpdateChecker(http) }
 
     private val _update = MutableStateFlow<UpdateInfo?>(null)

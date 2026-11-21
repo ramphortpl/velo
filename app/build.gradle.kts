@@ -125,6 +125,7 @@ room3 {
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":routing"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

@@ -108,6 +108,7 @@ class OfflineMaps(
                 PackFile.BASE -> "fond de carte"
                 PackFile.BIKE -> "réseau cyclable"
                 PackFile.RELIEF -> "relief"
+                PackFile.ROUTING -> "itinéraires"
                 else -> "données"
             }
         }
@@ -122,13 +123,21 @@ class OfflineMaps(
     /** Supprime une région. La vue d'ensemble de la France part avec la dernière région. */
     suspend fun delete(regionId: String) = withContext(Dispatchers.IO) {
         val catalog = _catalog.value.catalog
-        val names = catalog?.region(regionId)?.files?.map { it.name }
-            ?: listOf(PackFile.BASE, PackFile.BIKE, PackFile.RELIEF).map { "$it-$regionId.pmtiles" }
+        val installed = store.installed.value
+        // Les données d'itinéraire sont partagées entre régions voisines : on garde celles qui servent encore.
+        val stillNeeded = catalog?.regions.orEmpty()
+            .filter { it.id != regionId && installed.containsKey("${PackFile.BASE}-${it.id}.pmtiles") }
+            .flatMap { region -> region.files.map { it.name } }
+            .toSet()
+        val names = (catalog?.region(regionId)?.files?.map { it.name }
+            ?: listOf(PackFile.BASE, PackFile.BIKE, PackFile.RELIEF).map { "$it-$regionId.pmtiles" })
+            .filterNot { it in stillNeeded }
         downloader.cancel(names)
         store.delete(names)
         val remaining = store.installed.value.keys.filter { it.endsWith(".pmtiles") && !it.endsWith("-$FRANCE.pmtiles") }
         if (remaining.isEmpty()) {
-            val overview = store.installed.value.keys.filter { it.endsWith("-$FRANCE.pmtiles") }
+            // Plus aucune région : la vue d'ensemble et les données d'itinéraire orphelines n'ont plus d'usage.
+            val overview = store.installed.value.keys.filter { it.endsWith("-$FRANCE.pmtiles") || it.endsWith(".rd5") }
             if (overview.isNotEmpty()) {
                 downloader.cancel(overview)
                 store.delete(overview)

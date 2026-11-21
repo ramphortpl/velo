@@ -97,7 +97,7 @@ class OfflineStore(private val context: Context, private val scope: CoroutineSco
             for (storage in storages()) {
                 val files = storage.directory.listFiles() ?: continue
                 for (file in files.sortedBy { it.name }) {
-                    if (!file.isFile || file.name.endsWith(NOTICE) || file.name.endsWith(PARTIAL)) continue
+                    if (!file.isFile || file.name.endsWith(NOTICE) || file.name.endsWith(PARTIAL) || file.name.endsWith(".txt")) continue
                     val notice = readNotice(File(storage.directory, file.name + NOTICE)) ?: continue
                     if (notice.second != file.length()) continue
                     if (!found.containsKey(file.name)) found[file.name] = InstalledFile(file.name, file, notice.first, notice.second)
@@ -151,6 +151,25 @@ class OfflineStore(private val context: Context, private val scope: CoroutineSco
         }
         reload()
     }
+
+    /**
+     * Dossier où le moteur d'itinéraire trouve ses données (fichiers « dalle-*.rd5 »), ou null s'il n'y en a pas.
+     * Si elles sont réparties entre le téléphone et la carte SD, on indique au moteur le second dossier comme il
+     * le prévoit lui-même (fichier storageconfig.txt).
+     */
+    fun routingDirectory(): File? {
+        val byDirectory = _installed.value.values.filter { it.name.endsWith(".rd5") }.groupBy { it.file.parentFile }
+        val main = byDirectory.maxByOrNull { it.value.size }?.key ?: return null
+        val other = byDirectory.keys.firstOrNull { it != main }
+        val config = File(main, "storageconfig.txt")
+        runCatching {
+            if (other != null) config.writeText("secondary_segment_dir=${other.absolutePath}\n") else config.delete()
+        }
+        return main
+    }
+
+    /** Vrai si des données d'itinéraire sont installées. */
+    val hasRoutingData: Boolean get() = _installed.value.keys.any { it.endsWith(".rd5") }
 
     /** Place occupée par les cartes installées. */
     fun usedBytes(): Long = _installed.value.values.sumOf { it.size }

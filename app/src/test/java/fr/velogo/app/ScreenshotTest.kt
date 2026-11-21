@@ -38,6 +38,27 @@ import fr.velogo.core.ride.RideTotals
 import fr.velogo.core.ride.TrackPoint
 import org.junit.Test
 import org.junit.runner.RunWith
+import androidx.compose.ui.Alignment
+import fr.velogo.app.data.db.SavedRouteEntity
+import fr.velogo.app.nav.GuidanceState
+import fr.velogo.app.nav.NavigationController
+import fr.velogo.app.nav.PlanPoint
+import fr.velogo.app.nav.PlannerState
+import fr.velogo.app.nav.RouteOption
+import fr.velogo.app.search.Place
+import fr.velogo.app.ui.nav.PlaceSearchContent
+import fr.velogo.app.ui.nav.PlanTarget
+import fr.velogo.app.ui.nav.PlannerActions
+import fr.velogo.app.ui.nav.PlannerPanel
+import fr.velogo.app.ui.nav.SavedRoutesList
+import fr.velogo.app.ui.nav.SearchResult
+import fr.velogo.core.nav.BikeType
+import fr.velogo.core.nav.Instruction
+import fr.velogo.core.nav.Maneuver
+import fr.velogo.core.nav.NavState
+import fr.velogo.core.nav.Route
+import fr.velogo.core.nav.RoutePreference
+import fr.velogo.core.nav.WayMix
 import fr.velogo.app.offline.StorageChoice
 import fr.velogo.app.ui.offline.OfflineMapsActions
 import fr.velogo.app.ui.offline.OfflineMapsContent
@@ -197,6 +218,9 @@ class ScreenshotTest {
         override fun setIgnCorrection(value: Boolean) = Unit
         override fun setCheckUpdates(value: Boolean) = Unit
         override fun checkNow() = Unit
+        override fun setVoiceGuidance(value: Boolean) = Unit
+        override fun setVibrateGuidance(value: Boolean) = Unit
+        override fun setRiderPower(watts: Int) = Unit
     }
 
     /** Une boucle vallonnée de 40 km environ, pour les vignettes et les graphiques. */
@@ -243,6 +267,172 @@ class ScreenshotTest {
         override fun setWifiOnly(value: Boolean) = Unit
         override fun setStorage(index: Int) = Unit
         override fun useOfflineLayer() = Unit
+    }
+
+    // --- Itinéraires et guidage -------------------------------------------------------------------------------
+
+    /** Itinéraire d'exemple : une trace vallonnée d'une quarantaine de kilomètres, avec quelques consignes. */
+    private fun sampleRoute(seed: Int = 0, scale: Double = 1.0): Route {
+        val base = NavigationController.routeFromTrack(samplePoints(seed))!!
+        val n = base.points.size
+        val instructions = listOf(
+            Instruction(n / 12, base.distances[n / 12], Maneuver.LEFT),
+            Instruction(n / 12 + 6, base.distances[n / 12 + 6], Maneuver.SLIGHT_RIGHT),
+            Instruction(n / 3, base.distances[n / 3], Maneuver.ROUNDABOUT, 2),
+            Instruction(n - 1, base.distanceM, Maneuver.ARRIVE),
+        )
+        val total = base.distanceM
+        return Route(
+            base.points, base.elevations, base.distances, durationS = total / 5.4 * scale, ascentM = 520.0 * scale, descentM = 505.0 * scale,
+            instructions = instructions, waypoints = listOf(base.points.first(), base.points.last()),
+            mix = WayMix(cyclewayM = total * 0.34, quietM = total * 0.38, roadM = total * 0.17, busyM = total * 0.03, pathM = total * 0.08, unpavedM = total * 0.11),
+        )
+    }
+
+    private object NoPlannerActions : PlannerActions {
+        override fun close() = Unit
+        override fun setBike(bike: BikeType) = Unit
+        override fun pick(target: PlanTarget) = Unit
+        override fun useMyPosition() = Unit
+        override fun removeVia(index: Int) = Unit
+        override fun removeEnd() = Unit
+        override fun reverse() = Unit
+        override fun compute() = Unit
+        override fun edit() = Unit
+        override fun select(index: Int) = Unit
+        override fun startGuidance() = Unit
+        override fun toggleVoice() = Unit
+        override fun save() = Unit
+        override fun share() = Unit
+        override fun importGpx() = Unit
+        override fun openSaved() = Unit
+        override fun openOfflineMaps() = Unit
+    }
+
+    private fun planner(state: PlannerState, hasData: Boolean = true): @Composable () -> Unit = {
+        VeloGoTheme(mode = ThemeMode.LIGHT) {
+            Box(Modifier.fillMaxSize().background(Color(0xFFDDE7DD)), contentAlignment = Alignment.BottomCenter) {
+                PlannerPanel(state = state, hasRoutingData = hasData, voiceEnabled = true, actions = NoPlannerActions, maxHeight = 560.dp)
+            }
+        }
+    }
+
+    @Test
+    fun itineraire_points() = captureRoboImage(
+        "$OUT/itineraire_points.png",
+        content = planner(
+            PlannerState(
+                open = true, bike = BikeType.HYBRID,
+                vias = listOf(PlanPoint(LatLon(45.8, 6.2), "Col de Leschaux")),
+                end = PlanPoint(LatLon(45.7, 6.3), "Gare d'Albertville"),
+            )
+        ),
+    )
+
+    @Test
+    fun itineraire_sans_donnees() = captureRoboImage(
+        "$OUT/itineraire_sans_donnees.png",
+        content = planner(PlannerState(open = true, bike = BikeType.ROAD), hasData = false),
+    )
+
+    @Test
+    fun itineraire_propositions() = captureRoboImage(
+        "$OUT/itineraire_propositions.png",
+        content = planner(
+            PlannerState(
+                open = true, bike = BikeType.HYBRID, end = PlanPoint(LatLon(45.7, 6.3), "Gare d'Albertville"),
+                options = listOf(
+                    RouteOption(sampleRoute(), listOf(RoutePreference.FAST)),
+                    RouteOption(sampleRoute(1, 1.08), listOf(RoutePreference.SAFE)),
+                    RouteOption(sampleRoute(2, 0.8), listOf(RoutePreference.FLAT)),
+                ),
+                selected = 0,
+            )
+        ),
+    )
+
+    private fun guidance(nav: NavState, rerouting: Boolean = false) =
+        GuidanceState(sampleRoute(), nav, BikeType.HYBRID, RoutePreference.FAST, "Gare d'Albertville", rerouting = rerouting)
+
+    private fun guided(mode: RideMode, state: GuidanceState, sunlight: Boolean = false): @Composable () -> Unit = {
+        VeloGoTheme(mode = ThemeMode.LIGHT) {
+            Box(Modifier.fillMaxSize().background(Color(0xFFDDE7DD))) {
+                RideChrome(
+                    snapshot = recording, mode = mode, onMode = {}, themeMode = ThemeMode.LIGHT, sunlight = sunlight,
+                    attribution = "© OpenStreetMap · Protomaps · Mapterhorn (IGN)", following = true, headingUp = true,
+                    hasLocationPermission = true, accuracyM = 4.0,
+                    topInset = 28.dp, bottomPadding = 80.dp, snackbar = SnackbarHostState(),
+                    onLayers = {}, onRecenter = {}, onToggleHeading = {}, onRequestPermission = {},
+                    onStart = {}, onPause = {}, onResume = {}, onStop = {}, onStopHint = {},
+                    guidance = state,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun guidage_carte() {
+        val route = sampleRoute()
+        val nav = NavState(
+            progressM = 2_300.0, remainingM = route.distanceM - 2_300.0, remainingS = 5_400.0, offsetM = 3.0, isOffRoute = false,
+            next = route.instructions[0], distanceToNextM = 180.0, then = route.instructions[1], arrived = false,
+        )
+        captureRoboImage("$OUT/guidage_carte.png", content = guided(RideMode.MAP, guidance(nav)))
+    }
+
+    @Test
+    fun guidage_guidon() {
+        val route = sampleRoute()
+        val nav = NavState(
+            progressM = 11_000.0, remainingM = route.distanceM - 11_000.0, remainingS = 4_100.0, offsetM = 2.0, isOffRoute = false,
+            next = route.instructions[2], distanceToNextM = 1_240.0, then = null, arrived = false,
+        )
+        captureRoboImage("$OUT/guidage_guidon.png", content = guided(RideMode.DATA, guidance(nav)))
+    }
+
+    @Test
+    fun guidage_hors_itineraire() {
+        val route = sampleRoute()
+        val nav = NavState(
+            progressM = 6_000.0, remainingM = route.distanceM - 6_000.0, remainingS = 4_900.0, offsetM = 85.0, isOffRoute = true,
+            next = route.instructions[2], distanceToNextM = 4_000.0, then = null, arrived = false,
+        )
+        captureRoboImage("$OUT/guidage_hors_itineraire.png", content = guided(RideMode.MAP, guidance(nav, rerouting = true)))
+    }
+
+    @Test
+    fun recherche_adresse() = captureRoboImage("$OUT/recherche_adresse.png") {
+        VeloGoTheme(mode = ThemeMode.LIGHT) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                PlaceSearchContent(
+                    title = "Où vas-tu ?", query = "gare d'alb", onQuery = {},
+                    result = SearchResult.Found(
+                        listOf(
+                            Place("Gare d'Albertville", "Gare voyageurs et fret · 73200 Albertville", LatLon(45.67, 6.38)),
+                            Place("Avenue de la Gare", "73200 Albertville", LatLon(45.67, 6.38)),
+                            Place("Place de la Gare", "74000 Annecy", LatLon(45.9, 6.12)),
+                        )
+                    ),
+                    offerMyPosition = true, onPlace = {}, onMyPosition = {}, onDismiss = {},
+                )
+            }
+        }
+    }
+
+    @Test
+    fun mes_itineraires() = captureRoboImage("$OUT/mes_itineraires.png") {
+        VeloGoTheme(mode = ThemeMode.LIGHT) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                SavedRoutesList(
+                    routes = listOf(
+                        SavedRouteEntity(1, "Tour du lac d'Annecy", 1_795_000_000_000, "HYBRID", 41_800.0, 310.0, 7_400.0, ""),
+                        SavedRouteEntity(2, "Col de la Forclaz par Talloires", 1_794_000_000_000, "ROAD", 63_200.0, 1_240.0, 12_900.0, ""),
+                        SavedRouteEntity(3, "Semnoz par les crêtes", 1_793_000_000_000, "MTB", 28_400.0, 980.0, 9_800.0, ""),
+                    ),
+                    onOpen = {}, onDelete = {},
+                )
+            }
+        }
     }
 
     private fun samplePoints(seed: Int = 0): List<TrackPoint> {

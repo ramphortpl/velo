@@ -28,7 +28,7 @@ data class PackFile(
     }
 }
 
-/** Une région de France et ses fichiers (fond, vélo, relief). */
+/** Une région de France et ses fichiers (fond, vélo, relief, données d'itinéraire). */
 data class RegionPack(
     val id: String,
     val name: String,
@@ -54,23 +54,30 @@ data class Catalog(
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
 
+        /** Nom du fichier de données d'itinéraire d'un carré d'un degré (« E8_N42 » -> « dalle-E8_N42.rd5 »). */
+        fun routingFileName(square: String): String = "dalle-$square.rd5"
+
         /** Lit le catalogue ; lève une exception si le texte n'en est pas un. */
         fun parse(text: String): Catalog {
             val dto = json.decodeFromString(CatalogDto.serializer(), text)
+            val routing = dto.dalles.mapNotNull { it.toPackFile() }
+            val routingByName = routing.associateBy { it.name }
             return Catalog(
                 date = dto.date,
                 france = dto.france.mapNotNull { it.toPackFile() },
-                routing = dto.dalles.mapNotNull { it.toPackFile() },
+                routing = routing,
                 regions = dto.regions.mapNotNull { region ->
-                    val files = region.fichiers.mapNotNull { it.toPackFile() }
-                    if (files.isEmpty() || region.emprise.size != 4) return@mapNotNull null
+                    val maps = region.fichiers.mapNotNull { it.toPackFile() }
+                    if (maps.isEmpty() || region.emprise.size != 4) return@mapNotNull null
                     RegionPack(
                         id = region.id,
                         name = region.nom,
                         // Dans le catalogue : ouest, sud, est, nord.
                         bounds = BoundingBox(region.emprise[1], region.emprise[0], region.emprise[3], region.emprise[2]),
                         routingTiles = region.dalles,
-                        files = files,
+                        // Les données d'itinéraire de la région (un fichier par carré d'un degré qu'elle touche ;
+                        // un carré vide, en pleine mer, n'a pas de fichier) se téléchargent avec ses cartes.
+                        files = maps + region.dalles.mapNotNull { routingByName[routingFileName(it)] },
                     )
                 },
             )
