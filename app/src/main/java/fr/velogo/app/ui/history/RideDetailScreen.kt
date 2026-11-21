@@ -64,7 +64,6 @@ import fr.velogo.app.ui.segments.SegmentEditor
 import fr.velogo.app.ui.segments.rankLabel
 import fr.velogo.app.ui.segments.segmentFacts
 import fr.velogo.app.ui.segments.suggestedSegmentName
-import fr.velogo.core.ride.AscentAccumulator
 import fr.velogo.app.ui.theme.LabelCapsStyle
 import fr.velogo.app.ui.theme.NumberStyle
 import fr.velogo.app.ui.util.Dates
@@ -177,14 +176,17 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, onOpenSegment: (Long) -> 
             if (portion.size >= 2) listOf(PlanMarker(portion.first(), PlanMarker.Kind.START), PlanMarker(portion.last(), PlanMarker.Kind.END)) else emptyList()
         }
         val editor: (@Composable (Modifier) -> Unit)? = if (editing && data != null) { modifier ->
-            val measures = remember(range, data) { portionMeasures(data, range) }
-            val segmentName = typedName ?: suggestedSegmentName(measures.lengthM, measures.gradePct)
+            // Les mesures annoncées sont celles qu'aura le segment : même calcul qu'à la création.
+            val fromM = range.start * 1000.0
+            val toM = range.endInclusive * 1000.0
+            val measures = remember(range, data) { vm.measure(fromM, toM) }
+            val segmentName = typedName ?: suggestedSegmentName(measures?.lengthM ?: (toM - fromM), measures?.gradePct)
             SegmentEditor(
                 altitude = data.altitude,
                 range = range,
                 totalKm = ((data.profile.lastOrNull()?.distanceM ?: 0.0) / 1000.0).toFloat(),
                 name = segmentName,
-                facts = segmentFacts(measures.lengthM, measures.ascentM, measures.gradePct),
+                facts = measures?.let { segmentFacts(it.lengthM, it.ascentM, it.gradePct) }.orEmpty(),
                 error = segmentError,
                 onRange = { range = it; segmentError = null },
                 onName = { typedName = it },
@@ -192,7 +194,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, onOpenSegment: (Long) -> 
                 onCreate = {
                     if (!creating) {
                         creating = true
-                        vm.createSegment(segmentName, range.start * 1000.0, range.endInclusive * 1000.0) { id ->
+                        vm.createSegment(segmentName, fromM, toM) { id ->
                             creating = false
                             if (id == null) {
                                 segmentError = "Ce morceau est trop court : un segment fait au moins 200 m."
@@ -342,21 +344,6 @@ fun RideDetailBody(
 }
 
 /** Longueur, dénivelé et pente moyenne d'un morceau de sortie. */
-private class PortionMeasures(val lengthM: Double, val ascentM: Double, val gradePct: Double?)
-
-/** Mesures du morceau de sortie choisi pour un segment, d'après le profil affiché. */
-private fun portionMeasures(data: RideTrackData, range: ClosedFloatingPointRange<Float>): PortionMeasures {
-    val fromM = range.start * 1000.0
-    val toM = range.endInclusive * 1000.0
-    val altitudes = data.profile.filter { it.distanceM in fromM..toM }.mapNotNull { it.altitudeM }
-    val accumulator = AscentAccumulator(PORTION_ASCENT_THRESHOLD_M)
-    altitudes.forEach { accumulator.add(it) }
-    val length = toM - fromM
-    val grade = if (altitudes.size >= 2 && length > 0.0) (altitudes.last() - altitudes.first()) / length * 100.0 else null
-    return PortionMeasures(length, accumulator.ascentM, grade)
-}
-
-private const val PORTION_ASCENT_THRESHOLD_M = 3.0
 private const val MAP_HIGHLIGHT_DELAY_MS = 120L
 
 /** Ce que cette sortie a de remarquable : ses records sur les distances de référence, ses temps sur les segments. */

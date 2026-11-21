@@ -15,6 +15,8 @@ import fr.velogo.core.ride.AltitudeSource
 import fr.velogo.core.ride.ProfileSample
 import fr.velogo.core.ride.RideAnalyzer
 import fr.velogo.core.ride.TrackPoint
+import fr.velogo.core.segments.SegmentCutter
+import fr.velogo.core.segments.SegmentMeasures
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -44,7 +46,9 @@ class RideDetailViewModel(private val container: AppContainer, private val rideI
     val track: StateFlow<RideTrackData?> = _track
 
     private var points: List<TrackPoint> = emptyList()
-    private var cumulative: DoubleArray = DoubleArray(0)
+
+    /** Découpe les morceaux de cette sortie pour en faire des segments (prêt en même temps que la trace). */
+    private var cutter: SegmentCutter? = null
 
     /** Les passages de cette sortie sur les segments personnels, classés parmi tous les passages. */
     val segments: StateFlow<List<RideSegmentRow>> =
@@ -63,15 +67,19 @@ class RideDetailViewModel(private val container: AppContainer, private val rideI
             // On recharge la trace si l'altitude vient d'être recalée sur le relief.
             container.rides.observeRide(rideId).filterNotNull().distinctUntilChangedBy { it.altitudeSource to it.pointCount }.collect { ride ->
                 val loaded = container.rides.points(rideId)
+                val (data, prepared) = withContext(Dispatchers.Default) { build(ride, loaded) to SegmentCutter(loaded, altitudeSource(ride)) }
                 points = loaded
-                cumulative = RideAnalyzer.cumulativeDistances(loaded)
-                _track.value = withContext(Dispatchers.Default) { build(ride, loaded) }
+                cutter = prepared
+                _track.value = data
             }
         }
     }
 
+    private fun altitudeSource(ride: RideEntity) =
+        if (ride.altitudeSource == RideEntity.ALTITUDE_GNSS) AltitudeSource.GNSS else AltitudeSource.TERRAIN
+
     private fun build(ride: RideEntity, points: List<TrackPoint>): RideTrackData {
-        val source = if (ride.altitudeSource == RideEntity.ALTITUDE_GNSS) AltitudeSource.GNSS else AltitudeSource.TERRAIN
+        val source = altitudeSource(ride)
         val segments = points.groupBy { it.segment }.toSortedMap().values.map { seg ->
             val line = seg.map { LatLon(it.lat, it.lon) }
             if (line.size > MAX_SEGMENT_POINTS) Simplify.toMaxPoints(line, MAX_SEGMENT_POINTS) else line
@@ -91,14 +99,12 @@ class RideDetailViewModel(private val container: AppContainer, private val rideI
 
     /** Le morceau de la trace compris entre deux distances depuis le départ (pour le montrer sur la carte). */
     fun portion(fromM: Double, toM: Double): List<LatLon> {
-        val distances = cumulative
-        if (distances.size != points.size || points.isEmpty()) return emptyList()
-        val first = distances.indexOfFirst { it >= fromM }.coerceAtLeast(0)
-        val last = distances.indexOfLast { it <= toM }
-        if (last <= first) return emptyList()
-        val line = points.subList(first, last + 1).map { LatLon(it.lat, it.lon) }
+        val line = cutter?.line(fromM, toM).orEmpty()
         return if (line.size > MAX_SEGMENT_POINTS) Simplify.toMaxPoints(line, MAX_SEGMENT_POINTS) else line
     }
+
+    /** Les mesures de ce morceau : exactement celles qu'aura le segment si on le crée. */
+    fun measure(fromM: Double, toM: Double): SegmentMeasures? = cutter?.measure(fromM, toM)
 
     /**
      * Crée un segment à partir d'un morceau de cette sortie, puis le cherche dans toutes les autres. [onDone]

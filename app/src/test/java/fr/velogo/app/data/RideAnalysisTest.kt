@@ -7,13 +7,19 @@ import androidx.test.core.app.ApplicationProvider
 import fr.velogo.app.data.db.RideEntity
 import fr.velogo.app.data.db.VeloGoDatabase
 import fr.velogo.app.ui.segments.effortRows
+import fr.velogo.app.ui.segments.facts
+import fr.velogo.app.ui.segments.gradePct
 import fr.velogo.app.ui.segments.rideBestRows
 import fr.velogo.app.ui.segments.rideSegmentRows
+import fr.velogo.app.ui.segments.segmentFacts
 import fr.velogo.app.ui.segments.segmentRows
 import fr.velogo.core.geo.Geo
 import fr.velogo.core.geo.LatLon
+import fr.velogo.core.geo.Polyline
+import fr.velogo.core.ride.AltitudeSource
 import fr.velogo.core.ride.RideAnalyzer
 import fr.velogo.core.ride.TrackPoint
+import fr.velogo.core.segments.SegmentCutter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -155,6 +161,39 @@ class RideAnalysisTest {
         segments.delete(segmentId)
         assertTrue(segments.observeEfforts().first().isEmpty())
         assertEquals(3, rides.finishedRides().size)
+    }
+
+    @Test
+    fun `le segment cree a exactement les mesures annoncees avant de le creer`() = runBlocking<Unit> {
+        // Un point tous les 6,5 m : les deux bouts choisis tombent entre deux points de la trace.
+        val ride = record(road(), speedMps = 6.5, startMs = t0, name = "Sortie")
+        val fromM = 310.0
+        val toM = 620.0
+
+        // Ce que l'écran de création annonce pour ce morceau…
+        val source = if (rides.ride(ride)!!.altitudeSource == RideEntity.ALTITUDE_GNSS) AltitudeSource.GNSS else AltitudeSource.TERRAIN
+        val announced = SegmentCutter(rides.points(ride), source).measure(fromM, toM)!!
+        assertEquals(310.0, announced.lengthM, 1e-9)
+        // Montée régulière à 4 %.
+        assertEquals(12.4, announced.ascentM, 0.3)
+        assertEquals(4.0, announced.gradePct!!, 0.05)
+
+        // … et ce que le segment créé retient : les mêmes chiffres, donc le même texte à l'écran.
+        val segment = segments.segment(segments.create("Côte", ride, fromM, toM)!!)!!
+        assertEquals(announced.lengthM, segment.distanceM, 0.0)
+        assertEquals(announced.ascentM, segment.ascentM, 0.0)
+        assertEquals(announced.startAltitudeM, segment.startAltitudeM)
+        assertEquals(announced.endAltitudeM, segment.endAltitudeM)
+        assertEquals(announced.gradePct!!, segment.gradePct()!!, 1e-12)
+        assertEquals(segmentFacts(announced.lengthM, announced.ascentM, announced.gradePct), segment.facts())
+        assertEquals("310 m · ↗ 12 m · 4,0 %", segment.facts())
+
+        // Le tracé enregistré fait bien cette longueur, et la sortie d'origine s'y retrouve.
+        assertEquals(310.0, Geo.lengthM(Polyline.decode(segment.points)), 1.5)
+        analysis.matchSegment(segment.id)
+        val effort = segments.observeEffortsOfSegment(segment.id).first().single()
+        assertEquals(ride, effort.rideId)
+        assertEquals(310.0 / 6.5, effort.elapsedMs / 1000.0, 1.5)
     }
 
     @Test

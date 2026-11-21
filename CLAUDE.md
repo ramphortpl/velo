@@ -87,12 +87,14 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
 - **Statistiques, records, segments** : les calculs sont dans `core/stats` (`RideStats` : totaux par semaine,
   mois, année et records ; `BestEfforts` : meilleurs temps sur 5 à 100 km par fenêtre glissante) et
   `core/segments` (`SegmentMatcher` : retrouve dans une trace les passages sur un segment, heures d'entrée et de
-  sortie interpolées). `RideAnalysis` les applique une fois par sortie terminée, en tâche de fond, et range le
+  sortie interpolées ; `SegmentCutter` : découpe un morceau de sortie entre deux distances et le mesure).
+  `RideAnalysis` les applique une fois par sortie terminée, en tâche de fond, et range le
   résultat en base (`best_efforts`, `segment_efforts`) ; chaque sortie retient la version de l'analyse reçue
   (`analysisVersion`) : augmenter `RideAnalysis.VERSION` fait reprendre toutes les sorties au lancement suivant.
   Un segment (`SegmentRepository`) est un morceau de sortie choisi sur le profil d'altitude ; à sa création il
-  est cherché dans toutes les sorties dont l'emprise le contient. Les écrans (`ui/stats`, `ui/segments`) ne font
-  que mettre en forme (`buildStats`, `segmentRows`, `effortRows`).
+  est cherché dans toutes les sorties dont l'emprise le contient. L'écran de création et l'enregistrement du
+  segment passent par le même `SegmentCutter` : les chiffres annoncés sont ceux du segment créé. Les écrans
+  (`ui/stats`, `ui/segments`) ne font que mettre en forme (`buildStats`, `segmentRows`, `effortRows`).
 - **Sauvegarde** : `RideArchive` écrit toutes les sorties dans une archive ZIP de fichiers GPX (la balise `<src>`
   note l'origine de l'altitude) et relit une archive ou un GPX seul (`TrackImport.prepare` recalcule les vitesses,
   absentes d'un GPX ; une sortie déjà présente, à une minute près, n'est pas ajoutée deux fois).

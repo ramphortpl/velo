@@ -5,12 +5,10 @@ import fr.velogo.app.data.db.SegmentEffortEntity
 import fr.velogo.app.data.db.SegmentEntity
 import fr.velogo.app.data.db.VeloGoDatabase
 import fr.velogo.core.geo.BoundingBox
-import fr.velogo.core.geo.Geo
-import fr.velogo.core.geo.LatLon
 import fr.velogo.core.geo.Polyline
 import fr.velogo.core.geo.Simplify
 import fr.velogo.core.ride.AltitudeSource
-import fr.velogo.core.ride.RideAnalyzer
+import fr.velogo.core.segments.SegmentCutter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -32,31 +30,28 @@ class SegmentRepository(private val db: VeloGoDatabase, private val rides: RideR
 
     /**
      * Crée un segment à partir d'un morceau de sortie, entre les distances [fromM] et [toM] depuis le départ.
-     * Renvoie son identifiant, ou null si ce morceau est trop court pour faire un segment.
+     * Renvoie son identifiant, ou null si ce morceau est trop court pour faire un segment. Ses mesures sont
+     * celles que [SegmentCutter] annonce pour ce morceau : l'écran de création affiche donc les mêmes.
      */
     suspend fun create(name: String, rideId: Long, fromM: Double, toM: Double, nowMs: Long = System.currentTimeMillis()): Long? {
         val ride = rides.ride(rideId) ?: return null
         val points = rides.points(rideId)
         val built = withContext(Dispatchers.Default) {
-            val distances = RideAnalyzer.cumulativeDistances(points)
-            val first = distances.indexOfFirst { it >= fromM }.coerceAtLeast(0)
-            val last = distances.indexOfLast { it <= toM }
-            if (last - first < 1) return@withContext null
-            val part = points.subList(first, last + 1)
-            val line = Simplify.simplify(part.map { LatLon(it.lat, it.lon) }, SIMPLIFY_M)
-            val length = Geo.lengthM(line)
-            val box = BoundingBox.of(line)
-            if (length < MIN_LENGTH_M || box == null) return@withContext null
-            // Le dénivelé du segment est compté comme celui de la sortie dont il vient (même origine d'altitude).
+            // Altitude et dénivelé comptés comme ceux de la sortie dont le segment vient (même origine d'altitude).
             val source = if (ride.altitudeSource == RideEntity.ALTITUDE_GNSS) AltitudeSource.GNSS else AltitudeSource.TERRAIN
-            val smoothed = RideAnalyzer.smoothedAltitudes(part, RideAnalyzer.cumulativeDistances(part), source.slopeWindowM)
+            val cutter = SegmentCutter(points, source)
+            val measures = cutter.measure(fromM, toM) ?: return@withContext null
+            if (measures.lengthM < MIN_LENGTH_M) return@withContext null
+            val line = Simplify.simplify(cutter.line(fromM, toM), SIMPLIFY_M)
+            val box = BoundingBox.of(line)
+            if (line.size < 2 || box == null) return@withContext null
             SegmentEntity(
                 name = name.trim().ifEmpty { "Segment" },
                 createdAtMs = nowMs,
-                distanceM = length,
-                ascentM = RideAnalyzer.summarize(part, source).ascentM,
-                startAltitudeM = smoothed.firstOrNull { it != null },
-                endAltitudeM = smoothed.lastOrNull { it != null },
+                distanceM = measures.lengthM,
+                ascentM = measures.ascentM,
+                startAltitudeM = measures.startAltitudeM,
+                endAltitudeM = measures.endAltitudeM,
                 points = Polyline.encode(line),
                 minLat = box.minLat, minLon = box.minLon, maxLat = box.maxLat, maxLon = box.maxLon,
             )

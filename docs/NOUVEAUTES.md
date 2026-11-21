@@ -13,6 +13,8 @@
 - **Segments personnels** : dans une sortie, « Créer un segment » permet de choisir un bout de route sur le profil
   d'altitude (une côte, une ligne droite, ton tour habituel). VeloGo retrouve ensuite ce segment dans toutes tes
   sorties, passées et à venir, chronomètre chaque passage et les classe : record, 2e temps, 3e temps…
+  Le segment commence et finit exactement là où tu places ses deux bouts, et sa longueur, son dénivelé et sa
+  pente sont ceux annoncés avant de le créer.
 - **Dans le détail d'une sortie** : ses passages sur tes segments avec leur rang, et ses records éventuels.
 - **En tête de l'historique** : le résumé de la semaine en cours.
 - **Mes données** (Réglages) : **sauvegarde de toutes les sorties** dans une archive ZIP de fichiers GPX, et
