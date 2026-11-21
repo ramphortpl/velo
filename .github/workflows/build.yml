@@ -17,6 +17,14 @@ concurrency:
   group: apk-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Ce que contient la mémoire des téléchargements : Gradle, ses extensions, les bibliothèques et les images
+  # Android des tests. La liste doit être la même à la lecture et à l'écriture.
+  MEMOIRE_CHEMINS: |
+    ~/.gradle/caches
+    ~/.gradle/wrapper
+    ~/.m2/repository/org/robolectric
+
 jobs:
   apk:
     name: Tests et APK signé
@@ -30,7 +38,11 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # La mémoire des téléchargements est gérée plus bas, à la main : celle de cette action n'écrit que depuis la
+      # branche principale, et on veut choisir ce qui y entre et à quel moment.
       - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-disabled: true
 
       - name: SDK Android (plateforme 37.1)
         run: |
@@ -76,17 +88,39 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # Une seconde tentative si le téléchargement des outils échoue (panne passagère d'un dépôt de bibliothèques).
+      # Ce qu'une fabrication précédente a déjà téléchargé. Sans cela tout dépend, à chaque fois, de dépôts de
+      # bibliothèques qui refusent parfois de répondre aux machines de GitHub (« Plugin … was not found »).
+      - name: Mémoire des téléchargements
+        id: memoire
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.MEMOIRE_CHEMINS }}
+          key: telechargements-v1-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
+
       - name: Outils de construction
-        run: |
-          ./gradlew help --console=plain -q || {
-            echo "::warning::Téléchargement des outils de construction en échec : nouvelle tentative dans 30 secondes."
-            sleep 30
-            ./gradlew help --console=plain -q
-          }
+        run: bash outils/ci_outils_de_construction.sh
 
       - name: Tests et vérifications
         run: ./gradlew test lintDebug --console=plain
+
+      # La mémoire est écrite ici, par ce job seulement et avant que Gradle ne reçoive le mot de passe de la clé :
+      # elle ne peut donc pas le contenir (sur un dépôt public, elle peut être relue par d'autres). Elle n'est
+      # réécrite que si les versions des outils ou des bibliothèques ont changé.
+      - name: Préparer la mémoire des téléchargements
+        if: steps.memoire.outputs.cache-hit != 'true'
+        run: |
+          ./gradlew --stop
+          # Les résultats de compilation n'ont pas leur place dans cette mémoire : seulement les téléchargements.
+          rm -rf ~/.gradle/caches/build-cache-1
+          du -sh ~/.gradle/caches ~/.gradle/wrapper ~/.m2/repository/org/robolectric 2>/dev/null || true
+
+      - name: Garder les téléchargements en mémoire
+        if: steps.memoire.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.MEMOIRE_CHEMINS }}
+          key: ${{ steps.memoire.outputs.cache-primary-key }}
 
       - name: Numéro de version
         id: version
@@ -157,7 +191,11 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # La mémoire des téléchargements est gérée plus bas, à la main : celle de cette action n'écrit que depuis la
+      # branche principale, et on veut choisir ce qui y entre et à quel moment.
       - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-disabled: true
 
       - name: SDK Android (plateforme 37.1)
         run: |
@@ -167,14 +205,15 @@ jobs:
             "$SDKMANAGER" "platforms;android-37.1" "build-tools;37.0.0" | grep -v '^\[' || true
           fi
 
-      # Une seconde tentative si le téléchargement des outils échoue (panne passagère d'un dépôt de bibliothèques).
+      # Lecture seule : c'est l'autre job qui écrit la mémoire, une fois ses tests passés.
+      - name: Mémoire des téléchargements
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.MEMOIRE_CHEMINS }}
+          key: telechargements-v1-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
+
       - name: Outils de construction
-        run: |
-          ./gradlew help --console=plain -q || {
-            echo "::warning::Téléchargement des outils de construction en échec : nouvelle tentative dans 30 secondes."
-            sleep 30
-            ./gradlew help --console=plain -q
-          }
+        run: bash outils/ci_outils_de_construction.sh
 
       - name: APK d'essai (même code minifié que la version publiée)
         run: ./gradlew :app:assembleSmoke --console=plain -Pvelogo.buildNumber=${{ github.run_number }}

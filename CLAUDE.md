@@ -241,6 +241,16 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   `1e80bd8e20912aaae8f62310cff7fd004f58e605a265d6b193161fb29193768b` (signature v2 seule, normal avec minSdk 26).
 - L'appli cherche ses mises à jour dans la liste des Releases (`UpdateChecker`) : étiquettes `v1.2.3` avec un
   fichier `.apk`, le plus grand numéro de build l'emporte ; la Release `cartes` est ignorée.
+- **Mémoire des téléchargements** (`actions/cache`, clé = versions des outils et bibliothèques) : Gradle, ses
+  extensions, les bibliothèques et l'image Android de Robolectric sont gardés d'une fabrication à l'autre. Sans
+  elle, deux fabrications (n° 10 et n° 12, le 21/11/2026) ont échoué avant les tests sur « Plugin
+  org.jetbrains.kotlin.jvm … was not found » : un dépôt de bibliothèques ne répondait pas à la machine de GitHub
+  (Gradle ne dit pas lequel sans `--stacktrace`). Règle de sécurité : seul le job `apk` l'écrit, **avant** l'étape
+  qui passe le mot de passe de la clé à Gradle, et sans le cache de compilation ; le job `essai` ne fait que la
+  lire. La mémoire de l'action `setup-gradle` est coupée (`cache-disabled`) : elle n'écrit que depuis `main`, et
+  sa version par défaut est sous licence propriétaire (gratuite pour un dépôt public).
+- `outils/ci_outils_de_construction.sh` : premier appel à Gradle, trois tentatives (30 s puis 90 s d'attente),
+  la dernière avec la cause exacte de l'échec.
 
 ## Fabrication des cartes hors ligne
 
