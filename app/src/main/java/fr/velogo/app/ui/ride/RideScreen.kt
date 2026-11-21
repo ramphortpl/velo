@@ -355,7 +355,8 @@ fun RideScreen(
             fitPlannedRoutes(true)
         }
     }
-    LaunchedEffect(planner.open) { if (planner.open) mode = RideMode.MAP }
+    // Un itinéraire qu'on prépare ou qu'on rouvre (depuis l'onglet « Trajets », par exemple) se regarde sur la carte.
+    LaunchedEffect(planner.open, planner.options) { if (planner.open) mode = RideMode.MAP }
     // Guidage : la carte passe en vue de guidage (dans le sens de la marche, inclinée) et suit la position.
     LaunchedEffect(guidance != null) { mapState.setNavigation(guidance != null) }
     val navTopPx = with(fitDensity) {

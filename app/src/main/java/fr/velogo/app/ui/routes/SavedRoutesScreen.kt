@@ -204,7 +204,7 @@ fun SavedRoutesScreen(onShowMap: () -> Unit, contentPadding: PaddingValues) {
         AlertDialog(
             onDismissRequest = { replacingGuidance = null },
             title = { Text("Un guidage est en cours") },
-            text = { Text("Ouvrir ce trajet arrête le guidage en cours. L'enregistrement de ta sortie, lui, continue.") },
+            text = { Text("Ouvrir ce trajet arrête le guidage en cours. Si une sortie est en cours d'enregistrement, elle continue.") },
             confirmButton = {
                 TextButton(onClick = {
                     replacingGuidance = null

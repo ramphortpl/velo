@@ -107,9 +107,10 @@ fun GuidanceBanner(guidance: GuidanceState, onStop: () -> Unit, modifier: Modifi
             icon = R.drawable.ic_alt_route
             headline = "Hors itinéraire"
             detail = when {
-                guidance.rerouting -> "Nouvel itinéraire en cours de calcul…"
+                // Des phrases courtes : sur une seule ligne, les plus longues étaient coupées au guidon.
+                guidance.rerouting -> "Calcul d'un nouvel itinéraire…"
                 guidance.followOnly -> "Rejoins le tracé (à ${maneuverDistance(nav.offsetM)})"
-                else -> "Rejoins le tracé ou attends le recalcul"
+                else -> "Je recalcule si tu continues"
             }
         }
         next != null && next.maneuver != Maneuver.ARRIVE -> {
