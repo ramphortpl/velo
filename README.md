@@ -4,6 +4,8 @@ Appli Android de vélo pour un usage personnel, en France : enregistrement GPS d
 guidage, cartes hors ligne, météo et statistiques. Gratuite, sans compte, sans publicité ; les données restent sur
 le téléphone.
 
+Créé par **Paul-Louis Ramphort**.
+
 **[Télécharger la dernière version](https://github.com/ramphortpl/velo/releases/latest)** ·
 [Nouveautés de chaque version](https://github.com/ramphortpl/velo/blob/claude/android-bike-app-france-bjp48m/docs/NOUVEAUTES.md)
 
