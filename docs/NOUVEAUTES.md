@@ -24,6 +24,8 @@
   distance, la durée et le dénivelé. Un appui rouvre le trajet sur la carte, prêt à être suivi (même sans
   réseau) ; le menu « ⋮ » de chaque ligne permet de le partager en affiche, de le renommer ou de le supprimer.
   Pour enregistrer un itinéraire : « Détails », puis « Enregistrer cet itinéraire ».
+- **Nouveau logo** : l'icône de l'appli, l'écran de démarrage, l'affiche à partager, les notifications et l'écran
+  « Sources et licences » portent le nouveau logo VeloGo (le vélo dessiné par les lettres « oGo »).
 - Correction : après le calcul d'un itinéraire, ta position restait affichée dans le haut de l'écran pendant le
   guidage. Elle est maintenant toujours là où on l'attend.
 - Correction : un trajet enregistré puis rouvert annonce exactement la distance affichée dans la liste (elle

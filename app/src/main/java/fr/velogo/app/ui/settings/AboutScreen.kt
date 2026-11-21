@@ -1,11 +1,13 @@
 package fr.velogo.app.ui.settings
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -23,6 +25,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
@@ -103,6 +106,14 @@ fun AboutScreen(onBack: () -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            // Le logo, toujours sur une plaque blanche : son vert foncé ne se lirait pas sur le thème sombre.
+            Surface(shape = RoundedCornerShape(18.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
+                Image(
+                    painterResource(R.drawable.logo_velogo),
+                    contentDescription = "Logo de VeloGo",
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp).height(104.dp),
+                )
+            }
             Text(
                 "VeloGo ${BuildConfig.VERSION_NAME} — appli personnelle, gratuite et sans compte. Tes sorties restent sur ton téléphone.",
                 style = MaterialTheme.typography.bodyLarge,

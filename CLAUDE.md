@@ -39,7 +39,7 @@ d'adresses IGN), `weather/` (météo Open-Meteo : client, mémoire, alerte pluie
 Releases GitHub).
 
 Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetiler, contours des régions, style),
-`outils/` (essai sur émulateur, image d'aperçu et page d'accueil du dépôt), `.github/workflows/` (`build.yml` pour l'APK, `cartes.yml` pour les cartes).
+`outils/` (essai sur émulateur, logo, image d'aperçu et page d'accueil du dépôt), `.github/workflows/` (`build.yml` pour l'APK, `cartes.yml` pour les cartes).
 
 ## Architecture de l'appli
 
@@ -127,6 +127,8 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
   `SegmentsContent`, `SegmentDetailBody`, `SegmentEditor`) rendu en image par `ScreenshotTest`. `RoutePosterTest` dessine l'affiche
   pour de bon et range ses images au même endroit (`affiche*.png`).
   Attention : une animation sans fin (barre de progression indéterminée) bloque la capture.
+  `LogoTest` charge l'icône adaptative, l'icône de notification et le logo comme le fait Android, vérifie que
+  le logo tient dans la zone toujours visible et range leurs images au même endroit (`icone_*.png`).
   `SavedRoutesContentTest` pilote l'onglet « Trajets » au doigt (`createComposeRule`). Limite constatée : une
   fenêtre (`AlertDialog`) qui contient un champ de saisie n'est jamais « au repos » pour cet outil sous
   Robolectric, même vide de tout code de l'appli ; ce genre de fenêtre se vérifie donc sur l'émulateur.
@@ -151,7 +153,8 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
 3. `routing` : itinéraires calculés pour de vrai autour de Corte avec `src/test/resources/dalles` (80 Ko de
    données BRouter réelles) : profils, étapes, évitement des grands axes, consignes, données manquantes.
 4. CI : le job « Essai sur émulateur » installe l'APK `smoke` sur un émulateur Android 15 et déroule
-   `outils/essai_emulateur.py` : sortie simulée à Corte (positions envoyées par le fournisseur de test d'Android,
+   `outils/essai_emulateur.py` : icône de l'appli sur sa fiche des réglages d'Android (le logo y est reconnu à
+   ses trois couleurs), sortie simulée à Corte (positions envoyées par le fournisseur de test d'Android,
    plus fiable que le GPS simulé de l'émulateur), distance affichée, pause automatique, historique, fonds de carte,
    téléchargement de la carte de Corse, itinéraire vers une adresse (panneau replié puis déplié, enregistrement de
    l'itinéraire, affiche à partager), guidage (flèche au départ, vue de guidage en roulant, « Recentrer » après
@@ -274,6 +277,23 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
 - **R8** : la release est minifiée. Les clés de navigation (`*Key`) sont gardées explicitement.
 - **Identité** : vert émeraude + bleu nuit, police Barlow Condensed (OFL) pour les chiffres, icônes Material
   Symbols (Apache 2.0). Thème « plein soleil » noir sur blanc pour l'écran guidon.
+- **Logo** : fourni par l'auteur le 21/11/2026, en deux images gardées telles quelles dans `docs/logo/`
+  (`logo-source.png` : le mot « VeloGo » dont « oGo » dessine un vélo, un repère de carte et un trait rose, sur
+  fond blanc ; `icone-source.png` : le même sur un carré arrondi « verre » au décor de carte). Trois couleurs :
+  vert foncé `#014A38`, vert vif `#01CD95`, rose `#E70180` (celui de la trace sur la carte). `outils/logo.py`
+  fabrique tout ce qui le montre : logo détouré (`logo_velogo`, toujours posé sur une plaque blanche dans
+  l'appli, car son vert foncé ne se lit pas sur fond sombre), icône adaptative, écran de démarrage, icône de
+  notification, images pour GitHub. Ne jamais retoucher ces fichiers à la main : changer les images d'origine ou
+  l'outil, puis relancer.
+- **Icône adaptative en deux couches** plutôt que l'image de l'icône telle quelle : un téléphone découpe l'icône
+  à sa forme (carré très arrondi chez Samsung, rond sur un Pixel), et le carré arrondi dessiné dans l'image
+  aurait laissé des coins blancs. Le fond est le décor de carte, étendu à toute la couche et débarrassé du logo
+  qui y était peint ; le premier plan est le logo net, tenu dans le rond de 66 dp que toutes les formes laissent
+  voir (62 dp de large sur les 72 visibles). La couche monochrome (icônes « à thème » d'Android 13+) est sa
+  silhouette. L'écran de démarrage montre le même premier plan en grand (`splash_logo`) sur fond clair, même
+  en thème sombre.
+- **Icône de notification** : le vélo du logo (roues, « G », cadre) en silhouette blanche ; Android n'en garde
+  que l'opacité, le logo entier n'y serait qu'une tache.
 
 ## Signature et livraison
 
@@ -323,6 +343,9 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
 - `main` reste un ancêtre de la branche de travail (son commit de README y a été fusionné en gardant le README de
   la branche) : le jour de la fusion, ce sera une simple avance rapide, et le README d'origine, aux liens
   relatifs, remplacera la copie.
+- Le logo en tête du README est `docs/logo/icone.png` (coins transparents : lisible en thème clair comme en
+  thème sombre de GitHub). `docs/logo/partage.png` (1280 × 640) est prévue pour l'aperçu de partage du dépôt,
+  que seul le propriétaire peut déposer (Settings > General > Social preview).
 - `docs/apercu.jpg` (neuf écrans) se refait avec `python3 outils/apercu_readme.py <captures> docs/apercu.jpg` à
   partir de l'artefact `essai-emulateur` d'une fabrication réussie : ce sont de vrais écrans, pas des maquettes.
   La capture de la météo manque dans bien des essais (quota d'Open-Meteo sur les machines de GitHub) : on donne

@@ -12,14 +12,15 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.graphics.drawable.BitmapDrawable
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 import androidx.core.graphics.withTranslation
-import androidx.core.graphics.drawable.DrawableCompat
 import fr.velogo.app.R
 import fr.velogo.core.format.Formats
 import fr.velogo.core.geo.LatLon
@@ -27,6 +28,7 @@ import fr.velogo.core.nav.Route
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /** Ce que l'affiche d'un itinéraire annonce, en plus du tracé. */
 data class PosterText(
@@ -66,6 +68,8 @@ object RoutePoster {
     private const val INK_FAINT = 0xFF66756E.toInt()
     private const val PAPER = 0xFFFFFFFF.toInt()
     private const val BRAND = 0xFF006B54.toInt()
+    /** Hauteur du logo sur sa plaque, en points de l'affiche. */
+    private const val BRAND_LOGO_HEIGHT = 100
     private const val ROUTE = 0xFF1565C0.toInt()
     private const val START = 0xFF12A150.toInt()
     private const val VIA = 0xFFEF6C00.toInt()
@@ -79,7 +83,7 @@ object RoutePoster {
         val condensed = font(context, R.font.barlow_condensed_semibold, Typeface.DEFAULT_BOLD)
 
         drawMap(canvas, route, map)
-        drawBrand(context, canvas, condensedBold)
+        drawBrand(context, canvas)
         if (map != null && text.attribution.isNotBlank()) drawAttribution(canvas, text.attribution)
         drawCard(canvas, route, text, condensedBold, condensed)
         return bitmap
@@ -192,23 +196,35 @@ object RoutePoster {
         return { p -> PointF(left + ((p.lon - minLon) * k * scale).toFloat(), top + ((maxLat - p.lat) * scale).toFloat()) }
     }
 
-    private fun drawBrand(context: Context, canvas: Canvas, typeface: Typeface) {
-        val label = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { this.typeface = typeface; textSize = 46f; color = BRAND }
-        val name = "VeloGo"
-        val icon = 44
-        val width = 26f + icon + 12f + label.measureText(name) + 30f
-        val box = RectF(32f, 32f, 32f + width, 32f + 76f)
+    /** Le logo de l'appli sur une plaque blanche, en haut à gauche de la carte. */
+    private fun drawBrand(context: Context, canvas: Canvas) {
+        val source = (ResourcesCompat.getDrawable(context.resources, R.drawable.logo_velogo, context.theme) as? BitmapDrawable)?.bitmap ?: return
+        val height = BRAND_LOGO_HEIGHT
+        val width = (height.toFloat() * source.width / source.height).roundToInt()
+        val box = RectF(32f, 32f, 32f + width + 2 * 22f, 32f + height + 2 * 12f)
         val plate = Paint(Paint.ANTI_ALIAS_FLAG)
-        canvas.drawRoundRect(RectF(box.left, box.top + 3f, box.right, box.bottom + 3f), 38f, 38f, plate.apply { color = 0x26000000 })
-        canvas.drawRoundRect(box, 38f, 38f, plate.apply { color = Color.WHITE })
-        ResourcesCompat.getDrawable(context.resources, R.drawable.ic_directions_bike_filled, context.theme)?.mutate()?.let { drawable ->
-            DrawableCompat.setTint(drawable, BRAND)
-            val left = (box.left + 26f).toInt()
-            val top = (box.centerY() - icon / 2f).toInt()
-            drawable.setBounds(left, top, left + icon, top + icon)
-            drawable.draw(canvas)
+        canvas.drawRoundRect(RectF(box.left, box.top + 3f, box.right, box.bottom + 3f), 30f, 30f, plate.apply { color = 0x26000000 })
+        canvas.drawRoundRect(box, 30f, 30f, plate.apply { color = Color.WHITE })
+        val logo = shrink(source, width, height)
+        canvas.drawBitmap(logo, box.left + 22f, box.top + 12f, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+        if (logo !== source) logo.recycle()
+    }
+
+    /**
+     * Réduit une image sans la crêper : de moitié en moitié tant que c'est possible, puis à la taille voulue.
+     * Réduite d'un seul coup, elle ne garderait qu'un point sur quatre ou cinq et ses bords deviendraient dentelés.
+     */
+    private fun shrink(source: Bitmap, width: Int, height: Int): Bitmap {
+        var current = source
+        while (current.width / 2 >= width && current.height / 2 >= height) {
+            val half = current.scale(current.width / 2, current.height / 2)
+            if (current !== source) current.recycle()
+            current = half
         }
-        canvas.drawText(name, box.left + 26f + icon + 12f, box.centerY() - (label.ascent() + label.descent()) / 2f, label)
+        if (current.width == width && current.height == height) return current
+        val exact = current.scale(width, height)
+        if (current !== source && current !== exact) current.recycle()
+        return exact
     }
 
     private fun drawAttribution(canvas: Canvas, attribution: String) {

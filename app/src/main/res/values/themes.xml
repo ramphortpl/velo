@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Thème de démarrage : écran d'accueil aux couleurs de VeloGo, puis thème de l'appli (tout le reste est en Compose). -->
+    <!--
+      Thème de démarrage : le logo de VeloGo sur fond clair, puis thème de l'appli (tout le reste est en Compose).
+      Le fond reste clair même en thème sombre : le vert foncé du logo ne se lirait pas sur du noir.
+    -->
     <style name="Theme.VeloGo.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/velogo_night</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
         <item name="postSplashScreenTheme">@style/Theme.VeloGo</item>
     </style>
 

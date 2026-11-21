@@ -32,6 +32,7 @@ import fr.velogo.app.ui.history.RideDetailBody
 import fr.velogo.app.ui.history.RideTrackData
 import fr.velogo.app.ui.ride.RideChrome
 import fr.velogo.app.ui.ride.RideMode
+import fr.velogo.app.ui.settings.AboutScreen
 import fr.velogo.app.ui.settings.ArchiveState
 import fr.velogo.app.ui.settings.SettingsActions
 import fr.velogo.app.ui.settings.SettingsContent
@@ -456,6 +457,17 @@ class ScreenshotTest {
         override fun setWifiOnly(value: Boolean) = Unit
         override fun setStorage(index: Int) = Unit
         override fun useOfflineLayer() = Unit
+    }
+
+    /** « Sources et licences » : le logo en tête, sur sa plaque blanche, en clair comme en sombre. */
+    @Test
+    fun sources_et_licences() = captureRoboImage("$OUT/sources_et_licences.png") {
+        VeloGoTheme(mode = ThemeMode.LIGHT) { AboutScreen(onBack = {}) }
+    }
+
+    @Test
+    fun sources_et_licences_sombre() = captureRoboImage("$OUT/sources_et_licences_sombre.png") {
+        VeloGoTheme(mode = ThemeMode.DARK) { AboutScreen(onBack = {}) }
     }
 
     // --- Itinéraires et guidage -------------------------------------------------------------------------------

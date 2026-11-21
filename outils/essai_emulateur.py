@@ -10,6 +10,7 @@ Usage : python3 outils/essai_emulateur.py chemin/vers/app.apk
 import math
 import os
 import re
+import struct
 import subprocess
 import sys
 import time
@@ -73,6 +74,41 @@ def screen():
 def bounds_of(node):
     match = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
     return tuple(int(v) for v in match.groups()) if match else None
+
+
+def pixels():
+    """L'écran, point par point : (largeur, hauteur, octets rouge-vert-bleu-opacité), ou None s'il n'a pas pu être lu.
+
+    Sans l'option « -p », screencap renvoie les points tels quels, derrière un court en-tête : pas besoin de
+    savoir lire une image PNG."""
+    raw = run(["adb", "exec-out", "screencap"], timeout=60).stdout
+    if len(raw) < 16:
+        return None
+    width, height = struct.unpack("<II", raw[:8])
+    header = len(raw) - width * height * 4
+    if width <= 0 or height <= 0 or header not in (12, 16):
+        return None
+    return width, height, raw[header:]
+
+
+def logo_colours(top=0.0, bottom=1.0):
+    """Compte, dans une bande de l'écran, les points aux trois couleurs du logo : (vert foncé, vert vif, rose)."""
+    screen_pixels = pixels()
+    if screen_pixels is None:
+        return None
+    width, height, data = screen_pixels
+    dark = bright = pink = 0
+    for y in range(int(height * top), int(height * bottom), 2):
+        row = y * width * 4
+        for x in range(0, width, 2):
+            r, g, b = data[row + x * 4], data[row + x * 4 + 1], data[row + x * 4 + 2]
+            if r < 40 and 45 <= g <= 115 and 25 <= b <= 95:
+                dark += 1
+            elif r < 60 and g > 165 and 100 <= b <= 195:
+                bright += 1
+            elif r > 195 and g < 75 and 80 <= b <= 180:
+                pink += 1
+    return dark, bright, pink
 
 
 def nodes():
@@ -244,6 +280,30 @@ class Gps:
             debut = time.time()
             self.send()
             time.sleep(max(0.0, 1.0 - (time.time() - debut)))
+
+
+def app_icon():
+    """La fiche de l'appli dans les réglages d'Android : l'icône y est découpée comme sur l'écran d'accueil.
+    Elle doit montrer le logo, reconnu à ses trois couleurs."""
+    log("icône de l'appli (fiche des réglages d'Android)")
+    shell(f"am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:{PACKAGE}")
+    if not wait_for("VeloGo", 20, exact=False):
+        shot("fiche_de_l_appli_absente")
+        log("la fiche de l'appli ne s'est pas ouverte : icône non vérifiée")
+        shell("am force-stop com.android.settings")
+        return
+    time.sleep(2)
+    shot("icone_de_l_appli")
+    colours = logo_colours(0.0, 0.6)
+    if colours is None:
+        log("écran illisible : icône non vérifiée")
+    else:
+        dark, bright, pink = colours
+        log(f"couleurs du logo dans l'icône : vert foncé {dark}, vert vif {bright}, rose {pink} (un point sur quatre)")
+        if dark < 40 or bright < 15 or pink < 8:
+            fail("l'icône de l'appli ne montre pas le logo (ses trois couleurs sont absentes de la fiche de l'appli)")
+    shell("am force-stop com.android.settings")
+    time.sleep(1)
 
 
 def read_km():
@@ -689,6 +749,7 @@ def main():
         return
     adb("logcat", "-c")
     gps.send()
+    app_icon()
 
     log("démarrage de l'appli")
     shell(f"am start -W -n {PACKAGE}/{ACTIVITY}", timeout=120)

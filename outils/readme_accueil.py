@@ -35,6 +35,18 @@ def main():
         return f"[{libelle}](https://github.com/{DEPOT}/blob/{nom}/{cible})"
 
     texte, liens = re.subn(r"(!?)\[([^\]]*)\]\(([^)\s]+)\)", absolu, texte)
+
+    # Les images posées en HTML (le logo, centré et à taille fixe) : même traitement pour leur adresse.
+    def image_html(balise):
+        cible = balise.group(2)
+        if re.match(r"[a-z]+://|#", cible):
+            return balise.group(0)
+        if not os.path.exists(os.path.join(RACINE, cible)):
+            sys.exit(f"image absente : {cible}")
+        return f'{balise.group(1)}https://raw.githubusercontent.com/{DEPOT}/refs/heads/{nom}/{cible}{balise.group(3)}'
+
+    texte, images = re.subn(r'(<img\b[^>]*?\bsrc=")([^"]+)(")', image_html, texte)
+    liens += images
     note = (
         f"> Le code de l'appli se trouve pour l'instant sur la branche\n"
         f"> [`{nom}`](https://github.com/{DEPOT}/tree/{nom}) ; la branche `main` ne contient que cette page.\n\n"
