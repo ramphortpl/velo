@@ -4,8 +4,12 @@
 Les captures viennent de l'artefact « essai-emulateur » d'une fabrication réussie (onglet Actions de GitHub) :
 ce sont de vrais écrans de l'appli, pris pendant la sortie simulée à Corte.
 
-Usage : python3 outils/apercu_readme.py dossier_des_captures docs/apercu.jpg
+Usage : python3 outils/apercu_readme.py dossier_des_captures [autre_dossier…] docs/apercu.jpg
 (demande la bibliothèque Pillow : pip install pillow)
+
+Chaque écran est pris dans le premier dossier qui le contient. C'est utile pour la météo : le service limite les
+demandes des machines de GitHub, et sa capture manque dans bien des essais ; on donne alors en second le dossier
+d'un essai plus ancien où elle existe.
 """
 import glob
 import os
@@ -48,19 +52,22 @@ def police(taille):
     return ImageFont.load_default()
 
 
-def capture(dossier, nom):
-    """La capture « NN_<nom>.png » du dossier (le numéro d'ordre dépend du déroulé de l'essai)."""
-    trouvees = sorted(glob.glob(os.path.join(dossier, f"[0-9][0-9]_{nom}.png")))
-    if not trouvees:
-        sys.exit(f"capture introuvable : ??_{nom}.png dans {dossier}")
-    return Image.open(trouvees[0]).convert("RGB")
+def capture(dossiers, nom):
+    """La capture « NN_<nom>.png » (le numéro d'ordre dépend du déroulé de l'essai), dans le premier dossier qui l'a."""
+    for rang, dossier in enumerate(dossiers):
+        trouvees = sorted(glob.glob(os.path.join(dossier, f"[0-9][0-9]_{nom}.png")))
+        if trouvees:
+            if rang:
+                print(f"« {nom} » vient de {dossier}")
+            return Image.open(trouvees[0]).convert("RGB")
+    sys.exit(f"capture introuvable : ??_{nom}.png dans {', '.join(dossiers)}")
 
 
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) < 3:
         sys.exit(__doc__)
-    dossier, sortie = sys.argv[1], sys.argv[2]
-    images = [capture(dossier, nom) for _, nom in ECRANS]
+    dossiers, sortie = sys.argv[1:-1], sys.argv[-1]
+    images = [capture(dossiers, nom) for _, nom in ECRANS]
     hauteur = round(LARGEUR * images[0].height / images[0].width)
     lignes = (len(ECRANS) + COLONNES - 1) // COLONNES
     total = Image.new(

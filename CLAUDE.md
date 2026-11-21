@@ -325,6 +325,9 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   relatifs, remplacera la copie.
 - `docs/apercu.jpg` (neuf écrans) se refait avec `python3 outils/apercu_readme.py <captures> docs/apercu.jpg` à
   partir de l'artefact `essai-emulateur` d'une fabrication réussie : ce sont de vrais écrans, pas des maquettes.
+  La capture de la météo manque dans bien des essais (quota d'Open-Meteo sur les machines de GitHub) : on donne
+  alors un second dossier de captures, plus ancien, où elle existe. L'image actuelle vient de la fabrication
+  n° 19 (version 0.6.19).
 
 ## Fabrication des cartes hors ligne
 
