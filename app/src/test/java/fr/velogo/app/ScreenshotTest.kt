@@ -773,6 +773,14 @@ class ScreenshotTest {
         content = weatherSheet(WeatherSheetState(nowMs = weatherNow, report = sampleReport(), bearingDeg = 280.0)),
     )
 
+    /** Une phrase de vent longue (« de sud-ouest », avec des rafales) : elle passe à la ligne après la virgule. */
+    @Test
+    fun meteo_vent_long() {
+        val report = sampleReport(rain = false)
+        val windy = report.copy(current = report.current!!.copy(windKmh = 8.0, windFromDeg = 225.0, gustKmh = 24.0))
+        captureRoboImage("$OUT/meteo_vent_long.png", content = weatherSheet(WeatherSheetState(nowMs = weatherNow, report = windy)))
+    }
+
     @Test
     fun meteo_sombre_sans_pluie() = captureRoboImage(
         "$OUT/meteo_sombre.png",

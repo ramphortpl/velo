@@ -51,13 +51,20 @@ fun windLine(point: WeatherPoint, side: Wind.Side?): String? {
     }
 }
 
-/** Le vent en toutes lettres : « 14 km/h de nord-ouest, rafales 31 km/h ». */
+/**
+ * « km/h » qui reste entier et collé à son nombre quand la phrase passe à la ligne : une espace insécable devant,
+ * et un caractère invisible qui interdit la coupure après la barre (sans lui, l'écran affichait « 24 km/ » puis
+ * « h » sur la ligne suivante).
+ */
+private const val KMH = "\u00A0km/\u2060h"
+
+/** Le vent en toutes lettres : « 14 km/h de nord-ouest, rafales 31 km/h ». Trop longue, elle se coupe après la virgule. */
 fun windSentence(point: WeatherPoint): String? {
     val wind = point.windKmh ?: return null
     if (wind < 1.0) return "Pas de vent"
     val from = point.windFromDeg?.let { " " + Wind.origin(it) }.orEmpty()
-    val gusts = point.gustKmh?.takeIf { it >= wind + 8 }?.let { ", rafales ${it.roundToInt()} km/h" }.orEmpty()
-    return "${wind.roundToInt()} km/h$from$gusts"
+    val gusts = point.gustKmh?.takeIf { it >= wind + 8 }?.let { ", rafales\u00A0${it.roundToInt()}$KMH" }.orEmpty()
+    return "${wind.roundToInt()}$KMH$from$gusts"
 }
 
 /** Où se trouve une ligne de la météo du trajet : « Départ », « km 16 », « Arrivée ». */

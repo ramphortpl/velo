@@ -26,6 +26,11 @@
   Pour enregistrer un itinéraire : « Détails », puis « Enregistrer cet itinéraire ».
 - Correction : après le calcul d'un itinéraire, ta position restait affichée dans le haut de l'écran pendant le
   guidage. Elle est maintenant toujours là où on l'attend.
+- Correction : un trajet enregistré puis rouvert annonce exactement la distance affichée dans la liste (elle
+  pouvait différer de 100 m à l'arrondi).
+- Correction : hors itinéraire, la phrase du bandeau de guidage n'est plus coupée (« Je recalcule si tu
+  continues »).
+- Correction : sur l'écran météo, une longue ligne de vent ne coupe plus « km/h » en deux.
 
 ### À tester sur le téléphone
 
