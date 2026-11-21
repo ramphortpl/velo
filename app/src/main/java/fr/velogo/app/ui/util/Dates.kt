@@ -58,6 +58,30 @@ object Dates {
     /** Clé de regroupement par mois (année × 100 + mois). */
     fun monthKey(ms: Long): Int = at(ms).let { it.year * 100 + it.monthValue }
 
+    private val dayShortMonth = DateTimeFormatter.ofPattern("d MMM", Locale.FRANCE)
+    private val shortMonth = DateTimeFormatter.ofPattern("MMM", Locale.FRANCE)
+    private val longMonthYear = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.FRANCE)
+    private val dayLongMonthYear = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.FRANCE)
+
+    /** « 16 nov. » */
+    fun dayShortMonth(date: LocalDate): String = date.format(dayShortMonth)
+
+    /** « nov. » */
+    fun shortMonth(date: LocalDate): String = date.format(shortMonth)
+
+    /** « Novembre 2026 » */
+    fun monthYear(date: LocalDate): String = date.format(longMonthYear).replaceFirstChar { it.uppercase(Locale.FRANCE) }
+
+    /** La semaine qui commence le [monday] : « 16 au 22 novembre 2026 », « 30 novembre au 6 décembre 2026 ». */
+    fun weekRange(monday: LocalDate): String {
+        val sunday = monday.plusDays(6)
+        val from = if (monday.month == sunday.month) monday.dayOfMonth.toString() else monday.format(dayMonth)
+        return "$from au ${sunday.format(dayLongMonthYear)}"
+    }
+
+    /** « 20 novembre 2026 » */
+    fun longDay(ms: Long): String = at(ms).format(dayLongMonthYear)
+
     /** « 2026-11-20_14h05 » pour les noms de fichiers. */
     fun fileStamp(ms: Long): String = at(ms).format(fileStamp)
 }

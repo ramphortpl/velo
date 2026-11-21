@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -38,6 +39,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -45,11 +47,18 @@ import fr.velogo.app.AppContainer
 import fr.velogo.app.R
 import fr.velogo.app.data.db.RideEntity
 import fr.velogo.app.ui.components.TrackThumbnail
+import fr.velogo.app.ui.stats.summary
+import fr.velogo.app.ui.theme.LabelCapsStyle
 import fr.velogo.app.ui.theme.LocalRideColors
 import fr.velogo.app.ui.theme.NumberStyle
 import fr.velogo.app.ui.util.Dates
 import fr.velogo.app.ui.veloViewModel
 import fr.velogo.core.format.Formats
+import fr.velogo.core.stats.Period
+import fr.velogo.core.stats.PeriodTotals
+import fr.velogo.core.stats.RideStats
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -65,16 +74,24 @@ class HistoryViewModel(container: AppContainer) : ViewModel() {
 /** Liste des sorties, les plus récentes en premier, regroupées par mois. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun HistoryScreen(onOpenRide: (Long) -> Unit, contentPadding: PaddingValues) {
+fun HistoryScreen(onOpenRide: (Long) -> Unit, onOpenStats: () -> Unit, onOpenSegments: () -> Unit, contentPadding: PaddingValues) {
     val vm = veloViewModel { HistoryViewModel(it) }
     val rides by vm.rides.collectAsStateWithLifecycle()
-    HistoryContent(rides, onOpenRide, contentPadding)
+    HistoryContent(rides, onOpenRide, contentPadding, onOpenStats = onOpenStats, onOpenSegments = onOpenSegments)
 }
 
 /** Le contenu de l'écran, sans accès aux données : c'est lui qu'on vérifie en image. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun HistoryContent(rides: List<RideEntity>?, onOpenRide: (Long) -> Unit, contentPadding: PaddingValues) {
+fun HistoryContent(
+    rides: List<RideEntity>?,
+    onOpenRide: (Long) -> Unit,
+    contentPadding: PaddingValues,
+    onOpenStats: () -> Unit = {},
+    onOpenSegments: () -> Unit = {},
+    /** Le jour d'aujourd'hui : il fixe la semaine résumée en tête de liste. */
+    today: LocalDate = LocalDate.now(),
+) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     Scaffold(
@@ -88,17 +105,55 @@ fun HistoryContent(rides: List<RideEntity>?, onOpenRide: (Long) -> Unit, content
             list.isEmpty() -> EmptyHistory(Modifier.padding(inner).padding(contentPadding))
             else -> {
                 val groups = remember(list) { list.groupBy { Dates.monthKey(it.startTimeMs) }.toList() }
+                val week = remember(list, today) {
+                    RideStats.buckets(list.map { it.summary() }, Period.WEEK, today, ZoneId.systemDefault(), count = 1).first()
+                }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(inner),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = contentPadding.calculateBottomPadding() + 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    item(key = "semaine") { WeekCard(week, onOpenStats, onOpenSegments) }
                     for ((key, monthRides) in groups) {
                         stickyHeader(key = "mois-$key") { MonthHeader(monthRides) }
                         items(monthRides, key = { it.id }) { ride ->
                             RideCard(ride, onClick = { onOpenRide(ride.id) }, modifier = Modifier.animateItem())
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/** La semaine en cours en un coup d'œil, et l'accès aux statistiques et aux segments. */
+@Composable
+private fun WeekCard(week: PeriodTotals, onOpenStats: () -> Unit, onOpenSegments: () -> Unit) {
+    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Text("CETTE SEMAINE", style = LabelCapsStyle.copy(fontSize = 13.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(Formats.distanceKm(week.distanceM), style = NumberStyle.copy(fontSize = 44.sp), color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(5.dp))
+                Text("km", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 5.dp))
+            }
+            Text(
+                if (week.rides == 0) "Pas encore de sortie cette semaine."
+                else "${week.rides} sortie${if (week.rides > 1) "s" else ""} · ${Formats.durationWords(week.movingMs)} · ${Formats.meters(week.ascentM)} m de dénivelé",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FilledTonalButton(onClick = onOpenStats, modifier = Modifier.weight(1f)) {
+                    Icon(painterResource(R.drawable.ic_bar_chart), contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Statistiques", maxLines = 1)
+                }
+                FilledTonalButton(onClick = onOpenSegments, modifier = Modifier.weight(1f)) {
+                    Icon(painterResource(R.drawable.ic_timer), contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Segments", maxLines = 1)
                 }
             }
         }

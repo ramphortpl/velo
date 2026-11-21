@@ -58,6 +58,10 @@ import androidx.lifecycle.viewModelScope
 import fr.velogo.app.AppContainer
 import fr.velogo.app.BuildConfig
 import fr.velogo.app.R
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import fr.velogo.app.data.ImportResult
+import fr.velogo.app.data.RideArchive
 import fr.velogo.app.data.Settings
 import fr.velogo.app.ui.ride.batteryExemptionIntent
 import fr.velogo.app.ui.ride.brandSegmentColors
@@ -72,6 +76,24 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 enum class UpdateCheck { IDLE, CHECKING, UP_TO_DATE, FAILED }
+
+/** Où en est la sauvegarde ou l'import des sorties. */
+sealed interface ArchiveState {
+    data object Idle : ArchiveState
+    data class Working(val message: String) : ArchiveState
+    data class Done(val message: String, val failed: Boolean = false) : ArchiveState
+}
+
+/** Ce qu'un import a donné, en une phrase. */
+fun importMessage(result: ImportResult): String {
+    fun count(n: Int, one: String, many: String) = if (n == 1) "1 $one" else "$n $many"
+    val parts = ArrayList<String>(3)
+    val added = result.imported.size
+    parts.add(if (added == 0) "Aucune sortie ajoutée" else "${count(added, "sortie ajoutée", "sorties ajoutées")} à l'historique")
+    if (result.duplicates > 0) parts.add(if (result.duplicates == 1) "1 y était déjà" else "${result.duplicates} y étaient déjà")
+    if (result.unreadable > 0) parts.add(count(result.unreadable, "fichier n'était pas une sortie lisible", "fichiers n'étaient pas des sorties lisibles"))
+    return parts.joinToString(" ; ") + "."
+}
 
 /** Ce que l'écran des réglages peut demander. */
 interface SettingsActions {
@@ -96,6 +118,49 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel(), Sett
 
     private val _check = MutableStateFlow(UpdateCheck.IDLE)
     val check: StateFlow<UpdateCheck> = _check
+
+    private val _archive = MutableStateFlow<ArchiveState>(ArchiveState.Idle)
+    val archive: StateFlow<ArchiveState> = _archive
+
+    /** Écrit toutes les sorties dans le fichier choisi. Continue même si l'on quitte l'écran. */
+    fun exportRides(target: Uri) {
+        if (_archive.value is ArchiveState.Working) return
+        _archive.value = ArchiveState.Working("Sauvegarde en cours…")
+        container.appScope.launch {
+            val result = runCatching {
+                container.archive.exportAll(target) { done, total -> _archive.value = ArchiveState.Working("Sauvegarde : $done sur $total…") }
+            }
+            _archive.value = result.fold(
+                onSuccess = { count ->
+                    ArchiveState.Done(
+                        when (count) {
+                            0 -> "Aucune sortie à sauvegarder pour l'instant."
+                            1 -> "1 sortie sauvegardée."
+                            else -> "$count sorties sauvegardées."
+                        }
+                    )
+                },
+                onFailure = { ArchiveState.Done("La sauvegarde a échoué : impossible d'écrire à cet endroit.", failed = true) },
+            )
+        }
+    }
+
+    /** Ajoute à l'historique les sorties du fichier choisi (sauvegarde VeloGo ou GPX d'une autre appli). */
+    fun importRides(source: Uri) {
+        if (_archive.value is ArchiveState.Working) return
+        _archive.value = ArchiveState.Working("Import en cours…")
+        container.appScope.launch {
+            val result = runCatching {
+                container.archive.import(source) { done -> _archive.value = ArchiveState.Working("Import : $done sorties ajoutées…") }
+            }
+            _archive.value = result.fold(
+                onSuccess = { ArchiveState.Done(importMessage(it), failed = it.imported.isEmpty() && it.duplicates == 0) },
+                onFailure = { ArchiveState.Done("L'import a échoué : ce fichier est illisible.", failed = true) },
+            )
+            // Meilleurs temps et segments des sorties qui viennent d'arriver.
+            if (result.getOrNull()?.imported?.isNotEmpty() == true) runCatching { container.analysis.analyzePending() }
+        }
+    }
 
     override fun setTheme(mode: ThemeMode) { viewModelScope.launch { container.settings.setThemeMode(mode) } }
     override fun setSunlight(value: Boolean) { viewModelScope.launch { container.settings.setSunlightDashboard(value) } }
@@ -129,7 +194,15 @@ fun SettingsScreen(onOpenAbout: () -> Unit, onOpenOfflineMaps: () -> Unit, conte
     val settings by vm.settings.collectAsStateWithLifecycle()
     val update by vm.update.collectAsStateWithLifecycle()
     val check by vm.check.collectAsStateWithLifecycle()
+    val archive by vm.archive.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    // Android demande où ranger la sauvegarde, ou quel fichier relire : aucune autorisation de stockage n'est nécessaire.
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(RideArchive.MIME)) { uri ->
+        if (uri != null) vm.exportRides(uri)
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.importRides(uri)
+    }
 
     // L'état des autorisations est relu à chaque retour sur l'écran (on revient souvent des réglages du téléphone).
     var batteryOk by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
@@ -151,6 +224,9 @@ fun SettingsScreen(onOpenAbout: () -> Unit, onOpenOfflineMaps: () -> Unit, conte
         onOpenAbout = onOpenAbout,
         onOpenOfflineMaps = onOpenOfflineMaps,
         contentPadding = contentPadding,
+        archive = archive,
+        onExportRides = { runCatching { exportLauncher.launch(RideArchive.fileName()) } },
+        onImportRides = { runCatching { importLauncher.launch(arrayOf("*/*")) } },
     )
 }
 
@@ -168,6 +244,9 @@ fun SettingsContent(
     onOpenAbout: () -> Unit,
     onOpenOfflineMaps: () -> Unit,
     contentPadding: PaddingValues,
+    archive: ArchiveState = ArchiveState.Idle,
+    onExportRides: () -> Unit = {},
+    onImportRides: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -292,6 +371,36 @@ fun SettingsContent(
                     "À la fin d'une sortie, l'altitude est corrigée avec le relief le plus fin de l'IGN (quelques secondes de réseau). Sans réseau, c'est le relief des cartes hors ligne qui sert. Sans l'un ni l'autre, le dénivelé vient du GPS seul et reste approximatif : ton téléphone n'a pas de baromètre.",
                     settings.ignAltitudeCorrection, vm::setIgnCorrection,
                 )
+            }
+
+            Section("Mes données") {
+                ActionRow(
+                    "Sauvegarder mes sorties",
+                    "Toutes tes sorties dans une archive ZIP de fichiers GPX, rangée où tu veux. Tes données restent sur le téléphone : elles n'en sortent que si tu les exportes.",
+                    "Exporter",
+                    onExportRides,
+                )
+                ActionRow(
+                    "Importer des sorties",
+                    "Depuis une sauvegarde VeloGo (ZIP) ou un fichier GPX venu d'une autre appli. Les sorties déjà présentes ne sont pas ajoutées deux fois.",
+                    "Importer",
+                    onImportRides,
+                )
+                when (archive) {
+                    ArchiveState.Idle -> Unit
+                    is ArchiveState.Working -> Text(
+                        archive.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                    is ArchiveState.Done -> Text(
+                        archive.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (archive.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                }
             }
 
             Section("Fiabilité de l'enregistrement") {

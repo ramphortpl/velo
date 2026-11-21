@@ -73,6 +73,33 @@ class RideRepository(private val db: VeloGoDatabase) {
         )
     }
 
+    /**
+     * Ajoute à l'historique une sortie déjà terminée (lue dans un fichier), d'un seul bloc : si l'appli est
+     * arrêtée en plein import, il ne reste pas de sortie à moitié écrite.
+     */
+    suspend fun importRide(name: String, track: List<TrackPoint>, totals: RideTotals, altitudeSource: String): Long {
+        val line = track.map { LatLon(it.lat, it.lon) }
+        val box = BoundingBox.of(line)
+        val start = track.first().timeMs
+        val end = track.last().timeMs
+        return db.withWriteTransaction {
+            val id = rides.insert(
+                RideEntity(name = name.trim().ifEmpty { "Sortie" }, startTimeMs = start, endTimeMs = end, status = RideEntity.STATUS_FINISHED)
+                    .withTotals(totals)
+                    .copy(
+                        pointCount = track.size,
+                        lastSegment = track.maxOf { it.segment },
+                        preview = if (line.size >= 2) Polyline.encode(Simplify.toMaxPoints(line, PREVIEW_POINTS)) else null,
+                        minLat = box?.minLat, minLon = box?.minLon, maxLat = box?.maxLat, maxLon = box?.maxLon,
+                        altitudeSource = altitudeSource,
+                        updatedAtMs = end,
+                    )
+            )
+            track.withIndex().chunked(CHUNK).forEach { chunk -> points.insertAll(chunk.map { (i, p) -> p.toEntity(id, i) }) }
+            id
+        }
+    }
+
     suspend fun points(rideId: Long): List<TrackPoint> = points.forRide(rideId).map { it.toModel() }
 
     suspend fun pointCount(rideId: Long): Int = points.count(rideId)

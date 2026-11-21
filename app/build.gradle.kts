@@ -165,6 +165,8 @@ dependencies {
     testImplementation(libs.roborazzi)
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.androidx.test.core)
+    // Pilote SQLite d'Android pour les tests de la base sur l'ordinateur (voir RideAnalysisTest).
+    testImplementation(libs.sqlite.framework)
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)
 }

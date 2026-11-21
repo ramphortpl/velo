@@ -76,6 +76,21 @@ import fr.velogo.app.ui.offline.OfflineMapsContent
 import fr.velogo.app.ui.offline.OfflineMapsUiState
 import fr.velogo.app.ui.offline.RegionRow
 import fr.velogo.app.ui.offline.RegionStatus
+import fr.velogo.app.data.db.BestEffortEntity
+import fr.velogo.app.data.db.SegmentEffortEntity
+import fr.velogo.app.data.db.SegmentEntity
+import fr.velogo.app.ui.segments.RideSegmentRow
+import fr.velogo.app.ui.segments.SegmentDetailBody
+import fr.velogo.app.ui.segments.SegmentEditor
+import fr.velogo.app.ui.segments.SegmentRow
+import fr.velogo.app.ui.segments.SegmentsContent
+import fr.velogo.app.ui.segments.effortRows
+import fr.velogo.app.ui.stats.StatsContent
+import fr.velogo.app.ui.stats.StatsUiState
+import fr.velogo.app.ui.stats.buildStats
+import fr.velogo.core.stats.Period
+import java.time.LocalDate
+import java.time.ZoneId
 import java.io.File
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -172,14 +187,14 @@ class ScreenshotTest {
     @Test
     fun historique() = captureRoboImage("$OUT/historique.png") {
         VeloGoTheme(mode = ThemeMode.LIGHT) {
-            Surface(Modifier.fillMaxSize()) { HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 80.dp)) }
+            Surface(Modifier.fillMaxSize()) { HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 80.dp), today = sampleToday) }
         }
     }
 
     @Test
     fun historique_sombre() = captureRoboImage("$OUT/historique_sombre.png") {
         VeloGoTheme(mode = ThemeMode.DARK) {
-            Surface(Modifier.fillMaxSize()) { HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 80.dp)) }
+            Surface(Modifier.fillMaxSize()) { HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 80.dp), today = sampleToday) }
         }
     }
 
@@ -198,6 +213,126 @@ class ScreenshotTest {
                 RideDetailBody(ride = ride, data = sampleTrack(), selected = 140, onSelect = {}) { modifier ->
                     Box(modifier.background(Color(0xFFDDE7DD)))
                 }
+            }
+        }
+    }
+
+    /** Une sortie avec un record sur 10 km et deux passages sur des segments. */
+    @Test
+    fun detail_sortie_records() = captureRoboImage("$OUT/detail_sortie_records.png") {
+        val ride = sampleRides().first()
+        VeloGoTheme(mode = ThemeMode.LIGHT) {
+            Surface(Modifier.fillMaxSize()) {
+                RideDetailBody(
+                    ride = ride, data = sampleTrack(), selected = null, onSelect = {},
+                    segments = listOf(
+                        RideSegmentRow(1, "Montée du Semnoz", 1_421_000, ride.startTimeMs + 900_000, rank = 1, total = 4),
+                        RideSegmentRow(2, "Ligne droite de Sévrier", 312_000, ride.startTimeMs + 3_000_000, rank = 3, total = 7),
+                    ),
+                    bests = listOf("10 km" to "21:34"),
+                ) { modifier -> Box(modifier.background(Color(0xFFDDE7DD))) }
+            }
+        }
+    }
+
+    // --- Statistiques et segments -----------------------------------------------------------------------------
+
+    /** Le vendredi de la semaine des deux sorties les plus récentes de l'exemple. */
+    private val sampleToday = LocalDate.of(2026, 11, 20)
+
+    private fun sampleStats(period: Period, back: Int = 0): StatsUiState {
+        val rides = sampleRides()
+        val efforts = rides.flatMap { ride ->
+            listOf(5_000 to 640_000L, 10_000 to 1_340_000L, 20_000 to 2_790_000L).map { (distance, duration) ->
+                BestEffortEntity(ride.id, distance, duration + ride.id * 23_000L, ride.startTimeMs + 600_000)
+            }
+        }
+        return buildStats(rides, efforts, period, back, today = sampleToday, zone = ZoneId.of("UTC"))
+    }
+
+    private fun stats(state: StatsUiState, theme: ThemeMode = ThemeMode.LIGHT): @Composable () -> Unit = {
+        VeloGoTheme(mode = theme) {
+            Surface(Modifier.fillMaxSize()) { StatsContent(state, onBack = {}, onPeriod = {}, onSelect = {}, onOpenRide = {}) }
+        }
+    }
+
+    @Test
+    fun statistiques() = captureRoboImage("$OUT/statistiques.png", content = stats(sampleStats(Period.WEEK)))
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h1700dp-420dpi")
+    fun statistiques_mois_complet() = captureRoboImage("$OUT/statistiques_mois.png", content = stats(sampleStats(Period.MONTH, back = 1), ThemeMode.DARK))
+
+    @Test
+    fun statistiques_vides() = captureRoboImage("$OUT/statistiques_vides.png", content = stats(buildStats(emptyList(), emptyList(), Period.WEEK, 0, sampleToday)))
+
+    private fun sampleSegment(): SegmentEntity {
+        val points = samplePoints().subList(300, 520)
+        val line = points.map { LatLon(it.lat, it.lon) }
+        val box = BoundingBox.of(line)!!
+        return SegmentEntity(
+            id = 1, name = "Montée du Semnoz", createdAtMs = 1_795_000_000_000L, distanceM = Geo.lengthM(line), ascentM = 212.0,
+            startAltitudeM = 512.0, endAltitudeM = 724.0, points = Polyline.encode(line),
+            minLat = box.minLat, minLon = box.minLon, maxLat = box.maxLat, maxLon = box.maxLon,
+        )
+    }
+
+    @Test
+    fun segments() = captureRoboImage("$OUT/segments.png") {
+        VeloGoTheme(mode = ThemeMode.LIGHT) {
+            Surface(Modifier.fillMaxSize()) {
+                SegmentsContent(
+                    rows = listOf(
+                        SegmentRow(1, "Montée du Semnoz", "3,5 km · ↗ 212 m · 6,1 %", efforts = 4, bestMs = 1_421_000),
+                        SegmentRow(2, "Ligne droite de Sévrier", "1,8 km", efforts = 7, bestMs = 198_000),
+                        SegmentRow(3, "Tour du lac par la voie verte", "38,4 km · ↗ 190 m", efforts = 1, bestMs = 5_940_000),
+                        SegmentRow(4, "Côte de Talloires", "900 m · ↗ 64 m · 7,1 %", efforts = 0, bestMs = null),
+                    ),
+                    onBack = {}, onOpenSegment = {},
+                )
+            }
+        }
+    }
+
+    @Test
+    fun segments_vide() = captureRoboImage("$OUT/segments_vide.png") {
+        VeloGoTheme(mode = ThemeMode.LIGHT) {
+            Surface(Modifier.fillMaxSize()) { SegmentsContent(rows = emptyList(), onBack = {}, onOpenSegment = {}) }
+        }
+    }
+
+    @Test
+    fun segment_detail() = captureRoboImage("$OUT/segment_detail.png") {
+        val rides = sampleRides()
+        val segment = sampleSegment()
+        val efforts = listOf(1_421_000L, 1_468_000L, 1_533_000L, 1_610_000L).mapIndexed { i, elapsed ->
+            SegmentEffortEntity(id = i + 1L, segmentId = 1, rideId = rides[i].id, startTimeMs = rides[i].startTimeMs + 900_000, elapsedMs = elapsed)
+        }
+        VeloGoTheme(mode = ThemeMode.LIGHT) {
+            Surface(Modifier.fillMaxSize()) {
+                SegmentDetailBody(segment, effortRows(segment, efforts, rides), searching = false, onOpenRide = {}) { modifier ->
+                    Box(modifier.background(Color(0xFFDDE7DD)))
+                }
+            }
+        }
+    }
+
+    /** Création d'un segment : le morceau choisi sur le profil, entre les kilomètres 6 et 9,5. */
+    @Test
+    fun segment_creation() = captureRoboImage("$OUT/segment_creation.png") {
+        val data = sampleTrack()
+        VeloGoTheme(mode = ThemeMode.LIGHT) {
+            Surface(Modifier.fillMaxSize()) {
+                RideDetailBody(
+                    ride = sampleRides().first(), data = data, selected = null, onSelect = {},
+                    editor = { modifier ->
+                        SegmentEditor(
+                            altitude = data.altitude, range = 6f..9.5f, totalKm = data.altitude.xs.last(), name = "Montée du Semnoz",
+                            facts = "3,5 km · ↗ 212 m · 6,1 %", error = null,
+                            onRange = {}, onName = {}, onCancel = {}, onCreate = {}, modifier = modifier,
+                        )
+                    },
+                ) { modifier -> Box(modifier.background(Color(0xFFDDE7DD))) }
             }
         }
     }

@@ -26,13 +26,13 @@ SDK requis : plateforme `android-37.1`, build-tools 37, JDK 21.
 
 | Module | Rôle |
 |---|---|
-| `core` | Kotlin pur, aucune dépendance Android : géodésie, moteur de sortie, altitude/pente/dénivelé, GPX, mise en forme, lecture des fichiers PMTiles et du relief. Tout calcul y vit pour être testé sur JVM. |
+| `core` | Kotlin pur, aucune dépendance Android : géodésie, moteur de sortie, altitude/pente/dénivelé, GPX, mise en forme, lecture des fichiers PMTiles et du relief, suivi d'itinéraire, météo, statistiques, segments. Tout calcul y vit pour être testé sur JVM. |
 | `brouter` | Sources Java du moteur d'itinéraire BRouter 1.7.10 (MIT), copiées telles quelles : il n'existe pas sur Maven. Deux écarts avec l'original, décrits dans `brouter/README.md`. |
 | `routing` | Kotlin pur : habillage de BRouter (`BRouterPlanner`), choix des profils selon le vélo et la préférence (`RoutingProfiles`), classement des voies. Profils et `lookups.dat` en ressources. |
 | `app` | Android : Compose, service d'enregistrement, carte MapLibre, base Room, réglages, itinéraires et guidage. |
 
 Paquets de `app` (`fr.velogo.app`) : `ui/` (écrans Compose, thème), `recording/` (service de premier plan,
-enregistreur), `data/` (Room, DataStore, export GPX), `map/` (MapLibre), `location/` (GPS), `elevation/`
+enregistreur), `data/` (Room, DataStore, export GPX, analyse des sorties, sauvegarde), `map/` (MapLibre), `location/` (GPS), `elevation/`
 (recalage d'altitude IGN, relief hors ligne), `offline/` (cartes hors ligne : catalogue, téléchargements, serveur
 de tuiles local), `nav/` (itinéraires : calcul, guidage, voix, itinéraires enregistrés), `search/` (recherche
 d'adresses IGN), `weather/` (météo Open-Meteo : client, mémoire, alerte pluie), `update/` (mises à jour via les
@@ -84,11 +84,24 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
   Hors sortie, c'est l'écran « Rouler » qui demande les mises à jour quand il est affiché ; pendant une sortie
   ou un guidage, le contrôleur se met à jour seul toutes les deux minutes (le réseau n'est sollicité que toutes
   les dix) pour prévenir de la pluie écran éteint (vibration, notification silencieuse, voix si elle est activée).
+- **Statistiques, records, segments** : les calculs sont dans `core/stats` (`RideStats` : totaux par semaine,
+  mois, année et records ; `BestEfforts` : meilleurs temps sur 5 à 100 km par fenêtre glissante) et
+  `core/segments` (`SegmentMatcher` : retrouve dans une trace les passages sur un segment, heures d'entrée et de
+  sortie interpolées). `RideAnalysis` les applique une fois par sortie terminée, en tâche de fond, et range le
+  résultat en base (`best_efforts`, `segment_efforts`) ; chaque sortie retient la version de l'analyse reçue
+  (`analysisVersion`) : augmenter `RideAnalysis.VERSION` fait reprendre toutes les sorties au lancement suivant.
+  Un segment (`SegmentRepository`) est un morceau de sortie choisi sur le profil d'altitude ; à sa création il
+  est cherché dans toutes les sorties dont l'emprise le contient. Les écrans (`ui/stats`, `ui/segments`) ne font
+  que mettre en forme (`buildStats`, `segmentRows`, `effortRows`).
+- **Sauvegarde** : `RideArchive` écrit toutes les sorties dans une archive ZIP de fichiers GPX (la balise `<src>`
+  note l'origine de l'altitude) et relit une archive ou un GPX seul (`TrackImport.prepare` recalcule les vitesses,
+  absentes d'un GPX ; une sortie déjà présente, à une minute près, n'est pas ajoutée deux fois).
 - **Textes** : interface uniquement en français, textes écrits directement dans les composables (seuls ceux
   du service et des notifications sont dans `strings.xml`).
 - **Écrans testables** : chaque écran a un composable « contenu » sans accès aux données (`RideChrome`,
   `HistoryContent`, `RideDetailBody`, `SettingsContent`, `OfflineMapsContent`, `PlannerPanel`, `PlaceSearchContent`,
-  `SavedRoutesList`, `WeatherContent`) rendu en image par `ScreenshotTest`.
+  `SavedRoutesList`, `WeatherContent`, `StatsContent`, `SegmentsContent`, `SegmentDetailBody`, `SegmentEditor`)
+  rendu en image par `ScreenshotTest`.
   Attention : une animation sans fin (barre de progression indéterminée) bloque la capture.
 
 ## Vérification sans téléphone
@@ -99,7 +112,11 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Trois niveaux 
    l'outil officiel `pmtiles`).
 2. `app` : `ScreenshotTest` (Robolectric + Roborazzi) rend les écrans en PNG au format du Galaxy A05s ; tests du
    serveur de tuiles local, du catalogue et de `ReliefSource` (une vraie tuile de relief, altitudes comparées à
-   celles du service de l'IGN) ; météo testée contre un faux serveur (intercepteur OkHttp, aucun réseau).
+   celles du service de l'IGN) ; météo testée contre un faux serveur (intercepteur OkHttp, aucun réseau) ;
+   segments, meilleurs temps et sauvegarde testés de bout en bout sur une vraie base Room en mémoire
+   (`RideAnalysisTest`, `RideArchiveTest`). Sur l'ordinateur, ces tests ouvrent la base avec le SQLite d'Android
+   simulé par Robolectric (`AndroidSQLiteDriver`) : celui que l'appli embarque (`BundledSQLiteDriver`) n'a pas de
+   bibliothèque native hors Android.
 3. `routing` : itinéraires calculés pour de vrai autour de Corte avec `src/test/resources/dalles` (80 Ko de
    données BRouter réelles) : profils, étapes, évitement des grands axes, consignes, données manquantes.
 4. CI : le job « Essai sur émulateur » installe l'APK `smoke` sur un émulateur Android 15 et déroule
@@ -107,6 +124,7 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Trois niveaux 
    plus fiable que le GPS simulé de l'émulateur), distance affichée, pause automatique, historique, fonds de carte,
    téléchargement de la carte de Corse, itinéraire vers une adresse et guidage, puis en mode avion : carte,
    altitude, itinéraire vers un point de la carte, guidage avec enregistrement ; enfin reprise après arrêt forcé.
+   Après la première sortie : création d'un segment (la sortie doit s'y retrouver), statistiques, liste des segments.
    Les captures d'écran sont publiées en artefact. La météo n'y est qu'un constat, jamais un échec : Open-Meteo
    limite les demandes par adresse IP, et celles des machines de la CI (comme celle de l'environnement de
    développement) sont partagées, donc souvent refusées (« Daily API request limit exceeded »).
@@ -180,7 +198,18 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   annoncée.
 - **Heures de passage** le long d'un itinéraire : durée totale de BRouter répartie selon la pente (modèle de
   puissance constante dans `RouteWeather.passageTimes`), pas au prorata de la distance.
-- **Base Room en version 2** (table `saved_routes`, migration automatique depuis la version 1).
+- **Base Room en version 3** : version 2 = table `saved_routes` (jalon 3) ; version 3 = tables `segments`,
+  `segment_efforts`, `best_efforts` et colonne `rides.analysisVersion` (jalon 5). Migrations automatiques
+  (`AutoMigration`), schémas exportés dans `app/schemas`. Ne jamais modifier un schéma déjà publié : ajouter une
+  version.
+- **Temps des segments et des meilleurs temps = temps réel écoulé**, arrêts compris (comme une course), et non
+  temps en mouvement : plus simple à comprendre et impossible à « améliorer » en s'arrêtant.
+- **Segments reconnus à 30 m près**, dans le sens du tracé, en entier ; au plus 80 m roulés hors du tracé
+  (tunnel, GPS qui décroche). La recherche avance dans une fenêtre juste devant la position, pour ne pas sauter
+  d'un lacet à l'autre.
+- **Sauvegarde en GPX dans un ZIP** plutôt qu'une copie de la base : lisible par toutes les applis, et relisible
+  par les versions futures quelle que soit l'évolution du schéma. Elle ne contient ni les segments ni les
+  itinéraires enregistrés.
 - **Téléchargements confiés au `DownloadManager` d'Android** plutôt qu'à WorkManager : reprise après coupure,
   attente du Wi-Fi et notification sont gérées par le système, sans service ni autorisation supplémentaires.
 - **Portrait uniquement** pour l'instant (`screenOrientation="portrait"`) : la disposition paysage de l'écran
@@ -224,7 +253,7 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
 2. Cartes hors ligne (packs régionaux : fond Protomaps, surcouche vélo Planetiler, relief Mapterhorn) *(fait)*
 3. Itinéraires BRouter embarqué + guidage *(fait)*
 4. Météo Open-Meteo (modèles Météo-France AROME) *(fait)*
-5. Stats, records, segments, finitions
+5. Stats, records, segments, finitions *(fait)*
 
 ## Sources de données et attributions
 

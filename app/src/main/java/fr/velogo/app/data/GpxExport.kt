@@ -23,7 +23,7 @@ object GpxExport {
         val dir = File(context.cacheDir, "exports").apply { mkdirs() }
         dir.listFiles()?.forEach { it.delete() }
         val file = File(dir, fileName(ride))
-        file.bufferedWriter(Charsets.UTF_8).use { Gpx.write(it, ride.name, points) }
+        file.bufferedWriter(Charsets.UTF_8).use { Gpx.write(it, ride.name, points, source = ride.altitudeSource) }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
         Intent.createChooser(
             Intent(Intent.ACTION_SEND)
@@ -37,7 +37,9 @@ object GpxExport {
 
     /** Écrit le GPX à l'emplacement choisi dans le sélecteur de fichiers d'Android. */
     suspend fun writeTo(context: Context, target: Uri, ride: RideEntity, points: List<TrackPoint>) = withContext(Dispatchers.IO) {
-        context.contentResolver.openOutputStream(target, "wt")?.bufferedWriter(Charsets.UTF_8)?.use { Gpx.write(it, ride.name, points) }
+        context.contentResolver.openOutputStream(target, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+            Gpx.write(it, ride.name, points, source = ride.altitudeSource)
+        }
             ?: error("Impossible d'écrire dans ce fichier")
     }
 }

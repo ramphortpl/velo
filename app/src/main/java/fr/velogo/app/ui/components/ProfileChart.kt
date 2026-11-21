@@ -49,6 +49,8 @@ fun ProfileChart(
     formatX: (Float) -> String = { it.toInt().toString() },
     /** Force l'axe vertical à partir de zéro (vitesse) plutôt que de serrer sur les valeurs (altitude). */
     zeroBased: Boolean = false,
+    /** Portion mise en avant (indices du premier et du dernier point) : le morceau choisi pour un segment. */
+    range: IntRange? = null,
 ) {
     val measurer = rememberTextMeasurer(cacheSize = 12)
     val axisColor = MaterialTheme.colorScheme.outlineVariant
@@ -140,6 +142,13 @@ fun ProfileChart(
                 onDrawBehind {
                     drawLine(axisColor, Offset(left, py(maxY)), Offset(left + plot.width, py(maxY)), strokeWidth = 1f, pathEffect = dash)
                     drawLine(axisColor, Offset(left, top + plot.height), Offset(left + plot.width, top + plot.height), strokeWidth = 1.5f)
+                    if (range != null && !range.isEmpty() && range.first in 0 until series.size && range.last in 0 until series.size) {
+                        val from = px(range.first)
+                        val to = px(range.last)
+                        drawRect(markerColor.copy(alpha = 0.13f), topLeft = Offset(from, top), size = Size((to - from).coerceAtLeast(2f), plot.height))
+                        drawLine(markerColor, Offset(from, top), Offset(from, top + plot.height), strokeWidth = 2.dp.toPx())
+                        drawLine(markerColor, Offset(to, top), Offset(to, top + plot.height), strokeWidth = 2.dp.toPx())
+                    }
                     if (filled) drawPath(area, fill)
                     drawPath(line, lineColor, style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
                     drawText(maxLabel, topLeft = Offset(left - maxLabel.size.width - 6f, py(maxY) - maxLabel.size.height / 2f))

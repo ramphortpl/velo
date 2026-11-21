@@ -1,10 +1,10 @@
 package fr.velogo.app.ui.history
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,19 +38,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,31 +54,32 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import fr.velogo.app.R
 import fr.velogo.app.data.GpxExport
 import fr.velogo.app.data.db.RideEntity
-import fr.velogo.app.map.MapColors
-import fr.velogo.app.map.MapLayers
-import fr.velogo.app.map.MapStyleSpec
-import fr.velogo.app.map.VeloMap
-import fr.velogo.app.map.rememberVeloMapState
-import fr.velogo.app.ui.LocalContainer
 import fr.velogo.app.ui.components.ProfileChart
+import fr.velogo.app.ui.components.TrackMap
+import fr.velogo.app.map.PlanMarker
+import fr.velogo.app.ui.segments.RideSegmentRow
+import fr.velogo.app.ui.segments.SegmentEditor
+import fr.velogo.app.ui.segments.rankLabel
+import fr.velogo.app.ui.segments.segmentFacts
+import fr.velogo.app.ui.segments.suggestedSegmentName
+import fr.velogo.core.ride.AscentAccumulator
 import fr.velogo.app.ui.theme.LabelCapsStyle
-import fr.velogo.app.ui.theme.LocalIsDark
-import fr.velogo.app.ui.theme.LocalRideColors
 import fr.velogo.app.ui.theme.NumberStyle
 import fr.velogo.app.ui.util.Dates
 import fr.velogo.app.ui.veloViewModel
 import fr.velogo.core.format.Formats
 import fr.velogo.core.geo.LatLon
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** Détail d'une sortie : carte, chiffres, graphiques d'altitude et de vitesse, export GPX. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
+fun RideDetailScreen(rideId: Long, onBack: () -> Unit, onOpenSegment: (Long) -> Unit = {}) {
     val vm = veloViewModel(key = "sortie-$rideId") { RideDetailViewModel(it, rideId) }
     val ride by vm.ride.collectAsStateWithLifecycle()
     val track by vm.track.collectAsStateWithLifecycle()
+    val segmentRows by vm.segments.collectAsStateWithLifecycle()
+    val bestRows by vm.bests.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -89,6 +87,15 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Int?>(null) }
+
+    // Création d'un segment : le morceau choisi (en kilomètres depuis le départ) et son nom.
+    var editing by remember { mutableStateOf(false) }
+    var range by remember { mutableStateOf(0f..0f) }
+    // Tant que l'utilisateur n'a rien tapé, le nom proposé suit le morceau choisi (« Côte de 3,5 km »).
+    var typedName by remember { mutableStateOf<String?>(null) }
+    var segmentError by remember { mutableStateOf<String?>(null) }
+    var creating by remember { mutableStateOf(false) }
+    BackHandler(enabled = editing) { editing = false }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(GpxExport.MIME)) { uri ->
         val current = ride
@@ -115,6 +122,20 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
                             onClick = { menuOpen = false; renaming = true },
                         )
                         DropdownMenuItem(
+                            text = { Text("Créer un segment…") },
+                            leadingIcon = { Icon(painterResource(R.drawable.ic_timer), contentDescription = null) },
+                            enabled = (track?.profile?.size ?: 0) >= 2,
+                            onClick = {
+                                menuOpen = false
+                                // Par défaut, le tiers central de la sortie : on voit tout de suite les deux poignées.
+                                val totalKm = ((track?.profile?.lastOrNull()?.distanceM ?: 0.0) / 1000.0).toFloat()
+                                range = (totalKm / 3f)..(totalKm * 2f / 3f)
+                                typedName = null
+                                segmentError = null
+                                editing = true
+                            },
+                        )
+                        DropdownMenuItem(
                             text = { Text("Enregistrer le GPX…") },
                             leadingIcon = { Icon(painterResource(R.drawable.ic_file_save), contentDescription = null) },
                             onClick = {
@@ -135,13 +156,54 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
     ) { inner ->
         val data = track
         val marker = selected?.let { i -> data?.profile?.getOrNull(i) }?.let { LatLon(it.lat, it.lon) }
+        // Le morceau choisi pour le segment, montré sur la carte avec ses deux bouts.
+        val portion = remember(editing, range, data) {
+            if (editing) vm.portion(range.start * 1000.0, range.endInclusive * 1000.0) else emptyList()
+        }
+        val ends = remember(portion) {
+            if (portion.size >= 2) listOf(PlanMarker(portion.first(), PlanMarker.Kind.START), PlanMarker(portion.last(), PlanMarker.Kind.END)) else emptyList()
+        }
+        val editor: (@Composable (Modifier) -> Unit)? = if (editing && data != null) { modifier ->
+            val measures = remember(range, data) { portionMeasures(data, range) }
+            val segmentName = typedName ?: suggestedSegmentName(measures.lengthM, measures.gradePct)
+            SegmentEditor(
+                altitude = data.altitude,
+                range = range,
+                totalKm = ((data.profile.lastOrNull()?.distanceM ?: 0.0) / 1000.0).toFloat(),
+                name = segmentName,
+                facts = segmentFacts(measures.lengthM, measures.ascentM, measures.gradePct),
+                error = segmentError,
+                onRange = { range = it; segmentError = null },
+                onName = { typedName = it },
+                onCancel = { editing = false },
+                onCreate = {
+                    if (!creating) {
+                        creating = true
+                        vm.createSegment(segmentName, range.start * 1000.0, range.endInclusive * 1000.0) { id ->
+                            creating = false
+                            if (id == null) {
+                                segmentError = "Ce morceau est trop court : un segment fait au moins 200 m."
+                            } else {
+                                editing = false
+                                onOpenSegment(id)
+                            }
+                        }
+                    }
+                },
+                modifier = modifier,
+            )
+        } else null
         RideDetailBody(
             ride = ride,
             data = data,
             selected = selected,
             onSelect = { selected = it },
             modifier = Modifier.padding(inner),
-        ) { modifier -> RideMap(data, marker, modifier) }
+            segments = segmentRows,
+            bests = bestRows,
+            onOpenSegment = onOpenSegment,
+            editor = editor,
+        ) { modifier -> TrackMap(data?.segments, data?.bounds, modifier, marker = marker, highlight = portion, planMarkers = ends) }
     }
 
     if (renaming) {
@@ -190,11 +252,18 @@ fun RideDetailBody(
     selected: Int?,
     onSelect: (Int?) -> Unit,
     modifier: Modifier = Modifier,
+    /** Les passages de cette sortie sur les segments personnels. */
+    segments: List<RideSegmentRow> = emptyList(),
+    /** Les distances sur lesquelles cette sortie détient le record : (« 10 km », « 21:34 »). */
+    bests: List<Pair<String, String>> = emptyList(),
+    onOpenSegment: (Long) -> Unit = {},
+    /** Création d'un segment : quand il est là, il remplace les chiffres et les graphiques sous la carte. */
+    editor: (@Composable (Modifier) -> Unit)? = null,
     map: @Composable (Modifier) -> Unit,
 ) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         val wide = maxWidth > maxHeight
-        val details: @Composable (Modifier) -> Unit = { detailsModifier ->
+        val details: @Composable (Modifier) -> Unit = editor ?: { detailsModifier ->
             Column(
                 detailsModifier.verticalScroll(rememberScrollState()).windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -203,6 +272,7 @@ fun RideDetailBody(
                     Header(ride)
                     StatsGrid(ride)
                 }
+                if (segments.isNotEmpty() || bests.isNotEmpty()) Highlights(segments, bests, onOpenSegment)
                 if (data != null && data.profile.size >= 2) {
                     Readout(data, selected)
                     ChartCard("Altitude", "m") {
@@ -245,48 +315,66 @@ fun RideDetailBody(
     }
 }
 
+/** Longueur, dénivelé et pente moyenne d'un morceau de sortie. */
+private class PortionMeasures(val lengthM: Double, val ascentM: Double, val gradePct: Double?)
+
+/** Mesures du morceau de sortie choisi pour un segment, d'après le profil affiché. */
+private fun portionMeasures(data: RideTrackData, range: ClosedFloatingPointRange<Float>): PortionMeasures {
+    val fromM = range.start * 1000.0
+    val toM = range.endInclusive * 1000.0
+    val altitudes = data.profile.filter { it.distanceM in fromM..toM }.mapNotNull { it.altitudeM }
+    val accumulator = AscentAccumulator(PORTION_ASCENT_THRESHOLD_M)
+    altitudes.forEach { accumulator.add(it) }
+    val length = toM - fromM
+    val grade = if (altitudes.size >= 2 && length > 0.0) (altitudes.last() - altitudes.first()) / length * 100.0 else null
+    return PortionMeasures(length, accumulator.ascentM, grade)
+}
+
+private const val PORTION_ASCENT_THRESHOLD_M = 3.0
+
+/** Ce que cette sortie a de remarquable : ses records sur les distances de référence, ses temps sur les segments. */
 @Composable
-private fun RideMap(data: RideTrackData?, marker: LatLon?, modifier: Modifier) {
-    val container = LocalContainer.current
-    val mapState = rememberVeloMapState()
-    val dark = LocalIsDark.current
-    val rideColors = LocalRideColors.current
-    var layerId by remember { mutableStateOf(MapLayers.OPENFREEMAP.id) }
-    LaunchedEffect(Unit) { layerId = container.settings.settings.first().mapLayer }
-    val offlineRevision by container.offline.store.epoch.collectAsStateWithLifecycle()
-    val offlineFiles by container.offline.store.installed.collectAsStateWithLifecycle()
-    val layer = MapLayers.effective(layerId, offlineRevision, offlineFiles.keys.any { it.startsWith("fond-") })
-    val colors = remember(dark, rideColors) {
-        MapColors(
-            track = rideColors.track.toArgb(),
-            trackCasing = Color.White.toArgb(),
-            puck = Color(0xFF1A73E8).toArgb(),
-            cycleway = (if (dark) Color(0xFF37D39A) else Color(0xFF0B8A5C)).toArgb(),
-            start = Color(0xFF12A150).toArgb(),
-            end = Color(0xFFD32F2F).toArgb(),
-        )
-    }
-    val padding = with(LocalDensity.current) { 40.dp.roundToPx() }
-    LaunchedEffect(data) {
-        if (data != null) {
-            mapState.setRide(data.segments)
-            data.bounds?.let { mapState.fit(it, padding) }
+private fun Highlights(segments: List<RideSegmentRow>, bests: List<Pair<String, String>>, onOpenSegment: (Long) -> Unit) {
+    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Text(
+                if (segments.isEmpty()) "Records" else if (bests.isEmpty()) "Segments" else "Records et segments",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 4.dp),
+            )
+            for ((distance, time) in bests) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(painterResource(R.drawable.ic_emoji_events), contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text("Ton meilleur temps sur $distance", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Text(time, style = NumberStyle.copy(fontSize = 22.sp), color = MaterialTheme.colorScheme.onSurface)
+                }
+            }
+            for (row in segments) {
+                Row(
+                    Modifier.fillMaxWidth().clickable(onClickLabel = "Voir le segment") { onOpenSegment(row.segmentId) }.padding(horizontal = 16.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        painterResource(if (row.rank == 1) R.drawable.ic_emoji_events else R.drawable.ic_timer),
+                        contentDescription = null,
+                        tint = if (row.rank == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(row.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            if (row.total > 1) "${rankLabel(row.rank)} sur ${row.total} passages" else "Premier passage",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(Formats.duration(row.elapsedMs), style = NumberStyle.copy(fontSize = 22.sp), color = MaterialTheme.colorScheme.onSurface)
+                    Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                }
+            }
         }
-    }
-    LaunchedEffect(marker) { mapState.setMarker(marker) }
-    Box(modifier) {
-        VeloMap(mapState, MapStyleSpec(layer, dark, if (layer.offline) offlineRevision else 0), colors, Modifier.fillMaxSize())
-        Text(
-            layer.attribution,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(8.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f))
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-        )
     }
 }
 

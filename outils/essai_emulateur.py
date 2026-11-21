@@ -236,6 +236,64 @@ def weather(gps):
     check_alive("après la météo")
 
 
+def segment_from_ride():
+    """Depuis le détail de la sortie qu'on vient de faire : création d'un segment, qui doit s'y retrouver lui-même."""
+    log("segment : création à partir de la sortie")
+    if not tap("Plus d'actions", timeout=8, required=False):
+        fail("le menu de la sortie est introuvable")
+        return
+    if not tap("Créer un segment…", timeout=8, required=False):
+        fail("« Créer un segment » est absent du menu de la sortie")
+        shell("input keyevent KEYCODE_BACK")
+        return
+    if not wait_for("Nouveau segment", 8):
+        fail("l'écran de création d'un segment ne s'ouvre pas")
+        return
+    shot("segment_creation")
+    # Le nom est proposé d'office : il n'y a qu'à valider le morceau choisi par défaut (le tiers central).
+    tap("Créer le segment")
+    if not wait_for("PASSAGES", 15):
+        shot("segment_non_cree")
+        fail("le segment créé ne s'affiche pas")
+        return
+    # La recherche dans les sorties déjà enregistrées se fait en tâche de fond : on lui laisse le temps.
+    deadline = time.time() + 30
+    while time.time() < deadline and (find("Recherche de tes passages", exact=False) or find("Recherche dans les autres", exact=False)):
+        time.sleep(1)
+    shot("segment_detail")
+    if find("Aucun passage", exact=False):
+        fail("la sortie d'origine n'a pas été reconnue sur le segment qu'on vient d'en tirer")
+    check_alive("après la création d'un segment")
+    shell("input keyevent KEYCODE_BACK")
+    time.sleep(2)
+    # De retour sur la sortie : elle affiche maintenant son passage sur le segment.
+    if not wait_for("Premier passage", 10):
+        shot("sortie_sans_segment")
+        fail("le détail de la sortie ne montre pas son passage sur le segment")
+
+
+def statistics():
+    """Depuis l'historique : les statistiques, puis la liste des segments."""
+    log("statistiques et segments")
+    if not tap("Statistiques", timeout=8, required=False):
+        fail("le bouton « Statistiques » est absent de l'historique")
+        return
+    if not wait_for("Depuis le début", 10):
+        fail("l'écran des statistiques ne s'affiche pas")
+    shot("statistiques")
+    shell("input keyevent KEYCODE_BACK")
+    time.sleep(1.5)
+    if not tap("Segments", timeout=8, required=False):
+        fail("le bouton « Segments » est absent de l'historique")
+        return
+    if not wait_for("Mes segments", 10) or not wait_for("RECORD", 10):
+        fail("la liste des segments ne montre pas le segment créé, avec son record")
+    shot("segments")
+    shell("input keyevent KEYCODE_BACK")
+    time.sleep(1.5)
+    check_alive("après les statistiques")
+
+
 def route_by_address():
     """Itinéraire vers une adresse cherchée en ligne, calculé sur le téléphone, puis début de guidage."""
     log("itinéraire : recherche d'adresse, calcul, guidage")
@@ -480,6 +538,7 @@ def main():
         fail("l'écran de détail de la sortie ne s'affiche pas")
     time.sleep(8)
     shot("detail_apres_recalage_altitude")
+    segment_from_ride()
 
     log("historique")
     shell("input keyevent KEYCODE_BACK")
@@ -487,6 +546,7 @@ def main():
     shot("historique")
     if not wait_for("Mes sorties", 10):
         fail("l'historique ne s'affiche pas")
+    statistics()
 
     log("mise en arrière-plan puis retour (sauvegarde de l'état de l'interface)")
     shell("input keyevent KEYCODE_HOME")

@@ -47,6 +47,9 @@ import fr.velogo.app.ui.history.HistoryScreen
 import fr.velogo.app.ui.history.RideDetailScreen
 import fr.velogo.app.ui.offline.OfflineMapsScreen
 import fr.velogo.app.ui.ride.RideScreen
+import fr.velogo.app.ui.segments.SegmentDetailScreen
+import fr.velogo.app.ui.segments.SegmentsScreen
+import fr.velogo.app.ui.stats.StatsScreen
 import fr.velogo.app.ui.settings.AboutScreen
 import fr.velogo.app.ui.settings.SettingsScreen
 import fr.velogo.app.ui.theme.LocalIsDark
@@ -67,6 +70,15 @@ data object AboutKey : NavKey
 
 @Serializable
 data object OfflineMapsKey : NavKey
+
+@Serializable
+data object StatsKey : NavKey
+
+@Serializable
+data object SegmentsKey : NavKey
+
+@Serializable
+data class SegmentDetailKey(val segmentId: Long) : NavKey
 
 /** Les onglets du bas. « Rouler » est l'écran principal : la carte et l'enregistrement. */
 enum class Tab(val label: String, val icon: Int, val selectedIcon: Int) {
@@ -158,10 +170,32 @@ fun AppRoot(container: AppContainer, settings: Settings) {
                                 ),
                                 entryProvider = entryProvider {
                                     entry<HistoryKey> {
-                                        HistoryScreen(onOpenRide = { backStack.add(RideDetailKey(it)) }, contentPadding = padding)
+                                        HistoryScreen(
+                                            onOpenRide = { backStack.add(RideDetailKey(it)) },
+                                            onOpenStats = { backStack.add(StatsKey) },
+                                            onOpenSegments = { backStack.add(SegmentsKey) },
+                                            contentPadding = padding,
+                                        )
                                     }
                                     entry<RideDetailKey> { key ->
-                                        RideDetailScreen(rideId = key.rideId, onBack = { backStack.removeLastOrNull() })
+                                        RideDetailScreen(
+                                            rideId = key.rideId,
+                                            onBack = { backStack.removeLastOrNull() },
+                                            onOpenSegment = { backStack.add(SegmentDetailKey(it)) },
+                                        )
+                                    }
+                                    entry<StatsKey> {
+                                        StatsScreen(onBack = { backStack.removeLastOrNull() }, onOpenRide = { backStack.add(RideDetailKey(it)) })
+                                    }
+                                    entry<SegmentsKey> {
+                                        SegmentsScreen(onBack = { backStack.removeLastOrNull() }, onOpenSegment = { backStack.add(SegmentDetailKey(it)) })
+                                    }
+                                    entry<SegmentDetailKey> { key ->
+                                        SegmentDetailScreen(
+                                            segmentId = key.segmentId,
+                                            onBack = { backStack.removeLastOrNull() },
+                                            onOpenRide = { backStack.add(RideDetailKey(it)) },
+                                        )
                                     }
                                     entry<SettingsKey> {
                                         SettingsScreen(

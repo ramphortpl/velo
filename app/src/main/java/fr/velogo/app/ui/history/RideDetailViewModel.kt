@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import fr.velogo.app.AppContainer
 import fr.velogo.app.data.db.RideEntity
 import fr.velogo.app.ui.components.ChartSeries
+import fr.velogo.app.ui.segments.RideSegmentRow
+import fr.velogo.app.ui.segments.rideBestRows
+import fr.velogo.app.ui.segments.rideSegmentRows
 import fr.velogo.core.geo.BoundingBox
 import fr.velogo.core.geo.LatLon
 import fr.velogo.core.geo.Simplify
@@ -16,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.stateIn
@@ -40,6 +44,19 @@ class RideDetailViewModel(private val container: AppContainer, private val rideI
     val track: StateFlow<RideTrackData?> = _track
 
     private var points: List<TrackPoint> = emptyList()
+    private var cumulative: DoubleArray = DoubleArray(0)
+
+    /** Les passages de cette sortie sur les segments personnels, classés parmi tous les passages. */
+    val segments: StateFlow<List<RideSegmentRow>> =
+        combine(container.segments.observeSegments(), container.segments.observeEfforts(), container.rides.observeRides()) { segments, efforts, rides ->
+            rideSegmentRows(rideId, segments, efforts, rides.mapTo(HashSet()) { it.id })
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Les distances de référence sur lesquelles cette sortie détient le record : (« 10 km », « 21:34 »). */
+    val bests: StateFlow<List<Pair<String, String>>> =
+        combine(container.database.bestEfforts().observeAll(), container.rides.observeRides()) { efforts, rides ->
+            rideBestRows(rideId, efforts, rides.mapTo(HashSet()) { it.id })
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
         viewModelScope.launch {
@@ -47,6 +64,7 @@ class RideDetailViewModel(private val container: AppContainer, private val rideI
             container.rides.observeRide(rideId).filterNotNull().distinctUntilChangedBy { it.altitudeSource to it.pointCount }.collect { ride ->
                 val loaded = container.rides.points(rideId)
                 points = loaded
+                cumulative = RideAnalyzer.cumulativeDistances(loaded)
                 _track.value = withContext(Dispatchers.Default) { build(ride, loaded) }
             }
         }
@@ -70,6 +88,30 @@ class RideDetailViewModel(private val container: AppContainer, private val rideI
     }
 
     fun points(): List<TrackPoint> = points
+
+    /** Le morceau de la trace compris entre deux distances depuis le départ (pour le montrer sur la carte). */
+    fun portion(fromM: Double, toM: Double): List<LatLon> {
+        val distances = cumulative
+        if (distances.size != points.size || points.isEmpty()) return emptyList()
+        val first = distances.indexOfFirst { it >= fromM }.coerceAtLeast(0)
+        val last = distances.indexOfLast { it <= toM }
+        if (last <= first) return emptyList()
+        val line = points.subList(first, last + 1).map { LatLon(it.lat, it.lon) }
+        return if (line.size > MAX_SEGMENT_POINTS) Simplify.toMaxPoints(line, MAX_SEGMENT_POINTS) else line
+    }
+
+    /**
+     * Crée un segment à partir d'un morceau de cette sortie, puis le cherche dans toutes les autres. [onDone]
+     * reçoit son identifiant, ou null si le morceau est trop court.
+     */
+    fun createSegment(name: String, fromM: Double, toM: Double, onDone: (Long?) -> Unit) {
+        // Dans le périmètre de l'appli : la recherche dans les anciennes sorties continue si l'on quitte l'écran.
+        container.appScope.launch {
+            val id = runCatching { container.segments.create(name, rideId, fromM, toM) }.getOrNull()
+            if (id != null) launch { runCatching { container.analysis.matchSegment(id) } }
+            withContext(Dispatchers.Main) { onDone(id) }
+        }
+    }
 
     fun rename(name: String) = viewModelScope.launch { container.rides.rename(rideId, name) }
 

@@ -1,8 +1,11 @@
 package fr.velogo.app
 
 import android.app.Application
+import fr.velogo.app.data.RideAnalysis
+import fr.velogo.app.data.RideArchive
 import fr.velogo.app.data.RideRepository
 import fr.velogo.app.data.SavedRouteRepository
+import fr.velogo.app.data.SegmentRepository
 import fr.velogo.app.data.SettingsRepository
 import fr.velogo.app.data.db.VeloGoDatabase
 import fr.velogo.app.elevation.ElevationCorrector
@@ -45,6 +48,13 @@ class AppContainer(private val app: Application) {
     val database: VeloGoDatabase by lazy { VeloGoDatabase.create(app) }
     val rides: RideRepository by lazy { RideRepository(database) }
     val savedRoutes: SavedRouteRepository by lazy { SavedRouteRepository(database) }
+    val segments: SegmentRepository by lazy { SegmentRepository(database, rides) }
+
+    /** Meilleurs temps et passages sur les segments, calculés une fois par sortie. */
+    val analysis: RideAnalysis by lazy { RideAnalysis(database, rides) }
+
+    /** Sauvegarde de toutes les sorties dans une archive, et import de sorties depuis un fichier. */
+    val archive: RideArchive by lazy { RideArchive(app, rides) }
     val settings: SettingsRepository by lazy { SettingsRepository(app) }
     val gps: GpsSource by lazy { GpsSource(app, appScope) }
     val recorder: RideRecorder by lazy { RideRecorder(rides) { lat, lon -> relief.altitude(lat, lon) } }
@@ -103,7 +113,11 @@ class AppContainer(private val app: Application) {
             recorder.events.collect { event ->
                 if (event is RecorderEvent.Saved) {
                     val online = settings.settings.first().ignAltitudeCorrection
-                    launch { runCatching { elevationCorrector.correct(event.rideId, online) } }
+                    launch {
+                        runCatching { elevationCorrector.correct(event.rideId, online) }
+                        // Une fois l'altitude recalée : meilleurs temps de la sortie et passages sur les segments.
+                        runCatching { analysis.analyze(event.rideId) }
+                    }
                 }
             }
         }
@@ -112,6 +126,8 @@ class AppContainer(private val app: Application) {
             delay(STARTUP_RETRY_DELAY_MS)
             if (!recorder.isActive) {
                 runCatching { elevationCorrector.retryPending(online = settings.settings.first().ignAltitudeCorrection) }
+                // Sorties jamais analysées (enregistrées avant cette version, ou importées).
+                runCatching { analysis.analyzePending() }
             }
         }
         // Vérification discrète des mises à jour, au plus deux fois par jour.

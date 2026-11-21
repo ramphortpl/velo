@@ -66,6 +66,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -77,16 +78,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -634,7 +635,8 @@ fun RideScreen(
             }
         }
         val hasPosition = remember(weatherState, snapshot.isActive) { weatherState.position != null || weatherPosition() != null }
-        ModalBottomSheet(onDismissRequest = { showWeather = false }) {
+        // Ouverte en grand d'emblée : les prévisions heure par heure se lisent sans avoir à tirer la feuille.
+        ModalBottomSheet(onDismissRequest = { showWeather = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             WeatherContent(
                 state = WeatherSheetState(
                     nowMs = nowMs,
@@ -946,8 +948,9 @@ private fun MapOverlays(
     Box(Modifier.fillMaxSize().padding(top = topPadding, bottom = bottomPadding).padding(horizontal = 12.dp)) {
         Column(Modifier.align(Alignment.TopStart).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (snapshot.isActive) MapStatsStrip(snapshot)
-            // La météo se range à droite, sous le rappel des données quand une sortie est en cours.
-            if (weather != null && hasLocationPermission) WeatherChip(weather, onWeather, Modifier.align(Alignment.End))
+            // La météo se range à droite, sous le rappel des données quand une sortie est en cours. Panneau
+            // d'itinéraire ouvert, elle laisse la place aux boutons de la carte : le panneau a sa propre ligne météo.
+            if (weather != null && hasLocationPermission && showRouteButton) WeatherChip(weather, onWeather, Modifier.align(Alignment.End))
         }
 
         Column(Modifier.align(Alignment.BottomEnd), verticalArrangement = Arrangement.spacedBy(10.dp)) {

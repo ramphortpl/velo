@@ -13,16 +13,25 @@ import kotlinx.coroutines.Dispatchers
  * À chaque changement de schéma : incrémenter [version] et fournir une migration, pour ne jamais perdre de sortie.
  */
 @Database(
-    entities = [RideEntity::class, TrackPointEntity::class, SavedRouteEntity::class],
-    version = 2,
+    entities = [
+        RideEntity::class, TrackPointEntity::class, SavedRouteEntity::class,
+        SegmentEntity::class, SegmentEffortEntity::class, BestEffortEntity::class,
+    ],
+    version = 3,
     exportSchema = true,
-    // Version 2 (jalon 3) : nouvelle table des itinéraires enregistrés. Les sorties ne sont pas touchées.
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    autoMigrations = [
+        // Version 2 (jalon 3) : nouvelle table des itinéraires enregistrés. Les sorties ne sont pas touchées.
+        AutoMigration(from = 1, to = 2),
+        // Version 3 (jalon 5) : segments, passages, meilleurs temps ; une colonne de plus sur les sorties.
+        AutoMigration(from = 2, to = 3),
+    ],
 )
 abstract class VeloGoDatabase : RoomDatabase() {
     abstract fun rides(): RideDao
     abstract fun trackPoints(): TrackPointDao
     abstract fun savedRoutes(): SavedRouteDao
+    abstract fun segments(): SegmentDao
+    abstract fun bestEfforts(): BestEffortDao
 
     companion object {
         const val FILE_NAME = "velogo.db"

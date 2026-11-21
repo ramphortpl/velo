@@ -13,7 +13,13 @@ import javax.xml.parsers.SAXParserFactory
 data class GpxWaypoint(val lat: Double, val lon: Double, val name: String?, val altitudeM: Double?)
 
 /** Une trace ou un itinéraire lu dans un fichier GPX. */
-data class GpxTrack(val name: String?, val points: List<TrackPoint>, val isRoute: Boolean)
+data class GpxTrack(
+    val name: String?,
+    val points: List<TrackPoint>,
+    val isRoute: Boolean,
+    /** Origine des données d'après le fichier (balise <src>) : VeloGo y note d'où vient l'altitude. */
+    val source: String? = null,
+)
 
 data class GpxFile(val name: String?, val tracks: List<GpxTrack>, val waypoints: List<GpxWaypoint>) {
     /** Tous les points, traces d'abord, dans l'ordre du fichier. */
@@ -23,8 +29,18 @@ data class GpxFile(val name: String?, val tracks: List<GpxTrack>, val waypoints:
 /** Lecture et écriture du format GPX 1.1, le format d'échange standard des traces GPS. */
 object Gpx {
 
-    /** Écrit une trace GPX. Les tronçons (pauses) deviennent des <trkseg> séparés. */
-    fun write(out: Appendable, name: String, points: List<TrackPoint>, creator: String = "VeloGo", type: String = "cycling") {
+    /**
+     * Écrit une trace GPX. Les tronçons (pauses) deviennent des <trkseg> séparés. [source], s'il est donné, est
+     * noté dans la balise <src> prévue par le format pour dire d'où viennent les données.
+     */
+    fun write(
+        out: Appendable,
+        name: String,
+        points: List<TrackPoint>,
+        creator: String = "VeloGo",
+        type: String = "cycling",
+        source: String? = null,
+    ) {
         out.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
         out.append("<gpx version=\"1.1\" creator=\"").append(escape(creator)).append("\" ")
         out.append("xmlns=\"http://www.topografix.com/GPX/1/1\" ")
@@ -34,6 +50,7 @@ object Gpx {
         points.firstOrNull()?.let { out.append("    <time>").append(isoTime(it.timeMs)).append("</time>\n") }
         out.append("  </metadata>\n")
         out.append("  <trk>\n    <name>").append(escape(name)).append("</name>\n")
+        if (source != null) out.append("    <src>").append(escape(source)).append("</src>\n")
         out.append("    <type>").append(escape(type)).append("</type>\n")
         var currentSegment: Int? = null
         for (p in points) {
@@ -97,6 +114,7 @@ object Gpx {
         private val text = StringBuilder()
         private var points = ArrayList<TrackPoint>()
         private var trackName: String? = null
+        private var trackSource: String? = null
         private var segment = 0
         private var lat = 0.0
         private var lon = 0.0
@@ -110,7 +128,7 @@ object Gpx {
             path.add(tag)
             text.setLength(0)
             when (tag) {
-                "trk", "rte" -> { points = ArrayList(); trackName = null; segment = 0 }
+                "trk", "rte" -> { points = ArrayList(); trackName = null; trackSource = null; segment = 0 }
                 "trkpt", "rtept", "wpt" -> {
                     lat = attributes.getValue("lat")?.toDoubleOrNull() ?: Double.NaN
                     lon = attributes.getValue("lon")?.toDoubleOrNull() ?: Double.NaN
@@ -143,8 +161,9 @@ object Gpx {
                     if (!lat.isNaN() && !lon.isNaN()) waypoints.add(GpxWaypoint(lat, lon, pointName, ele))
                     inPoint = false
                 }
+                "src" -> if (!inPoint && parent == "trk") trackSource = value.ifEmpty { null }
                 "trkseg" -> segment++
-                "trk" -> if (points.isNotEmpty()) tracks.add(GpxTrack(trackName, points, isRoute = false))
+                "trk" -> if (points.isNotEmpty()) tracks.add(GpxTrack(trackName, points, isRoute = false, source = trackSource))
                 "rte" -> if (points.isNotEmpty()) tracks.add(GpxTrack(trackName, points, isRoute = true))
             }
             if (path.isNotEmpty()) path.removeAt(path.size - 1)

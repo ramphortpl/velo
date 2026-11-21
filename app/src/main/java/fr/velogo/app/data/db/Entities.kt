@@ -1,7 +1,9 @@
 package fr.velogo.app.data.db
 
+import androidx.room3.ColumnInfo
 import androidx.room3.Entity
 import androidx.room3.ForeignKey
+import androidx.room3.Index
 import androidx.room3.PrimaryKey
 
 /** Une sortie : ses totaux et un aperçu de sa trace. Les points sont dans [TrackPointEntity]. */
@@ -34,6 +36,11 @@ data class RideEntity(
     val altitudeSource: String = ALTITUDE_GNSS,
     /** Dernière sauvegarde des totaux pendant l'enregistrement. */
     val updatedAtMs: Long = 0,
+    /**
+     * Version de l'analyse déjà faite sur cette sortie (meilleurs temps, passages sur les segments) ; 0 = jamais.
+     * Une sortie en retard sur la version courante est réanalysée en tâche de fond.
+     */
+    @ColumnInfo(defaultValue = "0") val analysisVersion: Int = 0,
 ) {
     companion object {
         const val STATUS_RECORDING = 0
@@ -78,4 +85,57 @@ data class SavedRouteEntity(
     val durationS: Double,
     /** L'itinéraire complet (trace, altitudes, consignes), encodé par RouteCodec. */
     val data: String,
+)
+
+/** Un segment personnel : un bout de route sur lequel on veut comparer ses temps d'une sortie à l'autre. */
+@Entity(tableName = "segments")
+data class SegmentEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val createdAtMs: Long,
+    val distanceM: Double,
+    val ascentM: Double,
+    val startAltitudeM: Double? = null,
+    val endAltitudeM: Double? = null,
+    /** Tracé du segment, encodé (« encoded polyline », précision d'un mètre). */
+    val points: String,
+    val minLat: Double,
+    val minLon: Double,
+    val maxLat: Double,
+    val maxLon: Double,
+)
+
+/** Un passage d'une sortie sur un segment, avec son temps. */
+@Entity(
+    tableName = "segment_efforts",
+    foreignKeys = [
+        ForeignKey(entity = SegmentEntity::class, parentColumns = ["id"], childColumns = ["segmentId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(entity = RideEntity::class, parentColumns = ["id"], childColumns = ["rideId"], onDelete = ForeignKey.CASCADE),
+    ],
+    indices = [Index("segmentId"), Index("rideId")],
+)
+data class SegmentEffortEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val segmentId: Long,
+    val rideId: Long,
+    /** Heure d'entrée dans le segment. */
+    val startTimeMs: Long,
+    /** Temps mis pour le parcourir, arrêts compris. */
+    val elapsedMs: Long,
+)
+
+/** Le meilleur temps d'une sortie sur une distance de référence (5 km, 10 km…). */
+@Entity(
+    tableName = "best_efforts",
+    primaryKeys = ["rideId", "distanceM"],
+    foreignKeys = [
+        ForeignKey(entity = RideEntity::class, parentColumns = ["id"], childColumns = ["rideId"], onDelete = ForeignKey.CASCADE),
+    ],
+)
+data class BestEffortEntity(
+    val rideId: Long,
+    val distanceM: Int,
+    val durationMs: Long,
+    /** Heure à laquelle ce passage a commencé. */
+    val startTimeMs: Long,
 )

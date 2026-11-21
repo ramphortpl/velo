@@ -1,5 +1,41 @@
 # Nouveautés de VeloGo
 
+## Jalon 5 — Statistiques, records et segments
+
+- **Statistiques** (Historique > Statistiques) : distance, nombre de sorties, durée, dénivelé, vitesse moyenne et
+  plus longue sortie **par semaine, par mois ou par année**, avec un graphique en barres. Touche une barre pour
+  voir une autre période ; la comparaison avec la période précédente est donnée en clair. En dessous, les totaux
+  depuis ta première sortie.
+- **Records** : plus longue sortie, plus gros dénivelé, plus longtemps en selle, meilleure moyenne (sorties de
+  10 km et plus), vitesse la plus haute, point le plus haut. Un appui ouvre la sortie concernée.
+- **Meilleurs temps** sur 5, 10, 20, 30, 50, 80 et 100 km, cherchés à l'intérieur de chaque sortie (le meilleur
+  10 km peut être au milieu d'une sortie de 60 km).
+- **Segments personnels** : dans une sortie, « Créer un segment » permet de choisir un bout de route sur le profil
+  d'altitude (une côte, une ligne droite, ton tour habituel). VeloGo retrouve ensuite ce segment dans toutes tes
+  sorties, passées et à venir, chronomètre chaque passage et les classe : record, 2e temps, 3e temps…
+- **Dans le détail d'une sortie** : ses passages sur tes segments avec leur rang, et ses records éventuels.
+- **En tête de l'historique** : le résumé de la semaine en cours.
+- **Mes données** (Réglages) : **sauvegarde de toutes les sorties** dans une archive ZIP de fichiers GPX, et
+  **import de sorties** depuis une telle sauvegarde ou depuis un fichier GPX d'une autre appli (sans doublons).
+- Tout est calculé sur le téléphone, une fois par sortie, en tâche de fond. Aucun compte, aucun réseau social.
+- Météo : la feuille s'ouvre maintenant en grand, et la pastille ne recouvre plus les boutons de la carte quand
+  le panneau d'itinéraire est ouvert.
+
+### À tester sur le téléphone
+
+1. Historique : le résumé de la semaine en haut, puis « Statistiques » ; passe de Semaine à Mois et Année.
+2. Ouvre une sortie > menu ⋮ > « Créer un segment… » : règle le début et la fin, puis « Créer le segment ».
+   La sortie d'origine doit apparaître comme premier passage ; refais le même trajet pour voir le classement.
+3. Réglages > Mes données > « Sauvegarder mes sorties » : range l'archive dans tes fichiers, ouvre-la pour voir
+   un GPX par sortie.
+
+### Limites connues
+
+- Un segment est reconnu quand on le parcourt en entier, dans le même sens, à 30 m près de son tracé.
+- Les temps sont des temps réels, arrêts compris (un feu rouge compte).
+- La sauvegarde contient les sorties (traces, noms), pas les segments ni les itinéraires enregistrés.
+- L'écran reste en mode portrait.
+
 ## Jalon 4 — Météo
 
 - **La météo sur la carte** : le temps qu'il fait, la température et le vent dans une pastille en haut à droite.
