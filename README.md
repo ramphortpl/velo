@@ -31,6 +31,14 @@ Le détail de chaque version est dans [docs/NOUVEAUTES.md](docs/NOUVEAUTES.md).
 Chaque version s'installe par-dessus la précédente sans rien effacer : elles sont toutes signées avec la même clé.
 L'appli signale d'elle-même quand une version plus récente est disponible (Réglages).
 
+Si le téléphone refuse l'installation :
+
+- **Samsung** : le « Bloqueur automatique » interdit les applis qui ne viennent pas d'un magasin d'applis. Dans les
+  paramètres du téléphone, **Sécurité et confidentialité > Bloqueur automatique** : désactive-le le temps
+  d'installer (ou de mettre à jour) VeloGo, puis réactive-le si tu veux.
+- **Google Play Protect** peut proposer d'analyser l'appli, qu'il ne connaît pas puisqu'elle ne vient pas du
+  Play Store : tu peux accepter l'analyse, puis poursuivre l'installation.
+
 ## Mise en route du dépôt (une seule fois)
 
 La fabrication de l'APK est automatique à chaque modification, mais sa **signature** a besoin d'un secret :

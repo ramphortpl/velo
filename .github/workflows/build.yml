@@ -133,6 +133,8 @@ jobs:
             awk '/^## /{n++} n==1{print}' docs/NOUVEAUTES.md | tail -n +2
             echo
             echo "**Installation** : télécharge \`VeloGo-$VERSION.apk\` ci-dessous sur ton téléphone et ouvre-le. Il se met à jour par-dessus la version déjà installée, sans rien effacer."
+            echo
+            echo "Si un Samsung refuse l'installation : paramètres du téléphone > Sécurité et confidentialité > Bloqueur automatique, à désactiver le temps d'installer."
           } > notes.md
           gh release create "v$VERSION" "VeloGo-$VERSION.apk" \
             --title "VeloGo $VERSION" --notes-file notes.md --target "$GITHUB_SHA" --latest

@@ -118,7 +118,8 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Trois niveaux 
    son schéma exporté, y range une sortie et l'ouvre avec l'appli d'aujourd'hui (à compléter à chaque nouvelle
    version de la base). Sur l'ordinateur, ces tests ouvrent la base avec le SQLite d'Android
    simulé par Robolectric (`AndroidSQLiteDriver`) : celui que l'appli embarque (`BundledSQLiteDriver`) n'a pas de
-   bibliothèque native hors Android.
+   bibliothèque native hors Android. `UpdateCheckerTest` lit des listes de Releases de la forme exacte de celles
+   de GitHub (relevée sur la première version publiée).
 3. `routing` : itinéraires calculés pour de vrai autour de Corte avec `src/test/resources/dalles` (80 Ko de
    données BRouter réelles) : profils, étapes, évitement des grands axes, consignes, données manquantes.
 4. CI : le job « Essai sur émulateur » installe l'APK `smoke` sur un émulateur Android 15 et déroule
@@ -233,6 +234,11 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   (`v<majeur>.<mineur>.<numéro de build>`). `versionCode` = numéro de build GitHub, donc chaque APK s'installe
   par-dessus le précédent. Le mineur de `version.properties` suit les jalons.
 - Les notes de version viennent de la première section de `docs/NOUVEAUTES.md`.
+- Première version publiée : `v0.5.11` (21/11/2026). Pour contrôler un APK publié :
+  `apksigner verify --print-certs` doit donner le certificat `CN=VeloGo` d'empreinte SHA-256
+  `1e80bd8e20912aaae8f62310cff7fd004f58e605a265d6b193161fb29193768b` (signature v2 seule, normal avec minSdk 26).
+- L'appli cherche ses mises à jour dans la liste des Releases (`UpdateChecker`) : étiquettes `v1.2.3` avec un
+  fichier `.apk`, le plus grand numéro de build l'emporte ; la Release `cartes` est ignorée.
 
 ## Fabrication des cartes hors ligne
 
