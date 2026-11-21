@@ -94,4 +94,14 @@ class FormatsTest {
         assertEquals("1,0 Go", Formats.fileSize(999_700_000))
         assertEquals("1,3 Go", Formats.fileSize(1_260_000_000))
     }
+
+    @Test
+    fun `temperature et pluie`() {
+        assertEquals("12°", Formats.temperature(12.4))
+        assertEquals("−3°", Formats.temperature(-3.2))
+        assertEquals("0°", Formats.temperature(-0.3))
+        assertEquals("–", Formats.temperature(null))
+        assertEquals("0,4 mm", Formats.rainMm(0.42))
+        assertEquals("12 mm", Formats.rainMm(12.3))
+    }
 }

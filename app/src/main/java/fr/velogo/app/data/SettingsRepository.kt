@@ -47,6 +47,10 @@ data class Settings(
     val bikeType: String = "HYBRID",
     /** Puissance moyenne du cycliste en watts : sert à estimer la durée des itinéraires. */
     val riderPowerW: Int = 140,
+    /** Afficher la météo (demande du réseau de temps en temps). */
+    val weatherEnabled: Boolean = true,
+    /** Prévenir (vibration, notification, voix si le guidage vocal est actif) quand la pluie approche pendant une sortie. */
+    val rainAlert: Boolean = true,
 )
 
 class SettingsRepository(context: Context) {
@@ -74,6 +78,8 @@ class SettingsRepository(context: Context) {
                 vibrateGuidance = p[VIBRATE_GUIDANCE] ?: d.vibrateGuidance,
                 bikeType = p[BIKE_TYPE] ?: d.bikeType,
                 riderPowerW = p[RIDER_POWER] ?: d.riderPowerW,
+                weatherEnabled = p[WEATHER] ?: d.weatherEnabled,
+                rainAlert = p[RAIN_ALERT] ?: d.rainAlert,
             )
         }
 
@@ -94,6 +100,8 @@ class SettingsRepository(context: Context) {
     suspend fun setVibrateGuidance(value: Boolean) = store.edit { it[VIBRATE_GUIDANCE] = value }.let { }
     suspend fun setBikeType(name: String) = store.edit { it[BIKE_TYPE] = name }.let { }
     suspend fun setRiderPower(watts: Int) = store.edit { it[RIDER_POWER] = watts }.let { }
+    suspend fun setWeatherEnabled(value: Boolean) = store.edit { it[WEATHER] = value }.let { }
+    suspend fun setRainAlert(value: Boolean) = store.edit { it[RAIN_ALERT] = value }.let { }
 
     private companion object {
         val THEME = stringPreferencesKey("theme")
@@ -113,5 +121,7 @@ class SettingsRepository(context: Context) {
         val VIBRATE_GUIDANCE = booleanPreferencesKey("guidage_vibration")
         val BIKE_TYPE = stringPreferencesKey("type_de_velo")
         val RIDER_POWER = intPreferencesKey("puissance_cycliste")
+        val WEATHER = booleanPreferencesKey("meteo")
+        val RAIN_ALERT = booleanPreferencesKey("alerte_pluie")
     }
 }

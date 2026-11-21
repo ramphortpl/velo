@@ -35,7 +35,8 @@ Paquets de `app` (`fr.velogo.app`) : `ui/` (écrans Compose, thème), `recording
 enregistreur), `data/` (Room, DataStore, export GPX), `map/` (MapLibre), `location/` (GPS), `elevation/`
 (recalage d'altitude IGN, relief hors ligne), `offline/` (cartes hors ligne : catalogue, téléchargements, serveur
 de tuiles local), `nav/` (itinéraires : calcul, guidage, voix, itinéraires enregistrés), `search/` (recherche
-d'adresses IGN), `update/` (mises à jour via les Releases GitHub).
+d'adresses IGN), `weather/` (météo Open-Meteo : client, mémoire, alerte pluie), `update/` (mises à jour via les
+Releases GitHub).
 
 Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetiler, contours des régions, style),
 `outils/` (essai sur émulateur), `.github/workflows/` (`build.yml` pour l'APK, `cartes.yml` pour les cartes).
@@ -72,11 +73,22 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
   est dans `core/nav` : `RouteFollower` (progression, sortie d'itinéraire), `GuidanceAnnouncer` et
   `GuidancePhrases` (quand parler, et quoi dire). `VoiceGuide` est le seul endroit qui touche au son.
   L'écran « Rouler » affiche `PlannerPanel` en bas de la carte et `GuidanceBanner` sous la barre du haut.
+- **Météo** : `WeatherController` (dans le conteneur) tient la météo du lieu (`WeatherState`) et celle de
+  l'itinéraire préparé ou suivi (`RouteWeatherState`). `OpenMeteo` interroge l'API (une seule requête pour
+  plusieurs lieux) et lit la réponse ; `WeatherRepository` garde les dernières prévisions du lieu en mémoire et
+  sur disque (`cacheDir/meteo/ici.txt`) : rien n'est redemandé avant dix minutes ou quatre kilomètres, et sans
+  réseau les dernières reçues servent tant qu'elles couvrent l'heure qu'il est. Les calculs sont dans
+  `core/weather` : `RainForecast` et `RainAlerter` (pluie au quart d'heure, une alerte par averse), `Wind` (de
+  face, de dos), `RouteWeather` (où regarder la météo le long d'un itinéraire, heures de passage selon le relief,
+  résumé). La météo n'allume jamais le GPS : elle prend la dernière position connue (`GpsSource.lastKnown`).
+  Hors sortie, c'est l'écran « Rouler » qui demande les mises à jour quand il est affiché ; pendant une sortie
+  ou un guidage, le contrôleur se met à jour seul toutes les deux minutes (le réseau n'est sollicité que toutes
+  les dix) pour prévenir de la pluie écran éteint (vibration, notification silencieuse, voix si elle est activée).
 - **Textes** : interface uniquement en français, textes écrits directement dans les composables (seuls ceux
-  du service et de la notification sont dans `strings.xml`).
+  du service et des notifications sont dans `strings.xml`).
 - **Écrans testables** : chaque écran a un composable « contenu » sans accès aux données (`RideChrome`,
   `HistoryContent`, `RideDetailBody`, `SettingsContent`, `OfflineMapsContent`, `PlannerPanel`, `PlaceSearchContent`,
-  `SavedRoutesList`) rendu en image par `ScreenshotTest`.
+  `SavedRoutesList`, `WeatherContent`) rendu en image par `ScreenshotTest`.
   Attention : une animation sans fin (barre de progression indéterminée) bloque la capture.
 
 ## Vérification sans téléphone
@@ -87,7 +99,7 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Trois niveaux 
    l'outil officiel `pmtiles`).
 2. `app` : `ScreenshotTest` (Robolectric + Roborazzi) rend les écrans en PNG au format du Galaxy A05s ; tests du
    serveur de tuiles local, du catalogue et de `ReliefSource` (une vraie tuile de relief, altitudes comparées à
-   celles du service de l'IGN).
+   celles du service de l'IGN) ; météo testée contre un faux serveur (intercepteur OkHttp, aucun réseau).
 3. `routing` : itinéraires calculés pour de vrai autour de Corte avec `src/test/resources/dalles` (80 Ko de
    données BRouter réelles) : profils, étapes, évitement des grands axes, consignes, données manquantes.
 4. CI : le job « Essai sur émulateur » installe l'APK `smoke` sur un émulateur Android 15 et déroule
@@ -95,7 +107,9 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Trois niveaux 
    plus fiable que le GPS simulé de l'émulateur), distance affichée, pause automatique, historique, fonds de carte,
    téléchargement de la carte de Corse, itinéraire vers une adresse et guidage, puis en mode avion : carte,
    altitude, itinéraire vers un point de la carte, guidage avec enregistrement ; enfin reprise après arrêt forcé.
-   Les captures d'écran sont publiées en artefact.
+   Les captures d'écran sont publiées en artefact. La météo n'y est qu'un constat, jamais un échec : Open-Meteo
+   limite les demandes par adresse IP, et celles des machines de la CI (comme celle de l'environnement de
+   développement) sont partagées, donc souvent refusées (« Daily API request limit exceeded »).
 
 L'émulateur de la CI doit tourner avec le moteur graphique ANGLE (`-gpu swangle_indirect`) : avec son rendu
 logiciel par défaut (`swiftshader_indirect`), les textes et le repère de position des cartes MapLibre ne
@@ -154,6 +168,18 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
 - **Guidage vocal** : synthèse vocale d'Android, focus audio `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` le temps de la
   phrase (la musique baisse, ne s'arrête pas), désactivé par défaut. Aucune autre demande de focus dans l'appli.
 - **Pas de nom de rue dans les consignes** : les données BRouter n'en contiennent pas.
+- **Météo par Open-Meteo, modèles Météo-France** (`models=meteofrance_seamless` : AROME 1,5 km puis ARPEGE) :
+  gratuit, sans clé ni compte, CC BY 4.0. L'API de Météo-France elle-même demande un compte et une clé : écartée.
+  La position est envoyée arrondie à deux décimales (environ un kilomètre).
+- **Conventions de temps d'Open-Meteo** : la pluie datée de 15 h est celle tombée entre 14 h et 15 h (et celle
+  datée de 10 h 15, entre 10 h et 10 h 15). `OpenMeteo.parse` la ramène au début de la période : dans
+  `WeatherPoint` et `RainStep`, la pluie est toujours celle de la période qui **commence** à l'heure indiquée.
+- **Alerte pluie silencieuse** : vibration faite par l'appli + notification sans son (canal `meteo`), jamais de
+  son de notification, pour ne pas toucher à la musique. Elle n'est dite à voix haute que si le guidage vocal
+  est activé (même baisse brève de la musique que les consignes). Une averse déjà en cours au départ n'est pas
+  annoncée.
+- **Heures de passage** le long d'un itinéraire : durée totale de BRouter répartie selon la pente (modèle de
+  puissance constante dans `RouteWeather.passageTimes`), pas au prorata de la distance.
 - **Base Room en version 2** (table `saved_routes`, migration automatique depuis la version 1).
 - **Téléchargements confiés au `DownloadManager` d'Android** plutôt qu'à WorkManager : reprise après coupure,
   attente du Wi-Fi et notification sont gérées par le système, sans service ni autorisation supplémentaires.
@@ -197,7 +223,7 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
 1. Carte en ligne + enregistrement + écran guidon + historique *(fait)*
 2. Cartes hors ligne (packs régionaux : fond Protomaps, surcouche vélo Planetiler, relief Mapterhorn) *(fait)*
 3. Itinéraires BRouter embarqué + guidage *(fait)*
-4. Météo Open-Meteo (modèles Météo-France AROME)
+4. Météo Open-Meteo (modèles Météo-France AROME) *(fait)*
 5. Stats, records, segments, finitions
 
 ## Sources de données et attributions

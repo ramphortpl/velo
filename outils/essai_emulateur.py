@@ -204,6 +204,38 @@ def read_altitude():
     return max(values) if values else None
 
 
+def weather(gps):
+    """Météo : la pastille de la carte, puis la feuille détaillée.
+
+    Simple constat, jamais un échec : le service météo limite les demandes par adresse IP, et celles des machines
+    de la CI sont partagées avec beaucoup d'autres. S'il refuse de répondre, l'appli n'affiche rien, comme prévu.
+    """
+    log("météo")
+    chip = None
+    deadline = time.time() + 25
+    while time.time() < deadline and chip is None:
+        for text, description, bounds in nodes():
+            if description.startswith("Météo :"):
+                chip = (description, bounds)
+                break
+        gps.ride(2)
+    if chip is None:
+        log("météo : rien d'affiché (service météo injoignable ou quota dépassé depuis la CI)")
+        return
+    log(f"météo affichée : {chip[0]}")
+    x, y = (chip[1][0] + chip[1][2]) // 2, (chip[1][1] + chip[1][3]) // 2
+    shell(f"input tap {x} {y}")
+    time.sleep(2)
+    if wait_for("Heure par heure", 8):
+        shot("meteo")
+    else:
+        shot("meteo_incomplete")
+        log("météo : la feuille détaillée ne montre pas les prévisions heure par heure")
+    shell("input keyevent KEYCODE_BACK")
+    time.sleep(1.5)
+    check_alive("après la météo")
+
+
 def route_by_address():
     """Itinéraire vers une adresse cherchée en ligne, calculé sur le téléphone, puis début de guidage."""
     log("itinéraire : recherche d'adresse, calcul, guidage")
@@ -421,6 +453,7 @@ def main():
     gps.ride(8)
     shot("carte_avec_trace")
     check_alive("sur la carte")
+    weather(gps)
 
     log("pause automatique à l'arrêt")
     tap("Données")
@@ -466,10 +499,14 @@ def main():
     tap("Réglages")
     time.sleep(1)
     shot("reglages")
-    for _ in range(3):
-        shell("input swipe 540 1900 540 500 250")
-        time.sleep(0.6)
-    if tap("Voir", required=False):
+    # La page s'allonge au fil des jalons : on la fait défiler jusqu'à trouver le bouton, où qu'il soit.
+    for _ in range(12):
+        if find("Voir"):
+            break
+        shell("input swipe 540 1900 540 700 300")
+        time.sleep(0.7)
+    shot("reglages_bas_de_page")
+    if tap("Voir", timeout=5, required=False):
         time.sleep(1)
         shot("sources_et_licences")
         shell("input keyevent KEYCODE_BACK")

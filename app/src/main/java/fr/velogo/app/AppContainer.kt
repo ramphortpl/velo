@@ -18,6 +18,10 @@ import fr.velogo.app.recording.RideRecorder
 import fr.velogo.app.search.IgnGeocoder
 import fr.velogo.app.update.UpdateChecker
 import fr.velogo.app.update.UpdateInfo
+import fr.velogo.app.weather.OpenMeteo
+import fr.velogo.app.weather.WeatherController
+import fr.velogo.app.weather.WeatherNotifier
+import fr.velogo.app.weather.WeatherRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,6 +31,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
@@ -69,8 +74,18 @@ class AppContainer(private val app: Application) {
     /** Itinéraires : calcul hors ligne, recherche d'adresses, guidage. */
     val routeService: RouteService by lazy { RouteService(app, offline.store, relief) }
     val geocoder: IgnGeocoder by lazy { IgnGeocoder(http) }
+    /** Voix et vibrations : consignes du guidage et alerte pluie. */
+    val voice: VoiceGuide by lazy { VoiceGuide(app) }
     val navigation: NavigationController by lazy {
-        NavigationController(appScope, gps, routeService, geocoder, settings, VoiceGuide(app))
+        NavigationController(appScope, gps, routeService, geocoder, settings, voice)
+    }
+
+    /** Météo : celle du lieu, celle des itinéraires, alerte pluie. */
+    val weather: WeatherController by lazy {
+        WeatherController(
+            appScope, WeatherRepository(OpenMeteo(http), File(app.cacheDir, "meteo")), settings,
+            gps, recorder, navigation, voice, WeatherNotifier(app),
+        )
     }
     val updateChecker: UpdateChecker by lazy { UpdateChecker(http) }
 
@@ -81,6 +96,7 @@ class AppContainer(private val app: Application) {
     /** Tâches de fond lancées une fois pour toutes au démarrage de l'appli. */
     fun start() {
         offline.start()
+        weather.start()
         // Dès qu'une sortie est enregistrée, on recale son altitude sur le relief : celui de l'IGN en ligne si le
         // réglage est actif, sinon (ou sans réseau) celui des cartes hors ligne.
         appScope.launch {

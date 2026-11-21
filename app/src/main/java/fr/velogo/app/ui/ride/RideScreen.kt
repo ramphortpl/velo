@@ -16,7 +16,18 @@ import fr.velogo.app.ui.nav.PlaceSearchDialog
 import fr.velogo.app.ui.nav.PlanTarget
 import fr.velogo.app.ui.nav.PlannerActions
 import fr.velogo.app.ui.nav.PlannerPanel
+import fr.velogo.app.ui.nav.PlannerWeather
 import fr.velogo.app.ui.nav.SavedRoutesList
+import fr.velogo.app.ui.weather.RouteWeatherSection
+import fr.velogo.app.ui.weather.WeatherChip
+import fr.velogo.app.ui.weather.WeatherContent
+import fr.velogo.app.ui.weather.WeatherGlance
+import fr.velogo.app.ui.weather.WeatherSheetState
+import fr.velogo.app.ui.weather.WeatherStrip
+import fr.velogo.app.ui.weather.departureChoices
+import fr.velogo.app.ui.weather.departureLabel
+import fr.velogo.app.ui.weather.weatherGlance
+import fr.velogo.core.weather.RouteWeather
 import fr.velogo.core.geo.BoundingBox
 import fr.velogo.core.geo.Geo
 import fr.velogo.core.geo.LatLon
@@ -51,6 +62,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -70,6 +82,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -143,6 +156,8 @@ fun RideScreen(
     var mode by rememberSaveable { mutableStateOf(RideMode.MAP) }
     var showLayers by remember { mutableStateOf(false) }
     var lastAccuracy by remember { mutableStateOf<Double?>(null) }
+    /** Sens de la marche, tant qu'on roule : sert à dire si le vent est de face ou de dos. */
+    var lastBearing by remember { mutableStateOf<Double?>(null) }
 
     val mapState = rememberVeloMapState()
     val dark = LocalIsDark.current
@@ -189,6 +204,8 @@ fun RideScreen(
             lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 container.gps.fixes.collect { gps ->
                     lastAccuracy = gps.fix.accuracyM
+                    val speed = gps.fix.speedMps
+                    lastBearing = if (speed != null && speed >= MOVING_MPS) gps.fix.bearingDeg else null
                     mapState.updateLocation(gps.location)
                 }
             }
@@ -196,6 +213,75 @@ fun RideScreen(
     }
     LaunchedEffect(Unit) { vm.track.collect { mapState.setLiveTrack(it) } }
     LaunchedEffect(settings.headingUp) { mapState.setHeadingUp(settings.headingUp) }
+
+    // --- Météo ----------------------------------------------------------------------------------------------
+    val weather = container.weather
+    val weatherState by weather.here.collectAsStateWithLifecycle()
+    val routeWeather by weather.route.collectAsStateWithLifecycle()
+    var showWeather by remember { mutableStateOf(false) }
+    /** Heure de départ choisie pour la météo du trajet ; null = maintenant. */
+    var departureChoice by rememberSaveable { mutableStateOf<Long?>(null) }
+    val nowMs by produceState(System.currentTimeMillis(), isForeground) {
+        while (isForeground) {
+            value = System.currentTimeMillis()
+            delay(30_000)
+        }
+    }
+    // Là où l'on est, pour la météo : la sortie en cours, sinon la dernière position connue (sans allumer le GPS).
+    val weatherPosition = {
+        val lat = snapshot.lat
+        val lon = snapshot.lon
+        if (snapshot.isActive && lat != null && lon != null) LatLon(lat, lon) else container.gps.lastKnown()
+    }
+    // Tant que l'écran est affiché, la météo est rafraîchie quand elle a vieilli (au plus toutes les dix minutes).
+    LaunchedEffect(isForeground, settings.weatherEnabled, startRide.hasLocationPermission) {
+        if (isForeground && settings.weatherEnabled) {
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    val position = weatherPosition()
+                    weather.refresh(position)
+                    delay(
+                        when {
+                            // Pas encore de position : on réessaie vite, cela ne coûte rien.
+                            position == null -> 5_000L
+                            // Pas de réseau : inutile d'insister.
+                            weather.here.value.failed -> 120_000L
+                            else -> 60_000L
+                        }
+                    )
+                }
+            }
+        }
+    }
+    // Une heure de départ dépassée redevient « maintenant ».
+    val departureMs = departureChoice?.takeIf { it > nowMs }
+    val departureChoices = remember(nowMs / (10 * 60_000L)) { departureChoices(nowMs) }
+    val glance = remember(weatherState.report, nowMs, lastBearing, settings.weatherEnabled) {
+        if (settings.weatherEnabled) weatherGlance(weatherState.report, nowMs, lastBearing) else null
+    }
+    LaunchedEffect(planner.options) { departureChoice = null }
+    // En guidage, la météo du trajet est (re)demandée quand on ouvre la feuille.
+    LaunchedEffect(showWeather, guidance?.route) {
+        val current = guidance
+        if (showWeather && current != null) weather.requestRoute(current.route, current.nav.progressM)
+    }
+    val plannerWeather = remember(routeWeather, planner.selectedOption, nowMs, departureMs, settings.weatherEnabled) {
+        val selected = planner.selectedOption?.route
+        val state = routeWeather?.takeIf { it.route === selected }
+        when {
+            !settings.weatherEnabled || selected == null -> null
+            state?.reports != null -> {
+                val summary = RouteWeather.summary(state.rows(departureMs ?: nowMs))
+                val headline = RouteWeather.headline(summary) { Dates.time(it) }
+                PlannerWeather(
+                    text = if (departureMs != null) "Départ ${departureLabel(departureMs, nowMs).lowercase()} : $headline" else headline.replaceFirstChar { it.uppercase() },
+                    wet = summary.firstRain != null,
+                )
+            }
+            state == null || state.loading -> PlannerWeather("Recherche des prévisions…")
+            else -> PlannerWeather("Indisponible sans réseau")
+        }
+    }
 
     // --- Itinéraires sur la carte --------------------------------------------------------------------------
     val screenHeightPx = LocalWindowInfo.current.containerSize.height
@@ -350,6 +436,7 @@ fun RideScreen(
             navigation.closePlanner()
             onOpenOfflineMaps()
         }
+        override fun openWeather() { showWeather = true }
     }
     val panelHeight = with(density) { panelHeightPx.toDp() }
 
@@ -374,6 +461,8 @@ fun RideScreen(
             plannerHeight = if (planner.open) panelHeight else 0.dp,
             onRoute = { navigation.openPlanner() },
             onStopGuidance = { navigation.stopGuidance() },
+            weather = glance,
+            onWeather = { showWeather = true },
             onLayers = { showLayers = true },
             onRecenter = { mapState.follow() },
             onToggleHeading = { vm.setHeadingUp(!settings.headingUp) },
@@ -404,6 +493,7 @@ fun RideScreen(
                 actions = plannerActions,
                 maxHeight = with(density) { (screenHeightPx * 0.6f).toDp() },
                 modifier = Modifier.onSizeChanged { panelHeightPx = it.height },
+                weather = plannerWeather,
             )
         }
     }
@@ -524,6 +614,47 @@ fun RideScreen(
         )
     }
 
+    if (showWeather) {
+        val current = guidance
+        val state = routeWeather
+        val progressM = current?.nav?.progressM ?: 0.0
+        // Les lignes ne sont recalculées que toutes les demi-minutes ou tous les 250 m, pas à chaque position.
+        val section = remember(state, current?.route, planner.open, planner.selectedOption, nowMs, (progressM / 250).toInt(), departureMs) {
+            when {
+                state == null -> null
+                current != null && state.route === current.route -> RouteWeatherSection(
+                    guiding = true, rows = state.rows(nowMs, progressM), loading = state.loading, failed = state.failed,
+                    originM = progressM, totalM = state.route.distanceM,
+                )
+                current == null && planner.open && state.route === planner.selectedOption?.route -> RouteWeatherSection(
+                    guiding = false, rows = state.rows(departureMs ?: nowMs), loading = state.loading, failed = state.failed,
+                    originM = 0.0, totalM = state.route.distanceM, departureMs = departureMs, choices = departureChoices,
+                )
+                else -> null
+            }
+        }
+        val hasPosition = remember(weatherState, snapshot.isActive) { weatherState.position != null || weatherPosition() != null }
+        ModalBottomSheet(onDismissRequest = { showWeather = false }) {
+            WeatherContent(
+                state = WeatherSheetState(
+                    nowMs = nowMs,
+                    report = weatherState.report,
+                    loading = weatherState.loading,
+                    failed = weatherState.failed,
+                    hasPosition = hasPosition,
+                    bearingDeg = lastBearing,
+                    route = section,
+                ),
+                onRefresh = {
+                    weather.refresh(weatherPosition(), force = true)
+                    val route = current?.route ?: planner.selectedOption?.route?.takeIf { planner.open }
+                    if (route != null) weather.requestRoute(route, progressM, force = true)
+                },
+                onDeparture = { departureChoice = it },
+            )
+        }
+    }
+
     if (showLayers) {
         ModalBottomSheet(onDismissRequest = { showLayers = false }) {
             Text("Fond de carte", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
@@ -635,6 +766,9 @@ fun RideChrome(
     plannerHeight: Dp = 0.dp,
     onRoute: () -> Unit = {},
     onStopGuidance: () -> Unit = {},
+    /** La météo du moment, si elle est connue : pastille sur la carte, ligne sous les chiffres. */
+    weather: WeatherGlance? = null,
+    onWeather: () -> Unit = {},
 ) {
     VeloGoTheme(mode = themeMode, sunlight = sunlight) {
         Box(modifier.fillMaxSize()) {
@@ -650,6 +784,8 @@ fun RideChrome(
                     topPadding = topInset + TOP_BAR_HEIGHT + 12.dp + bannerSpace,
                     bottomPadding = bottomPadding + (if (plannerOpen) plannerHeight + 12.dp else CONTROLS_HEIGHT + 24.dp),
                     showRouteButton = !plannerOpen,
+                    weather = weather,
+                    onWeather = onWeather,
                     onLayers = onLayers,
                     onRecenter = onRecenter,
                     onToggleHeading = onToggleHeading,
@@ -665,12 +801,17 @@ fun RideChrome(
                 exit = fadeOut() + slideOutVertically { it / 10 },
             ) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-                    Dashboard(
-                        snapshot = snapshot,
-                        modifier = Modifier
+                    Column(
+                        Modifier
                             .fillMaxSize()
                             .padding(top = topInset + TOP_BAR_HEIGHT + 6.dp + bannerSpace, bottom = bottomPadding + CONTROLS_HEIGHT + 20.dp),
-                    )
+                    ) {
+                        Dashboard(snapshot = snapshot, modifier = Modifier.fillMaxWidth().weight(1f))
+                        if (weather != null) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            WeatherStrip(weather, onWeather)
+                        }
+                    }
                 }
             }
 
@@ -715,6 +856,8 @@ fun RideChrome(
 }
 
 private val TOP_BAR_HEIGHT = 48.dp
+/** En dessous de cette vitesse, le cap donné par le GPS ne veut rien dire. */
+private const val MOVING_MPS = 2.0
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -792,6 +935,8 @@ private fun MapOverlays(
     topPadding: Dp,
     bottomPadding: Dp,
     showRouteButton: Boolean,
+    weather: WeatherGlance?,
+    onWeather: () -> Unit,
     onLayers: () -> Unit,
     onRecenter: () -> Unit,
     onToggleHeading: () -> Unit,
@@ -799,7 +944,11 @@ private fun MapOverlays(
     onRoute: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().padding(top = topPadding, bottom = bottomPadding).padding(horizontal = 12.dp)) {
-        if (snapshot.isActive) MapStatsStrip(snapshot, Modifier.align(Alignment.TopStart))
+        Column(Modifier.align(Alignment.TopStart).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (snapshot.isActive) MapStatsStrip(snapshot)
+            // La météo se range à droite, sous le rappel des données quand une sortie est en cours.
+            if (weather != null && hasLocationPermission) WeatherChip(weather, onWeather, Modifier.align(Alignment.End))
+        }
 
         Column(Modifier.align(Alignment.BottomEnd), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (showRouteButton) {

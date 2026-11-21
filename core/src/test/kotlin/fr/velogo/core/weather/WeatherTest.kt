@@ -87,4 +87,55 @@ class WeatherTest {
         assertEquals(WeatherCodes.Kind.SNOW, WeatherCodes.kind(73))
         assertEquals("Temps incertain", WeatherCodes.label(null))
     }
+
+    @Test
+    fun `conditions actuelles d'apres des previsions plus ou moins recentes`() {
+        val hour = 3_600_000L
+        val report = WeatherReport(
+            lat = 45.0, lon = 5.0, fetchedAtMs = now,
+            current = WeatherPoint(now, temperatureC = 11.5),
+            hourly = (0..5).map { WeatherPoint(now + it * hour, temperatureC = 12.0 + it) },
+            quarters = emptyList(),
+        )
+        // Tout de suite : le relevé. Trois heures plus tard : la prévision de l'heure.
+        assertEquals(11.5, report.now(now + 10 * 60_000L)!!.temperatureC!!, 1e-9)
+        assertEquals(15.0, report.now(now + 3 * hour)!!.temperatureC!!, 1e-9)
+        // Au-delà de ce que couvrent les prévisions : rien.
+        assertNull(report.now(now + 9 * hour))
+        // Sans prévisions horaires, le relevé reste valable une heure et demie.
+        val bare = report.copy(hourly = emptyList())
+        assertEquals(11.5, bare.now(now + 80 * 60_000L)!!.temperatureC!!, 1e-9)
+        assertNull(bare.now(now + 2 * hour))
+    }
+
+    @Test
+    fun `alerte pluie une seule fois par averse`() {
+        val alerter = RainAlerter(leadMin = 30, quietMin = 45)
+        val minute = 60_000L
+        val far = RainEvent(startsInMin = 50, endsInMin = 80, peakMmPerHour = 1.0)
+        val near = RainEvent(startsInMin = 25, endsInMin = 55, peakMmPerHour = 1.0)
+        assertNull(alerter.update(null, now))
+        assertNull(alerter.update(far, now))
+        assertEquals(near, alerter.update(near, now + 20 * minute))
+        // La même averse, toujours annoncée : on ne répète pas.
+        assertNull(alerter.update(near.copy(startsInMin = 10), now + 35 * minute))
+        assertNull(alerter.update(near.copy(startsInMin = 0), now + 45 * minute))
+        // Les prévisions hésitent (plus de pluie, puis de nouveau) : pas de nouvelle alerte avant 45 minutes.
+        assertNull(alerter.update(null, now + 50 * minute))
+        assertNull(alerter.update(near, now + 55 * minute))
+        // Une heure après, une nouvelle averse approche : nouvelle alerte.
+        assertNull(alerter.update(null, now + 60 * minute))
+        assertEquals(near, alerter.update(near, now + 80 * minute))
+    }
+
+    @Test
+    fun `annonce de la pluie a voix haute`() {
+        assertEquals("Pluie faible dans 20 minutes.", RainForecast.spoken(RainEvent(20, 50, 1.0)))
+        assertEquals("Pluie modérée, encore 35 minutes.", RainForecast.spoken(RainEvent(0, 35, 4.0)))
+        assertEquals("Pluie forte en cours.", RainForecast.spoken(RainEvent(0, null, 12.0)))
+        assertEquals("Pluie faible dans une heure 15.", RainForecast.spoken(RainEvent(75, null, 1.0)))
+        assertEquals("de sud-ouest", Wind.origin(225.0))
+        assertEquals("d'est", Wind.origin(90.0))
+        assertEquals("de nord", Wind.origin(350.0))
+    }
 }

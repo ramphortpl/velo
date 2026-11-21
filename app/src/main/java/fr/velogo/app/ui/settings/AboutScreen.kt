@@ -62,6 +62,11 @@ private val DATA = listOf(
         "Plan IGN, photos aériennes, recherche d'adresses et de lieux, altitudes (RGE ALTI®) : Institut national de l'information géographique et forestière, Licence Ouverte 2.0.",
         "https://cartes.gouv.fr",
     ),
+    Credit(
+        "Open-Meteo et Météo-France",
+        "Météo : prévisions fournies par Open-Meteo.com (licence CC BY 4.0) d'après les modèles AROME et ARPEGE de Météo-France (Licence Ouverte 2.0). Seule ta position arrondie au kilomètre est envoyée, sans compte ni identifiant.",
+        "https://open-meteo.com",
+    ),
 )
 
 private val SOFTWARE = listOf(

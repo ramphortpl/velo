@@ -11,7 +11,10 @@ data class WeatherPoint(
     val temperatureC: Double? = null,
     /** Température ressentie (vent et humidité compris). */
     val apparentC: Double? = null,
-    /** Précipitations sur la période (une heure pour les prévisions horaires), en millimètres. */
+    /**
+     * Précipitations en millimètres : pour une prévision horaire, celles de l'heure qui commence à [timeMs] ;
+     * pour les conditions actuelles, celles du dernier quart d'heure.
+     */
     val precipitationMm: Double? = null,
     /** Code météo de l'OMM (voir [WeatherCodes]). */
     val code: Int? = null,
@@ -22,7 +25,7 @@ data class WeatherPoint(
     val isDay: Boolean = true,
 )
 
-/** Précipitations prévues sur un quart d'heure. */
+/** Précipitations prévues sur le quart d'heure qui commence à [timeMs]. */
 data class RainStep(val timeMs: Long, val mm: Double)
 
 /** Prévisions pour un lieu : conditions actuelles, heure par heure, et pluie par quart d'heure sur les prochaines heures. */
@@ -35,19 +38,36 @@ data class WeatherReport(
     val hourly: List<WeatherPoint>,
     val quarters: List<RainStep>,
 ) {
-    /** Prévision horaire la plus proche de [timeMs], ou null si elle sort de la période couverte. */
+    /**
+     * Prévision pour l'instant [timeMs], ou null s'il sort de la période couverte : température et vent de
+     * l'heure ronde la plus proche, précipitations de l'heure en cours à ce moment-là.
+     */
     fun at(timeMs: Long): WeatherPoint? {
         val nearest = hourly.minByOrNull { abs(it.timeMs - timeMs) } ?: return null
-        return nearest.takeIf { abs(it.timeMs - timeMs) <= MAX_GAP_MS }
+        if (abs(nearest.timeMs - timeMs) > MAX_GAP_MS) return null
+        val slot = hourly.lastOrNull { it.timeMs <= timeMs && timeMs - it.timeMs < HOUR_MS }
+        return if (slot != null && slot !== nearest) nearest.copy(precipitationMm = slot.precipitationMm) else nearest
     }
 
     /** Prévisions horaires à partir de [fromMs] (l'heure en cours comprise). */
     fun hoursFrom(fromMs: Long, count: Int): List<WeatherPoint> =
         hourly.filter { it.timeMs > fromMs - HOUR_MS }.take(count)
 
+    /**
+     * Le temps qu'il fait à l'instant [nowMs] : les conditions relevées si elles sont récentes, sinon la prévision
+     * de l'heure (des prévisions récupérées il y a trois heures restent une bonne indication). Null si ces
+     * prévisions ne couvrent plus cet instant.
+     */
+    fun now(nowMs: Long): WeatherPoint? {
+        val live = current
+        if (live != null && abs(nowMs - live.timeMs) <= CURRENT_VALID_MS) return live
+        return at(nowMs) ?: live?.takeIf { abs(nowMs - it.timeMs) <= MAX_GAP_MS }
+    }
+
     private companion object {
         const val HOUR_MS = 3_600_000L
         const val MAX_GAP_MS = 90 * 60_000L
+        const val CURRENT_VALID_MS = 40 * 60_000L
     }
 }
 
@@ -99,10 +119,47 @@ object RainForecast {
         else -> "Pluie ${event.intensity} dans ${duration(event.startsInMin)}"
     }
 
+    /** La même chose en toutes lettres, pour la voix : « Pluie faible dans 20 minutes. » */
+    fun spoken(event: RainEvent): String = when {
+        event.isNow && event.endsInMin != null -> "Pluie ${event.intensity}, encore ${spokenDuration(event.endsInMin)}."
+        event.isNow -> "Pluie ${event.intensity} en cours."
+        else -> "Pluie ${event.intensity} dans ${spokenDuration(event.startsInMin)}."
+    }
+
     private fun duration(minutes: Int): String =
         if (minutes < 60) "$minutes min" else "${minutes / 60} h ${(minutes % 60).toString().padStart(2, '0')}"
 
+    private fun spokenDuration(minutes: Int): String = when {
+        minutes <= 1 -> "une minute"
+        minutes < 60 -> "$minutes minutes"
+        minutes % 60 == 0 -> if (minutes == 60) "une heure" else "${minutes / 60} heures"
+        else -> "${if (minutes < 120) "une heure" else "${minutes / 60} heures"} ${minutes % 60}"
+    }
+
     private const val QUARTER_MS = 15 * 60_000L
+}
+
+/**
+ * Décide quand prévenir d'une averse qui approche pendant une sortie : une seule fois par averse, et pas plus
+ * d'une fois par [quietMin] minutes même si les prévisions hésitent.
+ */
+class RainAlerter(private val leadMin: Int = 30, private val quietMin: Int = 45) {
+    private var lastAlertMs: Long? = null
+    private var drySinceAlert = true
+
+    /** À appeler à chaque mise à jour des prévisions. Renvoie l'averse à annoncer maintenant, ou null. */
+    fun update(event: RainEvent?, nowMs: Long): RainEvent? {
+        if (event == null || event.startsInMin > leadMin) {
+            drySinceAlert = true
+            return null
+        }
+        val last = lastAlertMs
+        val due = last == null || (drySinceAlert && nowMs - last >= quietMin * 60_000L)
+        if (!due) return null
+        lastAlertMs = nowMs
+        drySinceAlert = false
+        return event
+    }
 }
 
 /** Le vent par rapport au sens de la marche. */
@@ -134,8 +191,16 @@ object Wind {
     /** Point cardinal d'où vient le vent : « N », « NE », « E »… */
     fun compass(fromDeg: Double): String {
         val names = listOf("N", "NE", "E", "SE", "S", "SO", "O", "NO")
-        return names[(((fromDeg % 360 + 360) % 360 + 22.5) / 45).toInt() % 8]
+        return names[sector(fromDeg)]
     }
+
+    /** La même chose en toutes lettres : « de nord », « de sud-ouest »… */
+    fun origin(fromDeg: Double): String {
+        val names = listOf("de nord", "de nord-est", "d'est", "de sud-est", "de sud", "de sud-ouest", "d'ouest", "de nord-ouest")
+        return names[sector(fromDeg)]
+    }
+
+    private fun sector(fromDeg: Double): Int = (((fromDeg % 360 + 360) % 360 + 22.5) / 45).toInt() % 8
 }
 
 /** Codes météo de l'Organisation météorologique mondiale, tels que les renvoie Open-Meteo. */

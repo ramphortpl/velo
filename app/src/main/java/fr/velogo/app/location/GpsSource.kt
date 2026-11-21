@@ -14,6 +14,7 @@ import androidx.core.location.LocationListenerCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.core.location.LocationRequestCompat
 import androidx.core.location.altitude.AltitudeConverterCompat
+import fr.velogo.core.geo.LatLon
 import fr.velogo.core.ride.Fix
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -47,9 +48,31 @@ class GpsSource(private val context: Context, scope: CoroutineScope) {
     /** Change quand l'autorisation de localisation vient d'être accordée, pour (re)lancer l'écoute. */
     private val permissionEpoch = MutableStateFlow(0)
 
+    /** Dernière position reçue, même si plus personne n'écoute (pour la météo, qui n'allume jamais le GPS). */
+    @Volatile
+    var last: GpsFix? = null
+        private set
+
     val fixes: SharedFlow<GpsFix> = permissionEpoch
         .flatMapLatest { if (hasPermission()) updates() else emptyFlow() }
         .shareIn(scope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 3_000, replayExpirationMillis = 0), replay = 1)
+
+    /**
+     * Dernière position connue du téléphone, même approximative et sans allumer le GPS : celle de l'appli si elle
+     * en a reçu une, sinon celle qu'Android garde en mémoire (si elle date de moins de six heures). Bien assez
+     * pour la météo, qui s'affiche ainsi avant même que le GPS ait trouvé ses satellites.
+     */
+    @SuppressLint("MissingPermission")
+    fun lastKnown(): LatLon? {
+        last?.let { return LatLon(it.fix.lat, it.fix.lon) }
+        val manager = locationManager ?: return null
+        if (!hasPermission()) return null
+        val best = runCatching {
+            manager.getProviders(true).mapNotNull { provider -> manager.getLastKnownLocation(provider) }.maxByOrNull { it.time }
+        }.getOrNull() ?: return null
+        if (abs(System.currentTimeMillis() - best.time) > MAX_LAST_KNOWN_AGE_MS) return null
+        return LatLon(best.latitude, best.longitude)
+    }
 
     fun hasPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -72,7 +95,7 @@ class GpsSource(private val context: Context, scope: CoroutineScope) {
             awaitClose { }
             return@callbackFlow
         }
-        val listener = LocationListenerCompat { location -> trySend(convert(location)) }
+        val listener = LocationListenerCompat { location -> trySend(convert(location).also { last = it }) }
         val request = LocationRequestCompat.Builder(INTERVAL_MS)
             .setQuality(LocationRequestCompat.QUALITY_HIGH_ACCURACY)
             .setMinUpdateIntervalMillis(INTERVAL_MS)
@@ -123,6 +146,7 @@ class GpsSource(private val context: Context, scope: CoroutineScope) {
     private companion object {
         const val INTERVAL_MS = 1_000L
         const val MAX_CLOCK_SKEW_MS = 10 * 60 * 1000L
+        const val MAX_LAST_KNOWN_AGE_MS = 6 * 60 * 60 * 1000L
         /** Hauteur moyenne du géoïde en France métropolitaine : simple repli si la conversion précise échoue. */
         const val FRANCE_MEAN_GEOID_M = 48.0
     }

@@ -27,7 +27,6 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -84,7 +83,17 @@ interface PlannerActions {
     fun importGpx()
     fun openSaved()
     fun openOfflineMaps()
+    /** Ouvre le détail de la météo du trajet. */
+    fun openWeather()
 }
+
+/** Ce que le panneau dit de la météo le long de l'itinéraire choisi. */
+data class PlannerWeather(
+    /** « 11 à 14° · vent de face 15 km/h · pluie vers 15:30 (km 24) », ou l'état de la recherche. */
+    val text: String,
+    /** De la pluie est prévue sur le trajet. */
+    val wet: Boolean = false,
+)
 
 /**
  * Panneau de préparation d'un itinéraire, posé en bas de la carte : d'abord les points (départ, étapes, arrivée),
@@ -99,6 +108,8 @@ fun PlannerPanel(
     actions: PlannerActions,
     maxHeight: Dp,
     modifier: Modifier = Modifier,
+    /** Météo du trajet choisi ; null si la météo est désactivée. */
+    weather: PlannerWeather? = null,
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -106,8 +117,12 @@ fun PlannerPanel(
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = 12.dp,
     ) {
-        Column(Modifier.heightIn(max = maxHeight).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
-            if (state.options.isEmpty()) PointsStage(state, hasRoutingData, actions) else ResultsStage(state, voiceEnabled, actions)
+        // Le bouton principal reste toujours visible en bas ; le reste défile au-dessus s'il manque de place.
+        Column(Modifier.heightIn(max = maxHeight).padding(bottom = 12.dp)) {
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                if (state.options.isEmpty()) PointsStage(state, hasRoutingData, actions) else ResultsStage(state, weather, actions)
+            }
+            if (state.options.isEmpty()) PointsFooter(state, actions) else ResultsFooter(voiceEnabled, actions)
         }
     }
 }
@@ -198,7 +213,10 @@ private fun PointsStage(state: PlannerState, hasRoutingData: Boolean, actions: P
             }
         }
     }
+}
 
+@Composable
+private fun PointsFooter(state: PlannerState, actions: PlannerActions) {
     Button(
         onClick = actions::compute,
         enabled = state.end != null && !state.computing,
@@ -265,9 +283,12 @@ private fun PointRow(
 // --- Étape 2 : les propositions -------------------------------------------------------------------------------
 
 @Composable
-private fun ResultsStage(state: PlannerState, voiceEnabled: Boolean, actions: PlannerActions) {
+private fun ResultsStage(state: PlannerState, weather: PlannerWeather?, actions: PlannerActions) {
     val title = state.importedName ?: if (state.options.size == 1) "1 itinéraire" else "${state.options.size} itinéraires"
-    Header(title, onClose = actions::close, onBack = if (state.isImported) null else actions::edit)
+    Header(title, onClose = actions::close, onBack = if (state.isImported) null else actions::edit) {
+        IconButton(onClick = actions::save) { Icon(painterResource(R.drawable.ic_bookmark_add), contentDescription = "Enregistrer cet itinéraire") }
+        IconButton(onClick = actions::share) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Exporter en GPX") }
+    }
 
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
@@ -287,6 +308,7 @@ private fun ResultsStage(state: PlannerState, voiceEnabled: Boolean, actions: Pl
     if (selected != null) {
         RouteProfile(selected.route, Modifier.fillMaxWidth().padding(start = 12.dp, end = 16.dp, top = 10.dp).height(96.dp))
         selected.route.mix?.let { WayMixBar(it, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) }
+        weather?.let { WeatherLine(it, actions::openWeather) }
         if (state.isImported) {
             Text(
                 "Trace suivie à la ligne : alerte si tu t'en écartes, sans consignes de virage.",
@@ -297,6 +319,10 @@ private fun ResultsStage(state: PlannerState, voiceEnabled: Boolean, actions: Pl
         }
     }
 
+}
+
+@Composable
+private fun ResultsFooter(voiceEnabled: Boolean, actions: PlannerActions) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Button(onClick = actions::startGuidance, modifier = Modifier.weight(1f).height(56.dp)) {
             Icon(painterResource(R.drawable.ic_navigation_filled), contentDescription = null)
@@ -311,16 +337,30 @@ private fun ResultsStage(state: PlannerState, voiceEnabled: Boolean, actions: Pl
             )
         }
     }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        OutlinedButton(onClick = actions::save, modifier = Modifier.weight(1f)) {
-            Icon(painterResource(R.drawable.ic_bookmark), contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Enregistrer")
-        }
-        OutlinedButton(onClick = actions::share, modifier = Modifier.weight(1f)) {
-            Icon(painterResource(R.drawable.ic_share), contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Exporter en GPX")
+}
+
+/** La météo du trajet en une ligne ; un appui ouvre le détail, endroit par endroit. */
+@Composable
+private fun WeatherLine(weather: PlannerWeather, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        Row(Modifier.padding(start = 14.dp, end = 8.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                painterResource(if (weather.wet) R.drawable.ic_umbrella else R.drawable.ic_partly_cloudy_day),
+                contentDescription = null,
+                tint = if (weather.wet) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Météo sur le trajet", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(weather.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

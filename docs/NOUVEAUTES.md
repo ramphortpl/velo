@@ -1,5 +1,43 @@
 # Nouveautés de VeloGo
 
+## Jalon 4 — Météo
+
+- **La météo sur la carte** : le temps qu'il fait, la température et le vent dans une pastille en haut à droite.
+  Un appui ouvre le détail : température ressentie, vent et rafales, **pluie dans les deux heures quart d'heure
+  par quart d'heure**, puis les prévisions **heure par heure** sur un jour et demi.
+- **Sur l'écran guidon** : une ligne sous les chiffres donne la température et le vent **de face, de dos ou de
+  côté** selon ton sens de marche.
+- **Alerte pluie** : pendant une sortie, quand la pluie est à moins de 30 minutes, le téléphone vibre (deux coups
+  brefs, un long) et affiche une notification silencieuse ; l'annonce est dite à voix haute si le guidage vocal
+  est activé. Ta musique n'est jamais coupée.
+- **Météo le long de l'itinéraire** : dans le panneau d'itinéraire, une ligne résume le trajet (« 11 à 14° · vent
+  de face 15 km/h · pluie vers 15:30 (km 24) »). Le détail donne le temps prévu endroit par endroit **à l'heure où
+  tu y passeras** (heures estimées d'après ton allure et le relief), et tu peux choisir une autre heure de départ
+  (« 15 h », « Demain 8 h »…) pour voir si la pluie s'évite. En guidage, la feuille météo montre la suite du trajet.
+- **Sans réseau**, les dernières prévisions reçues restent affichées (avec leur heure) tant qu'elles couvrent
+  l'heure qu'il est ; elles sont gardées sur le téléphone d'un lancement à l'autre.
+- **Prévisions de Météo-France** (modèle AROME à 1,5 km, complété par ARPEGE) fournies par Open-Meteo : gratuit,
+  sans compte ni clé. Seule une position arrondie au kilomètre est envoyée.
+- Réglages > Météo : affichage de la météo et alerte pluie désactivables.
+- Itinéraires : « Démarrer le guidage » reste toujours visible en bas du panneau ; enregistrer l'itinéraire et
+  l'exporter en GPX sont maintenant deux boutons en haut du panneau. La première consigne vocale est dite même
+  si la voix n'avait pas fini de démarrer.
+
+### À tester sur le téléphone
+
+1. Ouvre l'appli dehors ou près d'une fenêtre : la pastille météo apparaît en haut à droite de la carte.
+2. Touche-la : vérifie que la température et le vent correspondent à ce que tu ressens.
+3. Prépare un itinéraire : lis la ligne « Météo sur le trajet », ouvre-la et essaie un départ décalé.
+4. Pendant une sortie, passe sur « Données » : la ligne météo doit dire si le vent est de face ou de dos.
+5. Un jour de pluie annoncée : vérifie que l'alerte arrive bien avant l'averse (vibration + notification).
+
+### Limites connues
+
+- La météo demande du réseau au moins de temps en temps (une requête de quelques kilo-octets toutes les dix
+  minutes au plus). En zone blanche, tu gardes les dernières prévisions reçues.
+- La pluie au quart d'heure près vient du modèle AROME, pas d'un radar : une averse isolée peut tomber à côté.
+- La vibration d'alerte suit le mode du téléphone : rien en mode « Silencieux ».
+
 ## Jalon 3 — Itinéraires et guidage
 
 - **Itinéraires vélo calculés sur le téléphone**, sans réseau, dans les régions téléchargées (leurs données

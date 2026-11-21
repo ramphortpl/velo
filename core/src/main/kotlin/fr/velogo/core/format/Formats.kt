@@ -58,6 +58,12 @@ object Formats {
         else -> "${decimal(bytes / 1_000_000_000.0, 1)} Go"
     }
 
+    /** Température en degrés entiers : « 12° », « −3° ». */
+    fun temperature(celsius: Double?): String = if (celsius == null) NO_VALUE else decimal(celsius, 0) + "°"
+
+    /** Hauteur de pluie : « 0,4 mm », « 12 mm ». */
+    fun rainMm(mm: Double): String = "${decimal(mm, if (mm < 9.95) 1 else 0)} mm"
+
     /** Altitude ou dénivelé en mètres entiers. */
     fun meters(value: Double?): String = if (value == null) NO_VALUE else decimal(value, 0)
 

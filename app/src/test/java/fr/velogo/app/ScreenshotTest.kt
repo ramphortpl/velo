@@ -50,6 +50,17 @@ import fr.velogo.app.ui.nav.PlaceSearchContent
 import fr.velogo.app.ui.nav.PlanTarget
 import fr.velogo.app.ui.nav.PlannerActions
 import fr.velogo.app.ui.nav.PlannerPanel
+import fr.velogo.app.ui.nav.PlannerWeather
+import fr.velogo.app.ui.weather.RouteWeatherSection
+import fr.velogo.app.ui.weather.WeatherContent
+import fr.velogo.app.ui.weather.WeatherGlance
+import fr.velogo.app.ui.weather.WeatherSheetState
+import fr.velogo.app.ui.weather.departureChoices
+import fr.velogo.app.ui.weather.weatherGlance
+import fr.velogo.core.weather.RainStep
+import fr.velogo.core.weather.RouteWeather
+import fr.velogo.core.weather.WeatherPoint
+import fr.velogo.core.weather.WeatherReport
 import fr.velogo.app.ui.nav.SavedRoutesList
 import fr.velogo.app.ui.nav.SearchResult
 import fr.velogo.core.nav.BikeType
@@ -103,6 +114,7 @@ class ScreenshotTest {
         theme: ThemeMode = ThemeMode.LIGHT,
         sunlight: Boolean = false,
         permission: Boolean = true,
+        weather: WeatherGlance? = null,
     ): @Composable () -> Unit = {
         VeloGoTheme(mode = theme) {
             Box(Modifier.fillMaxSize().background(if (theme == ThemeMode.DARK) Color(0xFF1B2630) else Color(0xFFDDE7DD))) {
@@ -113,6 +125,7 @@ class ScreenshotTest {
                     topInset = 28.dp, bottomPadding = 80.dp, snackbar = SnackbarHostState(),
                     onLayers = {}, onRecenter = {}, onToggleHeading = {}, onRequestPermission = {},
                     onStart = {}, onPause = {}, onResume = {}, onStop = {}, onStopHint = {},
+                    weather = weather,
                 )
             }
         }
@@ -221,6 +234,8 @@ class ScreenshotTest {
         override fun setVoiceGuidance(value: Boolean) = Unit
         override fun setVibrateGuidance(value: Boolean) = Unit
         override fun setRiderPower(watts: Int) = Unit
+        override fun setWeatherEnabled(value: Boolean) = Unit
+        override fun setRainAlert(value: Boolean) = Unit
     }
 
     /** Une boucle vallonnée de 40 km environ, pour les vignettes et les graphiques. */
@@ -307,12 +322,16 @@ class ScreenshotTest {
         override fun importGpx() = Unit
         override fun openSaved() = Unit
         override fun openOfflineMaps() = Unit
+        override fun openWeather() = Unit
     }
 
-    private fun planner(state: PlannerState, hasData: Boolean = true): @Composable () -> Unit = {
+    private fun planner(state: PlannerState, hasData: Boolean = true, weather: PlannerWeather? = null): @Composable () -> Unit = {
         VeloGoTheme(mode = ThemeMode.LIGHT) {
             Box(Modifier.fillMaxSize().background(Color(0xFFDDE7DD)), contentAlignment = Alignment.BottomCenter) {
-                PlannerPanel(state = state, hasRoutingData = hasData, voiceEnabled = true, actions = NoPlannerActions, maxHeight = 560.dp)
+                PlannerPanel(
+                    state = state, hasRoutingData = hasData, voiceEnabled = true, actions = NoPlannerActions, maxHeight = 560.dp,
+                    weather = weather,
+                )
             }
         }
     }
@@ -347,7 +366,8 @@ class ScreenshotTest {
                     RouteOption(sampleRoute(2, 0.8), listOf(RoutePreference.FLAT)),
                 ),
                 selected = 0,
-            )
+            ),
+            weather = PlannerWeather("11 à 14° · vent de face 15 km/h · pluie vers 15:30 (km 24)", wet = true),
         ),
     )
 
@@ -434,6 +454,118 @@ class ScreenshotTest {
             }
         }
     }
+
+    // --- Météo ------------------------------------------------------------------------------------------------
+
+    /** Un mardi de novembre à 14 h 10 (heure de Paris) : éclaircies, vent d'ouest, averse dans vingt minutes. */
+    private val weatherNow = 1_795_525_800_000L
+
+    private fun sampleReport(rain: Boolean = true): WeatherReport {
+        val hour = 3_600_000L
+        val firstHour = weatherNow - weatherNow % hour
+        val codes = listOf(2, 61, 63, 3, 2, 1, 0, 0, 0, 1, 2, 3, 3, 45, 45, 3, 2, 1, 0, 0, 1, 2, 2, 3, 61, 61, 3, 2)
+        val hourly = codes.mapIndexed { i, code ->
+            WeatherPoint(
+                timeMs = firstHour + i * hour,
+                temperatureC = 11.5 - 4.5 * sin((i - 1) * PI / 12.0) - (if (i in 1..2) 1.5 else 0.0),
+                apparentC = 9.0 - 4.5 * sin((i - 1) * PI / 12.0),
+                precipitationMm = when {
+                    !rain -> 0.0
+                    code == 61 -> 0.6
+                    code == 63 -> 2.4
+                    else -> 0.0
+                },
+                code = if (rain || code !in listOf(61, 63)) code else 3,
+                windKmh = 14.0 + 8.0 * sin(i * PI / 9.0), windFromDeg = 265.0 + i * 4.0, gustKmh = 32.0 + 10.0 * sin(i * PI / 9.0),
+                isDay = ((firstHour + i * hour) / hour + 1) % 24 in 8..17,
+            )
+        }
+        val quarterStart = weatherNow - weatherNow % (15 * 60_000L)
+        val amounts = if (rain) listOf(0.0, 0.0, 0.2, 0.5, 0.9, 0.6, 0.2, 0.0, 0.0, 0.0, 0.1, 0.0) else List(12) { 0.0 }
+        return WeatherReport(
+            lat = 45.9, lon = 6.1, fetchedAtMs = weatherNow - 4 * 60_000L,
+            current = WeatherPoint(
+                timeMs = weatherNow - 4 * 60_000L, temperatureC = 12.3, apparentC = 9.6, precipitationMm = 0.0, code = 2,
+                windKmh = 17.0, windFromDeg = 268.0, gustKmh = 36.0, isDay = true,
+            ),
+            hourly = hourly,
+            quarters = amounts.mapIndexed { i, mm -> RainStep(quarterStart + i * 15 * 60_000L, mm) },
+        )
+    }
+
+    /** On roule vers l'ouest, vent d'ouest : il est de face. */
+    private fun sampleGlance(rain: Boolean = true): WeatherGlance = weatherGlance(sampleReport(rain), weatherNow, bearingDeg = 280.0)!!
+
+    @Test
+    fun carte_meteo() = captureRoboImage("$OUT/carte_meteo.png", content = chrome(recording, RideMode.MAP, weather = sampleGlance()))
+
+    @Test
+    fun carte_meteo_au_repos() = captureRoboImage(
+        "$OUT/carte_meteo_repos.png",
+        content = chrome(RideSnapshot(), RideMode.MAP, ThemeMode.DARK, weather = weatherGlance(sampleReport(rain = false), weatherNow, null)),
+    )
+
+    @Test
+    fun guidon_meteo() = captureRoboImage("$OUT/guidon_meteo.png", content = chrome(recording, RideMode.DATA, weather = sampleGlance(rain = false)))
+
+    @Test
+    fun guidon_meteo_pluie() = captureRoboImage(
+        "$OUT/guidon_meteo_pluie.png",
+        content = chrome(recording, RideMode.DATA, sunlight = true, weather = sampleGlance()),
+    )
+
+    private fun weatherSheet(state: WeatherSheetState, theme: ThemeMode = ThemeMode.LIGHT): @Composable () -> Unit = {
+        VeloGoTheme(mode = theme) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                WeatherContent(state = state, onRefresh = {}, onDeparture = {})
+            }
+        }
+    }
+
+    @Test
+    fun meteo() = captureRoboImage(
+        "$OUT/meteo.png",
+        content = weatherSheet(WeatherSheetState(nowMs = weatherNow, report = sampleReport(), bearingDeg = 280.0)),
+    )
+
+    @Test
+    fun meteo_sombre_sans_pluie() = captureRoboImage(
+        "$OUT/meteo_sombre.png",
+        content = weatherSheet(WeatherSheetState(nowMs = weatherNow, report = sampleReport(rain = false)), ThemeMode.DARK),
+    )
+
+    /** Météo le long d'un itinéraire, en partant à la prochaine heure ronde. */
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h1500dp-420dpi")
+    fun meteo_itineraire() {
+        val route = sampleRoute()
+        val samples = RouteWeather.samples(route)
+        val reports = samples.indices.map { i ->
+            val base = sampleReport()
+            // Un peu plus frais et plus venté à mesure qu'on avance, comme en montant.
+            base.copy(hourly = base.hourly.map { it.copy(temperatureC = it.temperatureC!! - i * 0.7, windKmh = it.windKmh!! + i * 1.5) })
+        }
+        val choices = departureChoices(weatherNow)
+        val rows = RouteWeather.rows(samples, reports, choices[0])
+        captureRoboImage(
+            "$OUT/meteo_itineraire.png",
+            content = weatherSheet(
+                WeatherSheetState(
+                    nowMs = weatherNow, report = sampleReport(),
+                    route = RouteWeatherSection(
+                        guiding = false, rows = rows, loading = false, failed = false, originM = 0.0, totalM = route.distanceM,
+                        departureMs = choices[0], choices = choices,
+                    ),
+                )
+            ),
+        )
+    }
+
+    @Test
+    fun meteo_sans_reseau() = captureRoboImage(
+        "$OUT/meteo_sans_reseau.png",
+        content = weatherSheet(WeatherSheetState(nowMs = weatherNow, report = null, failed = true)),
+    )
 
     private fun samplePoints(seed: Int = 0): List<TrackPoint> {
         val out = ArrayList<TrackPoint>()

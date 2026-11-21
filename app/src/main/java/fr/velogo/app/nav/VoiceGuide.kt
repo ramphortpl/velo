@@ -15,7 +15,7 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Fait entendre et sentir les consignes de guidage.
+ * Fait entendre et sentir les consignes de guidage et l'alerte pluie.
  *
  * Musique : c'est le seul endroit de l'appli qui touche au son. Pendant une consigne (deux à trois secondes), on
  * demande à Android de **baisser** le volume des autres applis (« ducking »), jamais de les mettre en pause ;
@@ -35,9 +35,13 @@ class VoiceGuide(private val context: Context) {
         .setOnAudioFocusChangeListener { }
         .build()
 
+    private val lock = Any()
     private var tts: TextToSpeech? = null
-    @Volatile
     private var ready = false
+    /** Vrai tant qu'un guidage se sert de la voix : elle reste alors prête entre deux consignes. */
+    private var keep = false
+    /** Phrases demandées pendant que la synthèse vocale démarre : elles sont dites dès qu'elle est prête. */
+    private val waiting = ArrayList<String>()
     private val pending = AtomicInteger(0)
     private var counter = 0
 
@@ -48,12 +52,27 @@ class VoiceGuide(private val context: Context) {
 
     /** Prépare la synthèse vocale (quelques dixièmes de seconde) : à appeler au début d'un guidage avec la voix. */
     fun prepare() {
+        synchronized(lock) {
+            keep = true
+            ensureEngine()
+        }
+    }
+
+    private fun ensureEngine() {
         if (tts != null) return
-        tts = TextToSpeech(context.applicationContext) { status ->
+        tts = TextToSpeech(context.applicationContext) { status -> onInit(status) }
+    }
+
+    /** La synthèse vocale a fini de démarrer (ou n'a pas pu) : on dit ce qui attendait. */
+    private fun onInit(status: Int) {
+        val toSay: List<String> = synchronized(lock) {
             val engine = tts
             if (status != TextToSpeech.SUCCESS || engine == null) {
-                frenchAvailable = false
-                return@TextToSpeech
+                // Pas de synthèse vocale utilisable sur ce téléphone (ou guidage arrêté entre-temps).
+                if (status != TextToSpeech.SUCCESS) frenchAvailable = false
+                ready = false
+                waiting.clear()
+                return@synchronized emptyList()
             }
             val result = engine.setLanguage(Locale.FRANCE)
             frenchAvailable = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED
@@ -67,13 +86,30 @@ class VoiceGuide(private val context: Context) {
                 override fun onError(utteranceId: String?, errorCode: Int) = finished()
             })
             ready = frenchAvailable
+            val said = if (ready) ArrayList(waiting) else emptyList()
+            waiting.clear()
+            said
         }
+        if (toSay.isEmpty()) idle() else toSay.forEach { speak(it) }
     }
 
-    /** Dit une consigne en baissant brièvement la musique. Sans effet tant que la voix n'est pas prête. */
+    /**
+     * Dit une phrase en baissant brièvement la musique. Si la synthèse vocale n'est pas encore prête, la phrase
+     * est dite dès qu'elle l'est ; sans voix française sur le téléphone, rien n'est dit.
+     */
     fun speak(text: String) {
-        val engine = tts ?: return
-        if (!ready) return
+        val engine = synchronized(lock) {
+            ensureEngine()
+            if (!ready) {
+                // Voix en cours de démarrage : on garde la phrase (les plus anciennes sont abandonnées).
+                if (frenchAvailable) {
+                    if (waiting.size >= MAX_WAITING) waiting.removeAt(0)
+                    waiting.add(text)
+                }
+                return
+            }
+            tts ?: return
+        }
         if (pending.getAndIncrement() == 0) audio?.requestAudioFocus(focusRequest)
         val result = engine.speak(text, TextToSpeech.QUEUE_ADD, null, "velogo-${counter++}")
         if (result != TextToSpeech.SUCCESS) finished()
@@ -98,9 +134,31 @@ class VoiceGuide(private val context: Context) {
         }
     }
 
-    /** Libère la synthèse vocale et rend le son aux autres applis. */
+    /** Trois impulsions (deux brèves, une longue) : de la pluie approche. */
+    fun vibrateRain() {
+        val v = vibrator ?: return
+        if (!v.hasVibrator()) return
+        val effect = VibrationEffect.createWaveform(longArrayOf(0, 110, 90, 110, 90, 420), -1)
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 33) {
+                v.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_NOTIFICATION))
+            } else {
+                v.vibrate(effect)
+            }
+        }
+    }
+
+    /** Fin du guidage : libère la synthèse vocale et rend le son aux autres applis. */
     fun release() {
+        synchronized(lock) {
+            keep = false
+            shutdown()
+        }
+    }
+
+    private fun shutdown() {
         ready = false
+        waiting.clear()
         tts?.let { engine ->
             runCatching { engine.stop() }
             runCatching { engine.shutdown() }
@@ -114,6 +172,18 @@ class VoiceGuide(private val context: Context) {
         if (pending.decrementAndGet() <= 0) {
             pending.set(0)
             audio?.abandonAudioFocusRequest(focusRequest)
+            idle()
         }
+    }
+
+    /** Plus rien à dire : hors guidage (alerte pluie isolée), la synthèse vocale est refermée aussitôt. */
+    private fun idle() {
+        synchronized(lock) {
+            if (!keep && pending.get() == 0 && waiting.isEmpty()) shutdown()
+        }
+    }
+
+    private companion object {
+        const val MAX_WAITING = 3
     }
 }

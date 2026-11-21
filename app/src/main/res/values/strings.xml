@@ -11,4 +11,9 @@
     <string name="notification_summary">%1$s km · %2$s</string>
     <string name="action_pause">Pause</string>
     <string name="action_resume">Reprendre</string>
+
+    <!-- Alerte pluie -->
+    <string name="notification_channel_weather">Alerte pluie</string>
+    <string name="notification_channel_weather_description">Prévient quand la pluie approche pendant une sortie. Sans son : une simple vibration.</string>
+    <string name="notification_rain_text">Prévisions Météo-France (AROME) pour ta position.</string>
 </resources>

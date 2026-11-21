@@ -16,11 +16,21 @@ object Dates {
     private val month = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.FRANCE)
     private val time = DateTimeFormatter.ofPattern("H:mm", Locale.FRANCE)
     private val fileStamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH'h'mm", Locale.FRANCE)
+    private val weekday = DateTimeFormatter.ofPattern("EEE", Locale.FRANCE)
 
     private fun at(ms: Long): ZonedDateTime = Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault())
 
     /** « 14:05 » */
     fun time(ms: Long): String = at(ms).format(time)
+
+    /** « 14 h » */
+    fun hour(ms: Long): String = "${at(ms).hour} h"
+
+    /** « sam. » */
+    fun weekdayShort(ms: Long): String = at(ms).format(weekday)
+
+    /** Numéro du jour dans l'année : sert à repérer le passage au lendemain. */
+    fun dayOfYear(ms: Long): Int = at(ms).dayOfYear
 
     /** « Vendredi 20 novembre 2026 » */
     fun fullDay(ms: Long): String = at(ms).format(fullDay).replaceFirstChar { it.uppercase(Locale.FRANCE) }

@@ -86,6 +86,8 @@ interface SettingsActions {
     fun setVoiceGuidance(value: Boolean)
     fun setVibrateGuidance(value: Boolean)
     fun setRiderPower(watts: Int)
+    fun setWeatherEnabled(value: Boolean)
+    fun setRainAlert(value: Boolean)
 }
 
 class SettingsViewModel(private val container: AppContainer) : ViewModel(), SettingsActions {
@@ -105,6 +107,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel(), Sett
     override fun setVoiceGuidance(value: Boolean) { viewModelScope.launch { container.settings.setVoiceGuidance(value) } }
     override fun setVibrateGuidance(value: Boolean) { viewModelScope.launch { container.settings.setVibrateGuidance(value) } }
     override fun setRiderPower(watts: Int) { viewModelScope.launch { container.settings.setRiderPower(watts) } }
+    override fun setWeatherEnabled(value: Boolean) { viewModelScope.launch { container.settings.setWeatherEnabled(value) } }
+    override fun setRainAlert(value: Boolean) { viewModelScope.launch { container.settings.setRainAlert(value) } }
 
     override fun checkNow() {
         viewModelScope.launch {
@@ -247,6 +251,23 @@ fun SettingsContent(
                             colors = brandSegmentColors(),
                         ) { Text(label) }
                     }
+                }
+            }
+
+            Section("Météo") {
+                SwitchRow(
+                    "Afficher la météo",
+                    "Température, vent et pluie sur la carte, sur l'écran guidon et le long de tes itinéraires. " +
+                        "Prévisions Météo-France, mises à jour par le réseau au plus toutes les dix minutes.",
+                    settings.weatherEnabled, vm::setWeatherEnabled,
+                )
+                if (settings.weatherEnabled) {
+                    SwitchRow(
+                        "Alerte pluie",
+                        "Pendant une sortie, une vibration et une notification silencieuse quand la pluie est à moins de " +
+                            "30 minutes. Dite à voix haute si le guidage vocal est activé.",
+                        settings.rainAlert, vm::setRainAlert,
+                    )
                 }
             }
 
