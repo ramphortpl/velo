@@ -27,6 +27,8 @@ SPEED_MPS = 7.0
 
 failures = []
 step_no = [0]
+# Les fenêtres d'erreur d'Android déjà rencontrées (pour ne les signaler qu'une fois chacune).
+system_dialogs_seen = []
 
 
 def run(args, timeout=90, check=False):
@@ -59,8 +61,8 @@ def shot(name):
     log(f"capture {path} ({len(data)} octets)")
 
 
-def screen():
-    """L'arbre des éléments affichés, ou None si l'écran n'a pas pu être lu."""
+def dump():
+    """L'arbre des éléments affichés, tel quel, ou None si l'écran n'a pas pu être lu."""
     for _ in range(3):
         shell("uiautomator dump /sdcard/ui.xml >/dev/null 2>&1")
         raw = run(["adb", "exec-out", "cat", "/sdcard/ui.xml"], timeout=60).stdout.decode("utf-8", "replace")
@@ -69,6 +71,55 @@ def screen():
         except ET.ParseError:
             time.sleep(1)
     return None
+
+
+def system_dialog(root):
+    """Une fenêtre d'Android posée devant tout le reste : « … isn't responding » ou « … keeps stopping ».
+
+    Renvoie (son titre, le cadre du bouton qui la ferme), ou None. Sur l'émulateur de la CI, l'écran d'accueil
+    (« Pixel Launcher ») met parfois si longtemps à démarrer qu'Android propose de le fermer : cette fenêtre
+    reste alors devant l'appli, et plus rien de ce qu'on cherche n'est visible (fabrication n° 21)."""
+    title = None
+    buttons = {}
+    for node in root.iter("node"):
+        text = node.get("text", "")
+        if re.search(r"isn't responding|keeps stopping|has stopped", text):
+            title = text
+        elif text in ("Wait", "Close app", "OK"):
+            buttons[text] = bounds_of(node)
+    if title is None:
+        return None
+    # On attend une appli qui rame ; on ferme la fenêtre d'une appli qui a planté.
+    order = ("Wait", "OK", "Close app") if "responding" in title else ("Close app", "OK")
+    for name in order:
+        if buttons.get(name):
+            return title, buttons[name]
+    return title, None
+
+
+def screen():
+    """L'arbre des éléments affichés, ou None si l'écran n'a pas pu être lu. Les fenêtres d'erreur d'Android
+    (« … isn't responding ») sont écartées au passage : si c'est VeloGo qui ne répond plus, c'est un échec."""
+    root = None
+    for _ in range(5):
+        root = dump()
+        if root is None:
+            return None
+        blocking = system_dialog(root)
+        if blocking is None:
+            return root
+        title, button = blocking
+        if title not in system_dialogs_seen:
+            system_dialogs_seen.append(title)
+            log(f"fenêtre d'Android écartée : « {title} »")
+            if title.startswith("VeloGo"):
+                fail(f"Android a affiché « {title} »")
+        if button:
+            shell(f"input tap {(button[0] + button[2]) // 2} {(button[1] + button[3]) // 2}")
+        else:
+            shell("input keyevent KEYCODE_BACK")
+        time.sleep(1.5)
+    return root
 
 
 def bounds_of(node):
@@ -749,7 +800,10 @@ def main():
         return
     adb("logcat", "-c")
     gps.send()
-    app_icon()
+    # L'émulateur vient de démarrer : on laisse l'écran d'accueil finir de s'installer, et on écarte la fenêtre
+    # « Pixel Launcher isn't responding » si elle est déjà là.
+    time.sleep(8)
+    screen()
 
     log("démarrage de l'appli")
     shell(f"am start -W -n {PACKAGE}/{ACTIVITY}", timeout=120)
@@ -891,6 +945,7 @@ def main():
     else:
         fail("la seconde sortie ne démarre pas")
     check_alive("à la fin")
+    app_icon()
 
 
 def finish():

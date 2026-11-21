@@ -153,15 +153,19 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
 3. `routing` : itinéraires calculés pour de vrai autour de Corte avec `src/test/resources/dalles` (80 Ko de
    données BRouter réelles) : profils, étapes, évitement des grands axes, consignes, données manquantes.
 4. CI : le job « Essai sur émulateur » installe l'APK `smoke` sur un émulateur Android 15 et déroule
-   `outils/essai_emulateur.py` : icône de l'appli sur sa fiche des réglages d'Android (le logo y est reconnu à
-   ses trois couleurs), sortie simulée à Corte (positions envoyées par le fournisseur de test d'Android,
+   `outils/essai_emulateur.py` : sortie simulée à Corte (positions envoyées par le fournisseur de test d'Android,
    plus fiable que le GPS simulé de l'émulateur), distance affichée, pause automatique, historique, fonds de carte,
    téléchargement de la carte de Corse, itinéraire vers une adresse (panneau replié puis déplié, enregistrement de
    l'itinéraire, affiche à partager), guidage (flèche au départ, vue de guidage en roulant, « Recentrer » après
    avoir déplacé la carte), onglet « Trajets » (le trajet enregistré s'y retrouve, se renomme, se rouvre sur la
    carte), puis en mode avion : carte, altitude, itinéraire vers un point de la carte, guidage avec
-   enregistrement ; enfin reprise après arrêt forcé.
+   enregistrement ; reprise après arrêt forcé ; enfin l'icône de l'appli sur sa fiche des réglages d'Android (le
+   logo y est reconnu à ses trois couleurs).
    Après la première sortie : création d'un segment (la sortie doit s'y retrouver), statistiques, liste des segments.
+   Les fenêtres d'erreur d'Android sont écartées à chaque lecture de l'écran (`system_dialog`) : l'écran d'accueil
+   de l'émulateur met parfois si longtemps à démarrer qu'Android affiche « Pixel Launcher isn't responding »
+   devant l'appli, et tout le début de l'essai échouait sans que l'appli y soit pour rien (fabrication n° 21).
+   Si c'est VeloGo qui ne répond plus, c'est un échec.
    La saisie au clavier y est vérifiée (`type_text` relit le champ, complète ou efface) : envoyées pendant que le
    clavier démarre, les touches d'`adb shell input text` se perdent (fabrication n° 16 : « gare d » au lieu de
    « gare de corte », et tout l'essai de l'itinéraire en ligne sauté).
