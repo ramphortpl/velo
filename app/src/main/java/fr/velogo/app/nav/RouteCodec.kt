@@ -19,7 +19,8 @@ object RouteCodec {
     fun encode(route: Route): String = json.encodeToString(
         RouteDto.serializer(),
         RouteDto(
-            trace = Polyline.encode(route.points),
+            trace = Polyline.encode(route.points, Polyline.FINE),
+            decimales = Polyline.FINE,
             altitudes = route.elevations?.map { Math.round(it * 10).toInt() },
             duree = route.durationS,
             montee = route.ascentM,
@@ -33,7 +34,7 @@ object RouteCodec {
     /** Relit un itinéraire enregistré, ou renvoie null si le texte est illisible. */
     fun decode(text: String): Route? = runCatching {
         val dto = json.decodeFromString(RouteDto.serializer(), text)
-        val points = Polyline.decode(dto.trace)
+        val points = Polyline.decode(dto.trace, dto.decimales)
         if (points.size < 2) return null
         val distances = Route.cumulativeDistances(points)
         val elevations = dto.altitudes?.takeIf { it.size == points.size }?.let { list -> DoubleArray(list.size) { list[it] / 10.0 } }
@@ -50,6 +51,11 @@ object RouteCodec {
     @Serializable
     private class RouteDto(
         val trace: String,
+        /**
+         * Décimales du tracé. Absent des itinéraires enregistrés avant la version 0.6 (cinq décimales) : relus,
+         * leur longueur pouvait différer de quelques mètres de celle annoncée, et « 2,4 km » devenir « 2,5 km ».
+         */
+        val decimales: Int = Polyline.COARSE,
         val altitudes: List<Int>? = null,
         val duree: Double = 0.0,
         val montee: Double = 0.0,

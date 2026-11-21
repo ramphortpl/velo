@@ -81,8 +81,8 @@ class SavedRouteRepositoryTest {
         val (entity, reread) = routes.load(id)!!
         assertEquals("Boucle de la Restonica", entity.name)
         assertEquals(original.points.size, reread.points.size)
-        // Le tracé est rangé au mètre près (cinq décimales) : sa longueur se retrouve à un millième près.
-        assertEquals(original.distanceM, reread.distanceM, original.distanceM / 1_000)
+        // La longueur relue est celle de la liste : le trajet rouvert annonce la même distance, au mètre près.
+        assertEquals(listed.distanceM, reread.distanceM, 0.5)
         assertEquals(original.instructions.map { it.maneuver }, reread.instructions.map { it.maneuver })
     }
 

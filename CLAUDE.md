@@ -235,6 +235,14 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
 - **Guidage vocal** : synthèse vocale d'Android, focus audio `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` le temps de la
   phrase (la musique baisse, ne s'arrête pas), désactivé par défaut. Aucune autre demande de focus dans l'appli.
 - **Pas de nom de rue dans les consignes** : les données BRouter n'en contiennent pas.
+- **Itinéraires enregistrés à six décimales** (`RouteCodec`, `Polyline.FINE`, dix centimètres) : à cinq décimales
+  (un mètre), chaque point bougeait un peu et l'itinéraire relu n'avait plus tout à fait sa longueur (de −1 à
+  +10 m mesurés sur des itinéraires de 1 à 6 km autour de Corte) ; vu sur l'émulateur, un trajet de « 2,4 km »
+  dans la liste se rouvrait à « 2,5 km ». Le champ `decimales` du texte enregistré vaut 5 quand il est absent :
+  les itinéraires des versions précédentes se relisent comme avant. Les vignettes restent à cinq décimales.
+- **Un trajet enregistré se suit tel quel** : rouvert, il garde ses consignes de virage mais n'est jamais
+  recalculé si on s'en écarte (comme une trace GPX importée) : recalculer vers l'arrivée d'une boucle la
+  réduirait à rien.
 - **Météo par Open-Meteo, modèles Météo-France** (`models=meteofrance_seamless` : AROME 1,5 km puis ARPEGE) :
   gratuit, sans clé ni compte, CC BY 4.0. L'API de Météo-France elle-même demande un compte et une clé : écartée.
   La position est envoyée arrondie à deux décimales (environ un kilomètre).
@@ -330,8 +338,8 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
 3. Itinéraires BRouter embarqué + guidage *(fait)*
 4. Météo Open-Meteo (modèles Météo-France AROME) *(fait)*
 5. Stats, records, segments, finitions *(fait)*
-6. Itinéraire en grand, affiche à partager, guidage avec flèche de direction, onglet « Trajets » *(codé ; carte
-   en grand et vue de guidage vues sur l'émulateur en mode avion ; le reste attend un essai complet)*
+6. Itinéraire en grand, affiche à partager, guidage avec flèche de direction, onglet « Trajets » *(fait ; déroulé
+   en entier sur l'émulateur par la fabrication n° 18 du 21/11/2026, première version publiée : `v0.6.18`)*
 
 ## Sources de données et attributions
 

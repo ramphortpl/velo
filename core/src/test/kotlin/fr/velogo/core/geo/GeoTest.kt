@@ -116,6 +116,30 @@ class GeoTest {
     }
 
     @Test
+    fun `polyline a six decimales pour les traces qu'on mesure`() {
+        // Le même exemple à six décimales ; la valeur attendue vient d'une autre écriture de l'algorithme.
+        val reference = listOf(LatLon(38.5, -120.2), LatLon(40.7, -120.95), LatLon(43.252, -126.453))
+        assertEquals("_izlhA~rlgdF_{geC~ywl@_kwzCn`{nI", Polyline.encode(reference, Polyline.FINE))
+        assertEquals(reference, Polyline.decode("_izlhA~rlgdF_{geC~ywl@_kwzCn`{nI", Polyline.FINE))
+
+        // Une trace sinueuse, un point tous les dix mètres environ : relue, sa longueur ne doit pas bouger.
+        val track = ArrayList<LatLon>()
+        var p = LatLon(42.30612, 9.15037)
+        for (i in 0 until 400) {
+            track.add(p)
+            p = Geo.offset(p.lat, p.lon, 30.0 + 80.0 * kotlin.math.sin(i / 9.0), 7.0 + (i % 5))
+        }
+        fun length(points: List<LatLon>) = points.zipWithNext { a, b -> Geo.distanceM(a, b) }.sum()
+        val fine = Polyline.decode(Polyline.encode(track, Polyline.FINE), Polyline.FINE)
+        assertEquals(track.size, fine.size)
+        for (i in track.indices) assertTrue(Geo.distanceM(track[i], fine[i]) < 0.1)
+        assertEquals(length(track), length(fine), 0.05)
+        // À cinq décimales, les points bougent d'un mètre : la même trace relue n'a plus tout à fait sa longueur.
+        val coarse = Polyline.decode(Polyline.encode(track))
+        assertTrue("écart à cinq décimales : ${length(coarse) - length(track)} m", kotlin.math.abs(length(coarse) - length(track)) > 0.5)
+    }
+
+    @Test
     fun `polyline aller-retour sur une trace francaise`() {
         val points = (0 until 500).map { LatLon(45.0 + it * 0.00007, 5.0 - it * 0.00011) }
         val decoded = Polyline.decode(Polyline.encode(points))

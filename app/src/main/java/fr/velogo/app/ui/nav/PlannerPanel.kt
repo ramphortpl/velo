@@ -66,6 +66,7 @@ import fr.velogo.app.ui.theme.LocalRideColors
 import fr.velogo.app.ui.theme.NumberStyle
 import fr.velogo.core.format.Formats
 import fr.velogo.core.nav.BikeType
+import fr.velogo.core.nav.Maneuver
 import fr.velogo.core.nav.Route
 import fr.velogo.core.nav.WayMix
 
@@ -401,8 +402,11 @@ private fun ResultsDetails(state: PlannerState, weather: PlannerWeather?, action
         selected.route.mix?.let { WayMixBar(it, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) }
         weather?.let { WeatherLine(it, actions::openWeather) }
         if (state.isImported) {
+            // Un trajet enregistré garde les consignes de son calcul ; un fichier GPX n'en contient pas.
+            val withTurns = selected.route.instructions.any { it.maneuver != Maneuver.ARRIVE }
             Text(
-                "Trace suivie à la ligne : alerte si tu t'en écartes, sans consignes de virage.",
+                if (withTurns) "Trajet suivi tel quel, avec ses consignes de virage. Si tu t'en écartes, l'appli te prévient sans le recalculer."
+                else "Trace suivie à la ligne : alerte si tu t'en écartes, sans consignes de virage.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),

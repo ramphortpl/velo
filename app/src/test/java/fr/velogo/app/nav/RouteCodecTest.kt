@@ -2,6 +2,7 @@ package fr.velogo.app.nav
 
 import fr.velogo.core.geo.Geo
 import fr.velogo.core.geo.LatLon
+import fr.velogo.core.geo.Polyline
 import fr.velogo.core.nav.Instruction
 import fr.velogo.core.nav.Maneuver
 import fr.velogo.core.nav.Route
@@ -45,9 +46,9 @@ class RouteCodecTest {
         val back = RouteCodec.decode(text)!!
 
         assertEquals(route.points.size, back.points.size)
-        // La trace est arrondie au mètre près.
-        for (i in route.points.indices) assertTrue(Geo.distanceM(route.points[i], back.points[i]) < 1.2)
-        assertEquals(route.distanceM, back.distanceM, route.distanceM * 0.001)
+        // La trace est rangée à dix centimètres près : la longueur relue est celle qu'on avait annoncée.
+        for (i in route.points.indices) assertTrue(Geo.distanceM(route.points[i], back.points[i]) < 0.12)
+        assertEquals(route.distanceM, back.distanceM, 0.1)
         for (i in route.points.indices) assertEquals(route.elevations!![i], back.elevations!![i], 0.06)
         assertEquals(route.durationS, back.durationS, 0.001)
         assertEquals(route.ascentM, back.ascentM, 0.001)
@@ -57,6 +58,20 @@ class RouteCodecTest {
         assertEquals(route.mix, back.mix)
         // Compact : moins de 12 octets par point, altitudes et consignes comprises.
         assertTrue("taille ${text.length}", text.length < route.points.size * 12)
+    }
+
+    @Test
+    fun `un itineraire enregistre par une version precedente se relit toujours`() {
+        // Avant la version 0.6, la trace était rangée à cinq décimales, sans le dire dans le texte.
+        val route = sample()
+        val trace = Polyline.encode(route.points).replace("\\", "\\\\")
+        val old = """{"trace":"$trace","duree":1830.0,"montee":149.0,"consignes":[{"i":40,"m":"LEFT"},{"i":199,"m":"ARRIVE"}]}"""
+        val back = RouteCodec.decode(old)!!
+        assertEquals(route.points.size, back.points.size)
+        for (i in route.points.indices) assertTrue(Geo.distanceM(route.points[i], back.points[i]) < 1.2)
+        assertEquals(route.distanceM, back.distanceM, route.distanceM * 0.001)
+        assertEquals(listOf(Maneuver.LEFT, Maneuver.ARRIVE), back.instructions.map { it.maneuver })
+        assertEquals(1830.0, back.durationS, 0.001)
     }
 
     @Test

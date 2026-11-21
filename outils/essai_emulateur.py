@@ -478,6 +478,8 @@ def saved_routes():
         return
     time.sleep(2)
     shot("trajets")
+    # La distance annoncée par la liste : le trajet rouvert devra afficher exactement la même.
+    distance = wait_for_pattern(r"\d+(,\d)? k?m", 4)
 
     # Renommer, depuis le menu de la ligne.
     name = "Boucle essai"
@@ -512,6 +514,10 @@ def saved_routes():
         shot("trajet_rouvert")
         if name and not find(name):
             fail("le trajet rouvert n'affiche pas son nom dans le panneau d'itinéraire")
+        if not distance:
+            fail("la liste des trajets n'affiche pas la distance du trajet")
+        elif not find(distance):
+            fail(f"le trajet rouvert n'annonce pas la distance de la liste ({distance})")
     else:
         shot("trajet_non_rouvert")
         fail("un appui sur un trajet enregistré ne le rouvre pas sur la carte")

@@ -2,17 +2,30 @@ package fr.velogo.core.geo
 
 import kotlin.math.roundToLong
 
-/** Encodage compact d'une ligne (algorithme « encoded polyline », précision 1e-5 ≈ 1 m). */
+/**
+ * Encodage compact d'une ligne (algorithme « encoded polyline »). Par défaut cinq décimales, soit un mètre
+ * environ : bien assez pour un dessin. [FINE] (six décimales, dix centimètres) sert aux tracés qu'on mesure
+ * ensuite : arrondi au mètre, chaque point bouge un peu et la longueur d'un itinéraire change de quelques mètres.
+ */
 object Polyline {
-    private const val PRECISION = 1e5
+    const val COARSE = 5
+    const val FINE = 6
 
-    fun encode(points: List<LatLon>): String {
+    private fun factor(decimals: Int): Double {
+        require(decimals in 1..7) { "décimales : $decimals" }
+        var f = 1.0
+        repeat(decimals) { f *= 10 }
+        return f
+    }
+
+    fun encode(points: List<LatLon>, decimals: Int = COARSE): String {
+        val precision = factor(decimals)
         val sb = StringBuilder(points.size * 6)
         var lastLat = 0L
         var lastLon = 0L
         for (p in points) {
-            val lat = (p.lat * PRECISION).roundToLong()
-            val lon = (p.lon * PRECISION).roundToLong()
+            val lat = (p.lat * precision).roundToLong()
+            val lon = (p.lon * precision).roundToLong()
             encodeValue(lat - lastLat, sb)
             encodeValue(lon - lastLon, sb)
             lastLat = lat
@@ -21,7 +34,8 @@ object Polyline {
         return sb.toString()
     }
 
-    fun decode(encoded: String): List<LatLon> {
+    fun decode(encoded: String, decimals: Int = COARSE): List<LatLon> {
+        val precision = factor(decimals)
         val out = ArrayList<LatLon>(encoded.length / 4)
         var index = 0
         var lat = 0L
@@ -45,7 +59,7 @@ object Polyline {
                 shift += 5
             } while (b >= 0x20 && index < encoded.length)
             lon += if (result and 1L != 0L) (result shr 1).inv() else result shr 1
-            out.add(LatLon(lat / PRECISION, lon / PRECISION))
+            out.add(LatLon(lat / precision, lon / precision))
         }
         return out
     }
