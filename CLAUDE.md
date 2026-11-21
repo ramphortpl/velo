@@ -251,6 +251,8 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   **sans la signer** (les versions minifiées demandent des bibliothèques que les tests ne téléchargent pas,
   `compose-group-mapping` par exemple) : vérifié le 21/11/2026 sur une copie neuve avec un dossier Gradle vide,
   la version signée et la version d'essai se construisent ensuite avec `--offline`. Environ 1,3 Go compressés.
+  Sur GitHub : la fabrication n° 14 l'a écrite, la n° 15 l'a relue en 14 secondes (Gradle n'a pas été
+  retéléchargé, et son premier appel est passé de 45 s à 12 s).
   La mémoire de l'action `setup-gradle` est coupée (`cache-disabled`) : elle n'écrit que depuis `main`, et sa
   version par défaut est sous licence propriétaire (gratuite pour un dépôt public).
 - `outils/ci_outils_de_construction.sh` : premier appel à Gradle, trois tentatives (30 s puis 90 s d'attente),

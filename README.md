@@ -21,6 +21,10 @@ téléphone.
 
 Le détail de chaque version est dans [docs/NOUVEAUTES.md](docs/NOUVEAUTES.md).
 
+![Six écrans de VeloGo : carte pendant une sortie, écran guidon avec guidage, itinéraires, météo, statistiques, segment](docs/apercu.jpg)
+
+*Captures prises pendant l'essai automatique sur un émulateur Android 15 (sortie simulée à Corte).*
+
 ## Installer ou mettre à jour
 
 1. Sur le téléphone, ouvre la page **Releases** du dépôt.
