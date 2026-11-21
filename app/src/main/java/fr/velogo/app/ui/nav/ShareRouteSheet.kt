@@ -20,7 +20,36 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import android.graphics.Bitmap
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import fr.velogo.app.data.SavedRouteRepository
+import fr.velogo.app.data.Settings
+import fr.velogo.app.map.MapLayers
+import fr.velogo.app.map.MapStyleSpec
+import fr.velogo.app.map.RouteSnapshot
+import fr.velogo.app.nav.PosterMap
+import fr.velogo.app.nav.PosterText
+import fr.velogo.app.nav.RouteShare
+import fr.velogo.app.ui.LocalContainer
+import fr.velogo.core.nav.Route
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,6 +60,57 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import fr.velogo.app.R
 import fr.velogo.app.nav.RoutePoster
+
+/**
+ * La feuille « Partager l'itinéraire », complète : elle photographie le fond de carte (version claire du fond
+ * choisi par l'utilisateur), dessine l'affiche, la redessine quand on change son titre, et l'envoie.
+ * En attendant le fond de carte, et sans réseau, l'affiche se contente du tracé.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RouteShareSheet(route: Route, initialTitle: String, initialSubtitle: String, onDismiss: () -> Unit) {
+    val container = LocalContainer.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settings by container.settings.settings.collectAsStateWithLifecycle(initialValue = Settings())
+    val offlineRevision by container.offline.store.epoch.collectAsStateWithLifecycle()
+    val offlineFiles by container.offline.store.installed.collectAsStateWithLifecycle()
+    val layer = MapLayers.effective(settings.mapLayer, offlineRevision, offlineFiles.keys.any { it.startsWith("fond-") })
+
+    var title by rememberSaveable(route) { mutableStateOf(initialTitle) }
+    var subtitle by rememberSaveable(route) { mutableStateOf(initialSubtitle) }
+    var map by remember(route) { mutableStateOf<PosterMap?>(null) }
+    var mapPending by remember(route) { mutableStateOf(true) }
+    LaunchedEffect(route, layer.id) {
+        mapPending = true
+        map = RouteSnapshot.capture(context, MapStyleSpec(layer, dark = false, revision = if (layer.offline) offlineRevision else 0), route)
+        mapPending = false
+    }
+    val text = PosterText(title, subtitle, if (map != null) layer.attribution else "")
+    val poster by produceState<Bitmap?>(null, route, map, text) {
+        // Pendant qu'on écrit le titre, l'affiche attend une pause avant de se redessiner.
+        if (value != null) delay(300)
+        value = withContext(Dispatchers.Default) { RoutePoster.render(context, route, text, map) }
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        ShareRouteContent(
+            poster = remember(poster) { poster?.asImageBitmap() },
+            mapPending = mapPending,
+            withMap = map != null,
+            title = title,
+            subtitle = subtitle,
+            onTitle = { title = it },
+            onSubtitle = { subtitle = it },
+            onSharePoster = {
+                val image = poster
+                if (image != null) scope.launch { runCatching { context.startActivity(RouteShare.posterIntent(context, image, text, route)) } }
+            },
+            onShareGpx = {
+                scope.launch { runCatching { context.startActivity(SavedRouteRepository.shareIntent(context, title.ifBlank { "Itinéraire VeloGo" }, route)) } }
+            },
+        )
+    }
+}
 
 /**
  * Contenu de la feuille « Partager l'itinéraire » : l'aperçu de l'affiche, son titre et sa deuxième ligne

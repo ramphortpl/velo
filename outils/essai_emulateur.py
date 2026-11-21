@@ -58,23 +58,86 @@ def shot(name):
     log(f"capture {path} ({len(data)} octets)")
 
 
-def nodes():
-    """Tous les éléments visibles : (texte, description, (x1, y1, x2, y2))."""
+def screen():
+    """L'arbre des éléments affichés, ou None si l'écran n'a pas pu être lu."""
     for _ in range(3):
         shell("uiautomator dump /sdcard/ui.xml >/dev/null 2>&1")
         raw = run(["adb", "exec-out", "cat", "/sdcard/ui.xml"], timeout=60).stdout.decode("utf-8", "replace")
         try:
-            root = ET.fromstring(raw)
+            return ET.fromstring(raw)
         except ET.ParseError:
             time.sleep(1)
-            continue
-        out = []
+    return None
+
+
+def bounds_of(node):
+    match = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
+    return tuple(int(v) for v in match.groups()) if match else None
+
+
+def nodes():
+    """Tous les éléments visibles : (texte, description, (x1, y1, x2, y2))."""
+    root = screen()
+    out = []
+    if root is not None:
         for node in root.iter("node"):
-            match = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
-            if match:
-                out.append((node.get("text", ""), node.get("content-desc", ""), tuple(int(v) for v in match.groups())))
-        return out
-    return []
+            bounds = bounds_of(node)
+            if bounds:
+                out.append((node.get("text", ""), node.get("content-desc", ""), bounds))
+    return out
+
+
+def text_field():
+    """Le champ de saisie affiché : (son contenu, son cadre), ou None s'il n'y en a pas."""
+    root = screen()
+    if root is not None:
+        for node in root.iter("node"):
+            bounds = bounds_of(node)
+            if bounds and node.get("class") == "android.widget.EditText":
+                return node.get("text", ""), bounds
+    return None
+
+
+def wait_keyboard(timeout=8):
+    """Attend que le clavier soit affiché : les touches envoyées pendant qu'il démarre se perdent."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if "mInputShown=true" in shell("dumpsys input_method"):
+            break
+        time.sleep(0.5)
+    time.sleep(1.5)
+
+
+def type_text(text, attempts=6):
+    """Écrit [text] dans le champ de saisie et vérifie que tout y est.
+
+    Sur l'émulateur, une partie des touches peut se perdre (clavier qui démarre, machine chargée) : on relit donc
+    le champ, on complète ce qui manque et on efface ce qui ne correspond pas, jusqu'à y lire le texte voulu.
+    """
+    wanted = text.lower()
+    cleared = None
+    for attempt in range(attempts):
+        field = text_field()
+        if field is None:
+            time.sleep(1)
+            continue
+        current = field[0]
+        if current.lower() == wanted:
+            return True
+        keep = len(current) if wanted.startswith(current.lower()) else 0
+        if current and not keep and current != cleared:
+            # Autre chose dans le champ (un ancien nom, une saisie abîmée) : on l'efface, puis on relit.
+            shell("input keyevent KEYCODE_MOVE_END")
+            shell("input keyevent " + " ".join(["KEYCODE_DEL"] * min(len(current) + 2, 80)))
+            cleared = current
+            time.sleep(1)
+            continue
+        if attempt and keep:
+            log(f"saisie incomplète (« {current} ») : on complète")
+        shell('input text "%s"' % text[keep:].replace(" ", "%s"))
+        time.sleep(1.5)
+    field = text_field()
+    return field is not None and field[0].lower() == wanted
 
 
 def find(label, exact=True):
@@ -306,8 +369,9 @@ def route_by_address(gps):
         fail("le panneau d'itinéraire ne s'ouvre pas")
         return
     tap("Choisir l'arrivée")
-    time.sleep(2)
-    shell('input text "gare%sde%scorte"')
+    wait_keyboard()
+    if not type_text("gare de corte"):
+        log("la saisie de l'adresse n'est pas arrivée entière dans le champ de recherche")
     if not wait_for("Gare de Corte", 25):
         shot("itineraire_recherche_sans_resultat")
         fail("la recherche d'adresse ne propose pas la gare de Corte")
@@ -335,6 +399,7 @@ def route_by_address(gps):
             fail("le détail des itinéraires ne se déplie pas")
         time.sleep(2)
         shot("itineraire_details")
+        save_route()
         tap("Voir la carte", timeout=6, required=False)
         if not wait_for("Détails", 6):
             fail("le panneau d'itinéraire ne se replie pas")
@@ -371,6 +436,90 @@ def route_by_address(gps):
     time.sleep(2)
     shot("carte_apres_guidage")
     check_alive("après le guidage")
+    saved_routes()
+
+
+def save_route():
+    """Dans le détail déplié : « Enregistrer cet itinéraire », pour le retrouver dans l'onglet « Trajets »."""
+    for _ in range(4):
+        if find("Enregistrer cet itinéraire"):
+            break
+        # Le bouton est en bas du détail : on fait défiler le panneau.
+        shell("input swipe 540 1700 540 1000 300")
+        time.sleep(1)
+    if not tap("Enregistrer cet itinéraire", timeout=4, required=False):
+        shot("itineraire_sans_bouton_enregistrer")
+        fail("le bouton « Enregistrer cet itinéraire » est introuvable dans le détail")
+        return
+    if not wait_for("Enregistrer l'itinéraire", 6):
+        fail("la fenêtre d'enregistrement de l'itinéraire ne s'ouvre pas")
+        return
+    tap("Enregistrer")
+    if not wait_for("Itinéraire enregistré", 8, exact=False):
+        log("pas de message de confirmation après l'enregistrement de l'itinéraire")
+    check_alive("après l'enregistrement d'un itinéraire")
+
+
+def saved_routes():
+    """L'onglet « Trajets » : l'itinéraire enregistré s'y retrouve, se renomme et se rouvre sur la carte."""
+    log("onglet « Trajets » : retrouver, renommer et rouvrir l'itinéraire enregistré")
+    if not tap("Trajets", timeout=8, required=False):
+        fail("l'onglet « Trajets » est absent de la barre du bas")
+        return
+    if not wait_for("Mes trajets", 10):
+        shot("trajets_absent")
+        fail("l'écran des trajets enregistrés ne s'affiche pas")
+        tap("Rouler", required=False)
+        return
+    if not wait_for("Enregistré aujourd'hui", 10, exact=False):
+        shot("trajets_vide")
+        fail("l'itinéraire enregistré n'apparaît pas dans l'onglet « Trajets »")
+        tap("Rouler", required=False)
+        return
+    time.sleep(2)
+    shot("trajets")
+
+    # Renommer, depuis le menu de la ligne.
+    name = "Boucle essai"
+    if tap("Actions pour", timeout=6, exact=False, required=False) and tap("Renommer", timeout=6, required=False):
+        if wait_for("Renommer le trajet", 6):
+            field = text_field()
+            if field:
+                x, y = (field[1][0] + field[1][2]) // 2, (field[1][1] + field[1][3]) // 2
+                shell(f"input tap {x} {y}")
+                wait_keyboard()
+            if not type_text(name):
+                log("le nouveau nom n'est pas arrivé entier dans le champ")
+            tap("Enregistrer")
+            if wait_for(name, 8):
+                shot("trajets_renomme")
+            else:
+                shot("trajets_non_renomme")
+                fail("le trajet renommé ne porte pas son nouveau nom dans la liste")
+                name = None
+        else:
+            fail("la fenêtre « Renommer le trajet » ne s'ouvre pas")
+            name = None
+    else:
+        fail("le menu d'un trajet enregistré (renommer, partager, supprimer) est introuvable")
+        name = None
+    check_alive("après le renommage d'un trajet")
+
+    # Un appui rouvre le trajet sur la carte, prêt à être suivi.
+    opened = tap(name) if name else tap("Enregistré aujourd'hui", exact=False)
+    if opened and wait_for("Démarrer le guidage", 15):
+        time.sleep(3)
+        shot("trajet_rouvert")
+        if name and not find(name):
+            fail("le trajet rouvert n'affiche pas son nom dans le panneau d'itinéraire")
+    else:
+        shot("trajet_non_rouvert")
+        fail("un appui sur un trajet enregistré ne le rouvre pas sur la carte")
+    tap("Fermer l'itinéraire", timeout=6, required=False)
+    time.sleep(1)
+    if find("Mes trajets"):
+        tap("Rouler", required=False)
+    check_alive("après la réouverture d'un trajet")
 
 
 def route_poster():

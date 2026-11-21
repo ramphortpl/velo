@@ -75,6 +75,9 @@ import fr.velogo.core.weather.RouteWeather
 import fr.velogo.core.weather.WeatherPoint
 import fr.velogo.core.weather.WeatherReport
 import fr.velogo.app.ui.nav.SavedRoutesList
+import fr.velogo.app.ui.routes.SavedRoutesContent
+import fr.velogo.app.ui.routes.savedRouteRows
+import fr.velogo.core.geo.Simplify
 import fr.velogo.app.ui.nav.SearchResult
 import fr.velogo.core.nav.BikeType
 import fr.velogo.core.nav.Instruction
@@ -665,6 +668,37 @@ class ScreenshotTest {
             }
         }
     }
+
+    /** L'onglet « Trajets » : les mêmes itinéraires enregistrés, avec le dessin de leur tracé. */
+    private fun savedRoutes(theme: ThemeMode, routes: List<SavedRouteEntity>?): @Composable () -> Unit = {
+        val previews = routes.orEmpty().associate { it.id to Polyline.encode(Simplify.toMaxPoints(sampleRoute(it.id.toInt()).points, 90)) }
+        VeloGoTheme(mode = theme) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                SavedRoutesContent(
+                    // La troisième vignette n'est pas encore prête : la ligne doit rester en place.
+                    rows = routes?.let { savedRouteRows(it, previews - 3L, today = sampleToday) },
+                    onOpen = {}, onRename = { _, _ -> }, onShare = {}, onDelete = {}, onNew = {},
+                    contentPadding = PaddingValues(bottom = 80.dp),
+                )
+            }
+        }
+    }
+
+    private val sampleSavedRoutes = listOf(
+        SavedRouteEntity(1, "Tour du lac d'Annecy", 1_795_190_000_000, "HYBRID", 41_800.0, 310.0, 7_400.0, ""),
+        SavedRouteEntity(2, "Col de la Forclaz par Talloires et le bout du lac", 1_795_100_000_000, "ROAD", 63_200.0, 1_240.0, 12_900.0, ""),
+        SavedRouteEntity(3, "Semnoz par les crêtes", 1_793_000_000_000, "MTB", 28_400.0, 980.0, 9_800.0, ""),
+        SavedRouteEntity(4, "Boulangerie", 1_760_000_000_000, "HYBRID", 870.0, 4.0, 190.0, ""),
+    )
+
+    @Test
+    fun trajets() = captureRoboImage("$OUT/trajets.png", content = savedRoutes(ThemeMode.LIGHT, sampleSavedRoutes))
+
+    @Test
+    fun trajets_sombre() = captureRoboImage("$OUT/trajets_sombre.png", content = savedRoutes(ThemeMode.DARK, sampleSavedRoutes))
+
+    @Test
+    fun trajets_vide() = captureRoboImage("$OUT/trajets_vide.png", content = savedRoutes(ThemeMode.LIGHT, emptyList()))
 
     // --- Météo ------------------------------------------------------------------------------------------------
 

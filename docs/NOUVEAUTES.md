@@ -1,6 +1,6 @@
 # Nouveautés de VeloGo
 
-## Version 0.6 — Carte en grand, affiche à partager, guidage avec flèche
+## Version 0.6 — Carte en grand, affiche à partager, guidage avec flèche, onglet « Trajets »
 
 - **Itinéraire choisi : la carte en grand.** Dès que les itinéraires sont calculés, le panneau du bas se replie
   de lui-même : il ne garde que les propositions et le bouton « Démarrer le guidage », et la carte se cadre sur le
@@ -20,6 +20,10 @@
   bouton « Recentrer » y ramène ; « Voir tout l'itinéraire » montre le trajet entier.
 - Le téléphone n'a pas de boussole : la flèche suit ton déplacement. À l'arrêt elle garde ta dernière direction,
   et au départ d'un guidage elle montre dans quel sens part l'itinéraire.
+- **Un onglet « Trajets »** dans la barre du bas : tous tes itinéraires enregistrés, avec le dessin du tracé, la
+  distance, la durée et le dénivelé. Un appui rouvre le trajet sur la carte, prêt à être suivi (même sans
+  réseau) ; le menu « ⋮ » de chaque ligne permet de le partager en affiche, de le renommer ou de le supprimer.
+  Pour enregistrer un itinéraire : « Détails », puis « Enregistrer cet itinéraire ».
 - Correction : après le calcul d'un itinéraire, ta position restait affichée dans le haut de l'écran pendant le
   guidage. Elle est maintenant toujours là où on l'attend.
 
@@ -31,6 +35,8 @@
    doivent recevoir l'image et sa légende.
 3. Démarre le guidage et roule : la flèche pointe devant toi, la carte tourne dans les virages. Déplace la carte
    au doigt, puis touche « Recentrer ».
+4. Enregistre un itinéraire (« Détails », puis « Enregistrer cet itinéraire »), ouvre l'onglet « Trajets » et
+   touche-le : il doit revenir sur la carte, prêt à démarrer.
 
 ### Limites connues
 

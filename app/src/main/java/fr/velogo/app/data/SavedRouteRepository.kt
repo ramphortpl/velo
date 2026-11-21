@@ -6,6 +6,8 @@ import androidx.core.content.FileProvider
 import fr.velogo.app.data.db.SavedRouteEntity
 import fr.velogo.app.data.db.VeloGoDatabase
 import fr.velogo.app.nav.RouteCodec
+import fr.velogo.core.geo.Polyline
+import fr.velogo.core.geo.Simplify
 import fr.velogo.core.gpx.Gpx
 import fr.velogo.core.gpx.GpxWaypoint
 import fr.velogo.core.nav.BikeType
@@ -42,9 +44,22 @@ class SavedRouteRepository(db: VeloGoDatabase) {
         return entity to route
     }
 
+    suspend fun rename(id: Long, name: String) = dao.rename(id, name.trim().ifEmpty { "Itinéraire" })
+
     suspend fun delete(id: Long) = dao.delete(id)
 
+    /**
+     * Le dessin de l'itinéraire en quelques dizaines de points (trace encodée), pour sa vignette dans la liste ;
+     * null s'il n'est plus lisible. La liste elle-même ne charge pas les tracés, bien trop lourds.
+     */
+    suspend fun preview(id: Long): String? = withContext(Dispatchers.Default) {
+        val route = load(id)?.second ?: return@withContext null
+        Polyline.encode(Simplify.toMaxPoints(route.points, PREVIEW_POINTS))
+    }
+
     companion object {
+        private const val PREVIEW_POINTS = 90
+
         /** Écrit l'itinéraire en GPX dans le dossier de partage et renvoie l'intention « Partager ». */
         suspend fun shareIntent(context: Context, name: String, route: Route): Intent = withContext(Dispatchers.IO) {
             val file = File(ShareFiles.directory(context), "VeloGo_${ShareFiles.safeName(name, "itineraire")}.gpx")

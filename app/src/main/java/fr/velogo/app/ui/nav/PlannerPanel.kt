@@ -158,7 +158,7 @@ fun PlannerPanel(
 @Composable
 private fun PointsStage(state: PlannerState, hasRoutingData: Boolean, actions: PlannerActions) {
     Header("Itinéraire", onClose = actions::close) {
-        IconButton(onClick = actions::openSaved) { Icon(painterResource(R.drawable.ic_bookmark), contentDescription = "Mes itinéraires enregistrés") }
+        IconButton(onClick = actions::openSaved) { Icon(painterResource(R.drawable.ic_bookmark), contentDescription = "Mes trajets enregistrés") }
         IconButton(onClick = actions::importGpx) { Icon(painterResource(R.drawable.ic_upload_file), contentDescription = "Importer une trace GPX") }
     }
     BikeSelector(state.bike, actions::setBike)

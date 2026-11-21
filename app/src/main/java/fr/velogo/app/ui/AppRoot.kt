@@ -47,6 +47,7 @@ import fr.velogo.app.ui.history.HistoryScreen
 import fr.velogo.app.ui.history.RideDetailScreen
 import fr.velogo.app.ui.offline.OfflineMapsScreen
 import fr.velogo.app.ui.ride.RideScreen
+import fr.velogo.app.ui.routes.SavedRoutesScreen
 import fr.velogo.app.ui.segments.SegmentDetailScreen
 import fr.velogo.app.ui.segments.SegmentsScreen
 import fr.velogo.app.ui.stats.StatsScreen
@@ -55,6 +56,9 @@ import fr.velogo.app.ui.settings.SettingsScreen
 import fr.velogo.app.ui.theme.LocalIsDark
 import fr.velogo.app.ui.theme.VeloGoTheme
 import kotlinx.serialization.Serializable
+
+@Serializable
+data object SavedRoutesKey : NavKey
 
 @Serializable
 data object HistoryKey : NavKey
@@ -83,6 +87,8 @@ data class SegmentDetailKey(val segmentId: Long) : NavKey
 /** Les onglets du bas. « Rouler » est l'écran principal : la carte et l'enregistrement. */
 enum class Tab(val label: String, val icon: Int, val selectedIcon: Int) {
     RIDE("Rouler", R.drawable.ic_directions_bike, R.drawable.ic_directions_bike_filled),
+    /** Les itinéraires enregistrés, à rouvrir d'un appui. */
+    ROUTES("Trajets", R.drawable.ic_bookmark, R.drawable.ic_bookmark_filled),
     HISTORY("Historique", R.drawable.ic_history, R.drawable.ic_history),
     SETTINGS("Réglages", R.drawable.ic_settings, R.drawable.ic_settings_filled),
 }
@@ -117,6 +123,7 @@ fun AppRoot(container: AppContainer, settings: Settings) {
                                     onClick = {
                                         when (item) {
                                             Tab.RIDE -> Unit
+                                            Tab.ROUTES -> backStack.resetTo(SavedRoutesKey)
                                             Tab.HISTORY -> backStack.resetTo(HistoryKey)
                                             Tab.SETTINGS -> backStack.resetTo(SettingsKey)
                                         }
@@ -169,6 +176,9 @@ fun AppRoot(container: AppContainer, settings: Settings) {
                                     rememberViewModelStoreNavEntryDecorator(),
                                 ),
                                 entryProvider = entryProvider {
+                                    entry<SavedRoutesKey> {
+                                        SavedRoutesScreen(onShowMap = { tab = Tab.RIDE }, contentPadding = padding)
+                                    }
                                     entry<HistoryKey> {
                                         HistoryScreen(
                                             onOpenRide = { backStack.add(RideDetailKey(it)) },

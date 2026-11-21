@@ -14,7 +14,7 @@ téléphone.
 - **Itinéraires** : calculés sur le téléphone, même sans réseau : le plus rapide, le plus sûr, le moins de dénivelé,
   pour vélo de route, VTC/gravel ou VTT. Guidage comme sur un GPS de voiture (flèche de direction, carte dans le
   sens de la marche), avec alerte et recalcul hors itinéraire, voix en option. Affiche de l'itinéraire à partager
-  (WhatsApp, SMS…), import et export GPX.
+  (WhatsApp, SMS…), import et export GPX. Les itinéraires enregistrés se retrouvent dans l'onglet « Trajets ».
 - **Météo** : prévisions Météo-France (via Open-Meteo), pluie au quart d'heure, vent de face ou de dos, météo le
   long de l'itinéraire à l'heure de passage, alerte pluie pendant la sortie.
 - **Historique** : chaque sortie avec sa carte, ses chiffres et ses graphiques ; totaux par semaine, mois et

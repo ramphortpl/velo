@@ -263,7 +263,7 @@ class VeloMapState {
             applyLiveTrack()
             applyMarker()
             location?.let { pushLocation(it) }
-            pendingFit?.let { fit(it.box, it.paddingPx, it.topPx, it.bottomPx) }
+            pendingFit?.let { fit(it.box, it.paddingPx, it.topPx, it.bottomPx, it.endPx) }
         }
     }
 
@@ -657,11 +657,19 @@ class VeloMapState {
     }
 
     /**
-     * Cadre la carte sur une emprise (par exemple toute une sortie), vue de dessus et nord en haut. [topPx] et
-     * [bottomPx] réservent la place de ce qui recouvre la carte en haut et en bas (bandeau, panneau d'itinéraire).
+     * Cadre la carte sur une emprise (par exemple toute une sortie), vue de dessus et nord en haut. [topPx],
+     * [bottomPx] et [endPx] réservent la place de ce qui recouvre la carte en haut, en bas et à droite (bandeau,
+     * panneau d'itinéraire, colonne de boutons).
      */
-    fun fit(box: BoundingBox, paddingPx: Int, topPx: Int = paddingPx, bottomPx: Int = paddingPx, animate: Boolean = false) {
-        pendingFit = Fit(box, paddingPx, topPx, bottomPx)
+    fun fit(
+        box: BoundingBox,
+        paddingPx: Int,
+        topPx: Int = paddingPx,
+        bottomPx: Int = paddingPx,
+        endPx: Int = paddingPx,
+        animate: Boolean = false,
+    ) {
+        pendingFit = Fit(box, paddingPx, topPx, bottomPx, endPx)
         val map = map ?: return
         if (style == null) return
         isFollowing = false
@@ -672,11 +680,11 @@ class VeloMapState {
                 CameraPosition.Builder()
                     .target(LatLng((box.minLat + box.maxLat) / 2, (box.minLon + box.maxLon) / 2))
                     .zoom(15.0).bearing(0.0).tilt(0.0)
-                    .padding(paddingPx.toDouble(), topPx.toDouble(), paddingPx.toDouble(), bottomPx.toDouble())
+                    .padding(paddingPx.toDouble(), topPx.toDouble(), endPx.toDouble(), bottomPx.toDouble())
                     .build()
             )
         } else {
-            CameraUpdateFactory.newLatLngBounds(LatLngBounds.from(box.maxLat, box.maxLon, box.minLat, box.minLon), 0.0, 0.0, paddingPx, topPx, paddingPx, bottomPx)
+            CameraUpdateFactory.newLatLngBounds(LatLngBounds.from(box.maxLat, box.maxLon, box.minLat, box.minLon), 0.0, 0.0, paddingPx, topPx, endPx, bottomPx)
         }
         fun apply(u: org.maplibre.android.camera.CameraUpdate) = if (animate) map.animateCamera(u, FIT_MS) else map.moveCamera(u)
         // Si les marges demandées ne laissent pas de place (très petit écran), on retombe sur un cadrage simple.
@@ -688,7 +696,7 @@ class VeloMapState {
         pendingFit = null
     }
 
-    private class Fit(val box: BoundingBox, val paddingPx: Int, val topPx: Int, val bottomPx: Int)
+    private class Fit(val box: BoundingBox, val paddingPx: Int, val topPx: Int, val bottomPx: Int, val endPx: Int)
 
     fun setTopInset(px: Int) {
         if (topInsetPx == px) return

@@ -13,6 +13,7 @@ object Dates {
     private val shortDay = DateTimeFormatter.ofPattern("EEE d MMM", Locale.FRANCE)
     private val shortDayYear = DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.FRANCE)
     private val dayMonth = DateTimeFormatter.ofPattern("d MMMM", Locale.FRANCE)
+    private val numericDay = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.FRANCE)
     private val month = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.FRANCE)
     private val time = DateTimeFormatter.ofPattern("H:mm", Locale.FRANCE)
     private val fileStamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH'h'mm", Locale.FRANCE)
@@ -41,15 +42,24 @@ object Dates {
         return date.format(if (date.year == LocalDate.now().year) shortDay else shortDayYear)
     }
 
-    /** « aujourd'hui », « hier » ou « le 12 novembre » */
-    fun relativeDay(ms: Long): String {
+    /** « aujourd'hui », « hier », « le 12 novembre » ou, une autre année, « le 12 novembre 2025 » */
+    fun relativeDay(ms: Long, today: LocalDate = LocalDate.now()): String {
         val date = at(ms).toLocalDate()
-        val today = LocalDate.now()
-        return when (date) {
-            today -> "aujourd'hui"
-            today.minusDays(1) -> "hier"
-            else -> "le " + date.format(dayMonth)
+        return when {
+            date == today -> "aujourd'hui"
+            date == today.minusDays(1) -> "hier"
+            date.year == today.year -> "le " + date.format(dayMonth)
+            else -> "le " + date.format(dayLongMonthYear)
         }
+    }
+
+    /**
+     * Le même, en plus court pour une ligne de liste : une autre année, la date s'écrit en chiffres
+     * (« le 12/11/2025 »).
+     */
+    fun relativeDayShort(ms: Long, today: LocalDate = LocalDate.now()): String {
+        val date = at(ms).toLocalDate()
+        return if (date.year == today.year || date == today.minusDays(1)) relativeDay(ms, today) else "le " + date.format(numericDay)
     }
 
     /** « Novembre 2026 » */

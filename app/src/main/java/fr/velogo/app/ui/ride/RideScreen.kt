@@ -9,17 +9,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalWindowInfo
 import fr.velogo.app.data.SavedRouteRepository
-import android.graphics.Bitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import fr.velogo.app.map.PlanMarker
-import fr.velogo.app.map.RouteSnapshot
 import fr.velogo.app.nav.GuidanceState
 import fr.velogo.app.nav.NavigationController
-import fr.velogo.app.nav.PosterMap
-import fr.velogo.app.nav.PosterText
-import fr.velogo.app.nav.RoutePoster
-import fr.velogo.app.nav.RouteShare
-import fr.velogo.app.ui.nav.ShareRouteContent
+import fr.velogo.app.ui.nav.RouteShareSheet
 import fr.velogo.core.nav.Route
 import fr.velogo.app.ui.nav.GUIDANCE_BANNER_HEIGHT
 import fr.velogo.app.ui.nav.GuidanceBanner
@@ -310,6 +303,8 @@ fun RideScreen(
     // --- Itinéraires sur la carte --------------------------------------------------------------------------
     val screenHeightPx = LocalWindowInfo.current.containerSize.height
     val fitPaddingPx = with(LocalDensity.current) { 48.dp.roundToPx() }
+    // À droite, le tracé s'arrête avant la colonne de boutons de la carte : ni le départ ni l'arrivée ne s'y cachent.
+    val fitEndPx = with(LocalDensity.current) { MAP_BUTTONS_WIDTH.roundToPx() }
     LaunchedEffect(planner.open, planner.options, planner.selected, guidance?.route) {
         val current = guidance
         when {
@@ -338,7 +333,10 @@ fun RideScreen(
     /** Cadre la carte sur les itinéraires proposés, dans la place que laisse le panneau. */
     val fitPlannedRoutes: (Boolean) -> Unit = { animate ->
         BoundingBox.of(planner.options.flatMap { it.route.points })?.let { box ->
-            mapState.fit(box, fitPaddingPx, topPx = fitTopPx, bottomPx = panelHeightPx + bottomPaddingPx + fitPaddingPx, animate = animate)
+            mapState.fit(
+                box, fitPaddingPx, topPx = fitTopPx, bottomPx = panelHeightPx + bottomPaddingPx + fitPaddingPx, endPx = fitEndPx,
+                animate = animate,
+            )
         }
     }
     // Quand des propositions arrivent (ou qu'on rouvre le panneau sur elles), il se replie et la carte se cadre
@@ -533,7 +531,10 @@ fun RideScreen(
                 val current = guidance
                 if (current == null) fitPlannedRoutes(true)
                 else BoundingBox.of(current.route.points)?.let { box ->
-                    mapState.fit(box, fitPaddingPx, topPx = navTopPx + fitPaddingPx, bottomPx = navBottomPx + fitPaddingPx, animate = true)
+                    mapState.fit(
+                        box, fitPaddingPx, topPx = navTopPx + fitPaddingPx, bottomPx = navBottomPx + fitPaddingPx, endPx = fitEndPx,
+                        animate = true,
+                    )
                 }
             },
             onRoute = { navigation.openPlanner() },
@@ -651,7 +652,7 @@ fun RideScreen(
                     if (route != null) {
                         scope.launch {
                             container.savedRoutes.save(draft, route, planner.bike)
-                            snackbar.showSnackbar("Itinéraire enregistré. Tu le retrouves avec le signet du panneau d'itinéraire.")
+                            snackbar.showSnackbar("Itinéraire enregistré. Tu le retrouves dans l'onglet « Trajets ».")
                         }
                     }
                 }) { Text("Enregistrer") }
@@ -661,42 +662,7 @@ fun RideScreen(
     }
 
     shareTarget?.let { target ->
-        var title by rememberSaveable(target) { mutableStateOf(target.title) }
-        var subtitle by rememberSaveable(target) { mutableStateOf(target.subtitle) }
-        // Le fond de carte est photographié une fois (version claire du fond affiché) ; en l'attendant, et sans
-        // réseau, l'affiche se contente du tracé.
-        var map by remember(target) { mutableStateOf<PosterMap?>(null) }
-        var mapPending by remember(target) { mutableStateOf(true) }
-        LaunchedEffect(target) {
-            map = RouteSnapshot.capture(context, MapStyleSpec(layer, dark = false, revision = spec.revision), target.route)
-            mapPending = false
-        }
-        val text = PosterText(title, subtitle, if (map != null) layer.attribution else "")
-        val poster by produceState<Bitmap?>(null, target, map, text) {
-            // Pendant qu'on écrit le titre, l'affiche attend une pause avant de se redessiner.
-            if (value != null) delay(300)
-            value = withContext(Dispatchers.Default) { RoutePoster.render(context, target.route, text, map) }
-        }
-        ModalBottomSheet(onDismissRequest = { shareTarget = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-            ShareRouteContent(
-                poster = remember(poster) { poster?.asImageBitmap() },
-                mapPending = mapPending,
-                withMap = map != null,
-                title = title,
-                subtitle = subtitle,
-                onTitle = { title = it },
-                onSubtitle = { subtitle = it },
-                onSharePoster = {
-                    val image = poster
-                    if (image != null) scope.launch { runCatching { context.startActivity(RouteShare.posterIntent(context, image, text, target.route)) } }
-                },
-                onShareGpx = {
-                    scope.launch {
-                        runCatching { context.startActivity(SavedRouteRepository.shareIntent(context, title.ifBlank { "Itinéraire VeloGo" }, target.route)) }
-                    }
-                },
-            )
-        }
+        RouteShareSheet(target.route, target.title, target.subtitle, onDismiss = { shareTarget = null })
     }
 
     if (showSavedRoutes) {
@@ -991,6 +957,8 @@ fun RideChrome(
 private val TOP_BAR_HEIGHT = 48.dp
 /** Hauteur du rappel des données posé sur la carte pendant une sortie. */
 private val MAP_STRIP_HEIGHT = 78.dp
+/** Largeur que prend, à droite de la carte, la colonne de boutons (marge, bouton, un peu d'air). */
+private val MAP_BUTTONS_WIDTH = 76.dp
 
 /**
  * Attend qu'une mesure (la hauteur du panneau d'itinéraire, qui s'anime) ne bouge plus : un quart de seconde

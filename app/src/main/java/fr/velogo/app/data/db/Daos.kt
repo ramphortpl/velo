@@ -68,6 +68,9 @@ interface SavedRouteDao {
     @Query("SELECT * FROM saved_routes WHERE id = :id")
     suspend fun get(id: Long): SavedRouteEntity?
 
+    @Query("UPDATE saved_routes SET name = :name WHERE id = :id")
+    suspend fun rename(id: Long, name: String)
+
     @Query("DELETE FROM saved_routes WHERE id = :id")
     suspend fun delete(id: Long)
 }

@@ -31,11 +31,11 @@ import fr.velogo.core.nav.BikeType
 @Composable
 fun SavedRoutesList(routes: List<SavedRouteEntity>, onOpen: (Long) -> Unit, onDelete: (Long) -> Unit) {
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-        Text("Mes itinéraires", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+        Text("Mes trajets enregistrés", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         if (routes.isEmpty()) {
             Text(
-                "Aucun itinéraire enregistré pour l'instant. Calcule un itinéraire puis touche « Enregistrer » : " +
-                    "tu pourras le reprendre plus tard, même sans réseau.",
+                "Aucun trajet enregistré pour l'instant. Calcule un itinéraire, ouvre ses « Détails », puis touche " +
+                    "« Enregistrer cet itinéraire » : tu pourras le reprendre plus tard, même sans réseau.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),

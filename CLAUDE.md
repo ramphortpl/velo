@@ -63,8 +63,8 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
   (`setNavigationInsets`). `fit` cadre une emprise vue de dessus ; `onUserMove` et `onRouteTapped` préviennent
   l'écran quand on déplace la carte ou qu'on touche un itinéraire proposé.
 - **Navigation** : l'écran « Rouler » (carte + enregistrement) reste composé en permanence sous les autres ;
-  Historique et Réglages se posent par-dessus via Navigation 3 (`AppRoot`). La carte n'est jamais recréée en
-  changeant d'onglet ; son rendu est coupé dès qu'elle est recouverte.
+  Trajets, Historique et Réglages se posent par-dessus via Navigation 3 (`AppRoot`). La carte n'est jamais
+  recréée en changeant d'onglet ; son rendu est coupé dès qu'elle est recouverte.
 - **Cartes hors ligne** : `OfflineMaps` réunit le catalogue (`catalogue.json` de la Release `cartes`), les
   fichiers installés (`OfflineStore`, dossier privé de l'appli sur le stockage partagé ou la carte SD, une notice
   `.json` par fichier vérifié) et les téléchargements (`PackDownloader`, qui s'appuie sur le `DownloadManager`
@@ -86,7 +86,14 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
   sans passer par l'écran) ; `RouteSnapshot` photographie le fond de carte hors écran (`MapSnapshotter`, même
   client réseau que la carte, donc carte hors ligne comprise) et, s'il n'arrive pas en douze secondes, l'affiche
   montre le tracé seul ; `RouteShare` l'envoie en JPEG avec une légende. `ShareRouteContent` est la feuille
-  d'aperçu (titre et deuxième ligne modifiables).
+  d'aperçu (titre et deuxième ligne modifiables) ; `RouteShareSheet` l'habille (photo du fond, dessin, envoi) et
+  sert aux deux endroits qui partagent un itinéraire : le panneau de la carte et l'onglet « Trajets ».
+- **Onglet « Trajets »** (`ui/routes/SavedRoutesScreen`) : les itinéraires enregistrés (`SavedRouteRepository`,
+  table `saved_routes`), les plus récents d'abord. La liste ne charge pas les tracés (plusieurs centaines de Ko
+  chacun) : la vignette de chaque ligne vient de `SavedRouteRepository.preview` (tracé allégé à 90 points),
+  préparée en tâche de fond. Un appui relit le trajet et le rend au `NavigationController` (`showSaved`), puis
+  repasse sur la carte ; si un guidage est en cours, une confirmation prévient qu'il s'arrêtera. Le menu d'une
+  ligne partage l'affiche, renomme ou supprime (avec confirmation). `savedRouteRows` met en forme les lignes.
 - **Météo** : `WeatherController` (dans le conteneur) tient la météo du lieu (`WeatherState`) et celle de
   l'itinéraire préparé ou suivi (`RouteWeatherState`). `OpenMeteo` interroge l'API (une seule requête pour
   plusieurs lieux) et lit la réponse ; `WeatherRepository` garde les dernières prévisions du lieu en mémoire et
@@ -116,14 +123,17 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
   du service et des notifications sont dans `strings.xml`).
 - **Écrans testables** : chaque écran a un composable « contenu » sans accès aux données (`RideChrome`,
   `HistoryContent`, `RideDetailBody`, `SettingsContent`, `OfflineMapsContent`, `PlannerPanel`, `PlaceSearchContent`,
-  `SavedRoutesList`, `ShareRouteContent`, `WeatherContent`, `StatsContent`, `SegmentsContent`,
-  `SegmentDetailBody`, `SegmentEditor`) rendu en image par `ScreenshotTest`. `RoutePosterTest` dessine l'affiche
+  `SavedRoutesList`, `SavedRoutesContent`, `ShareRouteContent`, `WeatherContent`, `StatsContent`,
+  `SegmentsContent`, `SegmentDetailBody`, `SegmentEditor`) rendu en image par `ScreenshotTest`. `RoutePosterTest` dessine l'affiche
   pour de bon et range ses images au même endroit (`affiche*.png`).
   Attention : une animation sans fin (barre de progression indéterminée) bloque la capture.
+  `SavedRoutesContentTest` pilote l'onglet « Trajets » au doigt (`createComposeRule`). Limite constatée : une
+  fenêtre (`AlertDialog`) qui contient un champ de saisie n'est jamais « au repos » pour cet outil sous
+  Robolectric, même vide de tout code de l'appli ; ce genre de fenêtre se vérifie donc sur l'émulateur.
 
 ## Vérification sans téléphone
 
-Il n'y a pas d'émulateur dans l'environnement de développement. Trois niveaux de vérification :
+Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux de vérification :
 
 1. `core` : tests unitaires des calculs (sorties simulées, références GeographicLib, tuiles PMTiles comparées à
    l'outil officiel `pmtiles`).
@@ -131,7 +141,8 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Trois niveaux 
    serveur de tuiles local, du catalogue et de `ReliefSource` (une vraie tuile de relief, altitudes comparées à
    celles du service de l'IGN) ; météo testée contre un faux serveur (intercepteur OkHttp, aucun réseau) ;
    segments, meilleurs temps et sauvegarde testés de bout en bout sur une vraie base Room en mémoire
-   (`RideAnalysisTest`, `RideArchiveTest`) ; `DatabaseMigrationTest` fabrique une base à l'ancien format d'après
+   (`RideAnalysisTest`, `RideArchiveTest`), trajets enregistrés aussi (`SavedRouteRepositoryTest`) ;
+   `DatabaseMigrationTest` fabrique une base à l'ancien format d'après
    son schéma exporté, y range une sortie et l'ouvre avec l'appli d'aujourd'hui (à compléter à chaque nouvelle
    version de la base). Sur l'ordinateur, ces tests ouvrent la base avec le SQLite d'Android
    simulé par Robolectric (`AndroidSQLiteDriver`) : celui que l'appli embarque (`BundledSQLiteDriver`) n'a pas de
@@ -142,9 +153,15 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Trois niveaux 
 4. CI : le job « Essai sur émulateur » installe l'APK `smoke` sur un émulateur Android 15 et déroule
    `outils/essai_emulateur.py` : sortie simulée à Corte (positions envoyées par le fournisseur de test d'Android,
    plus fiable que le GPS simulé de l'émulateur), distance affichée, pause automatique, historique, fonds de carte,
-   téléchargement de la carte de Corse, itinéraire vers une adresse et guidage, puis en mode avion : carte,
-   altitude, itinéraire vers un point de la carte, guidage avec enregistrement ; enfin reprise après arrêt forcé.
+   téléchargement de la carte de Corse, itinéraire vers une adresse (panneau replié puis déplié, enregistrement de
+   l'itinéraire, affiche à partager), guidage (flèche au départ, vue de guidage en roulant, « Recentrer » après
+   avoir déplacé la carte), onglet « Trajets » (le trajet enregistré s'y retrouve, se renomme, se rouvre sur la
+   carte), puis en mode avion : carte, altitude, itinéraire vers un point de la carte, guidage avec
+   enregistrement ; enfin reprise après arrêt forcé.
    Après la première sortie : création d'un segment (la sortie doit s'y retrouver), statistiques, liste des segments.
+   La saisie au clavier y est vérifiée (`type_text` relit le champ, complète ou efface) : envoyées pendant que le
+   clavier démarre, les touches d'`adb shell input text` se perdent (fabrication n° 16 : « gare d » au lieu de
+   « gare de corte », et tout l'essai de l'itinéraire en ligne sauté).
    Les captures d'écran sont publiées en artefact. La météo n'y est qu'un constat, jamais un échec : Open-Meteo
    limite les demandes par adresse IP, et celles des machines de la CI (comme celle de l'environnement de
    développement) sont partagées, donc souvent refusées (« Daily API request limit exceeded »).
@@ -313,7 +330,8 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
 3. Itinéraires BRouter embarqué + guidage *(fait)*
 4. Météo Open-Meteo (modèles Météo-France AROME) *(fait)*
 5. Stats, records, segments, finitions *(fait)*
-6. Itinéraire en grand, affiche à partager, guidage avec flèche de direction *(fait)*
+6. Itinéraire en grand, affiche à partager, guidage avec flèche de direction, onglet « Trajets » *(codé ; carte
+   en grand et vue de guidage vues sur l'émulateur en mode avion ; le reste attend un essai complet)*
 
 ## Sources de données et attributions
 
