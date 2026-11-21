@@ -247,8 +247,12 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   org.jetbrains.kotlin.jvm … was not found » : un dépôt de bibliothèques ne répondait pas à la machine de GitHub
   (Gradle ne dit pas lequel sans `--stacktrace`). Règle de sécurité : seul le job `apk` l'écrit, **avant** l'étape
   qui passe le mot de passe de la clé à Gradle, et sans le cache de compilation ; le job `essai` ne fait que la
-  lire. La mémoire de l'action `setup-gradle` est coupée (`cache-disabled`) : elle n'écrit que depuis `main`, et
-  sa version par défaut est sous licence propriétaire (gratuite pour un dépôt public).
+  lire. Pour qu'elle soit complète, quand elle est à écrire, le job `apk` construit d'abord la version publiable
+  **sans la signer** (les versions minifiées demandent des bibliothèques que les tests ne téléchargent pas,
+  `compose-group-mapping` par exemple) : vérifié le 21/11/2026 sur une copie neuve avec un dossier Gradle vide,
+  la version signée et la version d'essai se construisent ensuite avec `--offline`. Environ 1,3 Go compressés.
+  La mémoire de l'action `setup-gradle` est coupée (`cache-disabled`) : elle n'écrit que depuis `main`, et sa
+  version par défaut est sous licence propriétaire (gratuite pour un dépôt public).
 - `outils/ci_outils_de_construction.sh` : premier appel à Gradle, trois tentatives (30 s puis 90 s d'attente),
   la dernière avec la cause exacte de l'échec.
 

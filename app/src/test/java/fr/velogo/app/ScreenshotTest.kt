@@ -284,7 +284,7 @@ class ScreenshotTest {
             Surface(Modifier.fillMaxSize()) {
                 SegmentsContent(
                     rows = listOf(
-                        SegmentRow(1, "Montée du Semnoz", "3,5 km · ↗ 212 m · 6,1 %", efforts = 4, bestMs = 1_421_000),
+                        SegmentRow(1, "Montée du Semnoz", "3,5 km · ↗ 212 m · 6,0 %", efforts = 4, bestMs = 1_421_000),
                         SegmentRow(2, "Ligne droite de Sévrier", "1,8 km", efforts = 7, bestMs = 198_000),
                         SegmentRow(3, "Tour du lac par la voie verte", "38,4 km · ↗ 190 m", efforts = 1, bestMs = 5_940_000),
                         SegmentRow(4, "Côte de Talloires", "900 m · ↗ 64 m · 7,1 %", efforts = 0, bestMs = null),
@@ -329,7 +329,7 @@ class ScreenshotTest {
                     editor = { modifier ->
                         SegmentEditor(
                             altitude = data.altitude, range = 6f..9.5f, totalKm = data.altitude.xs.last(), name = "Montée du Semnoz",
-                            facts = "3,5 km · ↗ 212 m · 6,1 %", error = null,
+                            facts = "3,5 km · ↗ 212 m · 6,0 %", error = null,
                             onRange = {}, onName = {}, onCancel = {}, onCreate = {}, modifier = modifier,
                         )
                     },

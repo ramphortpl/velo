@@ -103,9 +103,27 @@ jobs:
       - name: Tests et vérifications
         run: ./gradlew test lintDebug --console=plain
 
-      # La mémoire est écrite ici, par ce job seulement et avant que Gradle ne reçoive le mot de passe de la clé :
-      # elle ne peut donc pas le contenir (sur un dépôt public, elle peut être relue par d'autres). Elle n'est
-      # réécrite que si les versions des outils ou des bibliothèques ont changé.
+      - name: Numéro de version
+        id: version
+        run: |
+          MAJOR=$(grep '^major=' version.properties | cut -d= -f2)
+          MINOR=$(grep '^minor=' version.properties | cut -d= -f2)
+          echo "name=$MAJOR.$MINOR.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      # Quand la mémoire des téléchargements est à (ré)écrire, la version publiable est d'abord construite sans la
+      # signer, donc sans le mot de passe de la clé : les versions au code réduit demandent des bibliothèques que
+      # les tests ne téléchargent pas, et la mémoire doit les contenir.
+      - name: Version publiable non signée (pour compléter la mémoire)
+        if: steps.memoire.outputs.cache-hit != 'true'
+        run: |
+          ./gradlew :app:assembleRelease --console=plain \
+            -Pvelogo.buildNumber=${{ github.run_number }} \
+            -Pvelogo.githubRepo=${{ github.repository }}
+
+      # La mémoire est écrite ici, par ce job seulement : il a téléchargé tout ce qu'il faut aux tests comme à la
+      # version publiée, et Gradle n'a pas encore reçu le mot de passe de la clé. Elle ne peut donc pas le
+      # contenir (sur un dépôt public, elle peut être relue par d'autres). Elle n'est réécrite que si les versions
+      # des outils ou des bibliothèques ont changé.
       - name: Préparer la mémoire des téléchargements
         if: steps.memoire.outputs.cache-hit != 'true'
         run: |
@@ -121,13 +139,6 @@ jobs:
         with:
           path: ${{ env.MEMOIRE_CHEMINS }}
           key: ${{ steps.memoire.outputs.cache-primary-key }}
-
-      - name: Numéro de version
-        id: version
-        run: |
-          MAJOR=$(grep '^major=' version.properties | cut -d= -f2)
-          MINOR=$(grep '^minor=' version.properties | cut -d= -f2)
-          echo "name=$MAJOR.$MINOR.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Secret de signature incorrect
         if: steps.cle.outputs.presente == 'fausse'
