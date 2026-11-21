@@ -297,8 +297,8 @@ def statistics():
     check_alive("après les statistiques")
 
 
-def route_by_address():
-    """Itinéraire vers une adresse cherchée en ligne, calculé sur le téléphone, puis début de guidage."""
+def route_by_address(gps):
+    """Itinéraire vers une adresse cherchée en ligne, calculé sur le téléphone, affiche à partager, puis guidage."""
     log("itinéraire : recherche d'adresse, calcul, guidage")
     if not tap("Itinéraire"):
         return
@@ -320,21 +320,86 @@ def route_by_address():
     time.sleep(1)
     tap("Calculer l'itinéraire")
     found = wait_for_pattern(r"\d itinéraires?", 60)
+    # Le panneau arrive replié : la carte se cadre sur les itinéraires, en grand.
+    time.sleep(3)
     shot("itineraire_propositions")
     if not found:
         fail("aucun itinéraire calculé vers la gare de Corte")
         tap("Fermer l'itinéraire", required=False)
         return
     log(f"propositions : {found}")
+
+    # Le détail se déplie (profil, nature des voies), puis se replie.
+    if tap("Détails", timeout=6, required=False):
+        if not wait_for("Voir la carte", 6):
+            fail("le détail des itinéraires ne se déplie pas")
+        time.sleep(2)
+        shot("itineraire_details")
+        tap("Voir la carte", timeout=6, required=False)
+        if not wait_for("Détails", 6):
+            fail("le panneau d'itinéraire ne se replie pas")
+        time.sleep(2)
+    else:
+        fail("le bouton « Détails » du panneau d'itinéraire est absent")
+
+    route_poster()
+
     tap("Démarrer le guidage")
     if wait_for("Pas maintenant", 6):
         tap("Pas maintenant")
     if not wait_for("Guidage :", 10, exact=False):
         fail("le bandeau de guidage n'apparaît pas")
-    time.sleep(3)
+    # À l'arrêt (le GPS continue d'envoyer la même position) : la flèche montre déjà où part l'itinéraire.
+    gps.stand(5)
+    shot("guidage_au_depart")
+    # En roulant : la carte suit dans le sens de la marche, inclinée, la flèche vers le bas de l'écran.
+    gps.ride(12, bearing_deg=200.0)
     shot("guidage_sur_la_carte")
+    # On déplace la carte : le bouton « Recentrer » doit apparaître, et ramener à la vue de guidage.
+    shell("input swipe 540 1100 300 800 400")
+    time.sleep(1)
+    if wait_for("Recentrer", 6):
+        shot("guidage_carte_deplacee")
+        tap("Recentrer")
+        gps.ride(4, bearing_deg=200.0)
+        if find("Recentrer"):
+            fail("le bouton « Recentrer » reste affiché après avoir recentré la carte")
+    else:
+        shot("guidage_sans_recentrer")
+        fail("le bouton « Recentrer » n'apparaît pas quand on déplace la carte pendant le guidage")
     tap("Arrêter le guidage")
+    time.sleep(2)
+    shot("carte_apres_guidage")
     check_alive("après le guidage")
+
+
+def route_poster():
+    """La feuille de partage : l'affiche de l'itinéraire doit se dessiner, avec son fond de carte."""
+    log("itinéraire : affiche à partager")
+    if not tap("Partager l'itinéraire", timeout=8, required=False):
+        fail("le bouton de partage de l'itinéraire est absent")
+        return
+    if not wait_for("Partager l'affiche", 10):
+        shot("partage_absent")
+        fail("la feuille de partage de l'itinéraire ne s'ouvre pas")
+        return
+    ready = wait_for("Aperçu de l'affiche", 15)
+    # Le fond de carte arrive ensuite (quelques secondes avec du réseau).
+    with_map = wait_for("Voilà ce que tes amis recevront.", 25)
+    shot("itineraire_affiche")
+    if not ready:
+        fail("l'affiche de l'itinéraire n'a pas été dessinée")
+    elif not with_map:
+        # Pas un échec : sans réseau (ou serveur de tuiles lent), l'affiche montre le tracé seul.
+        log("affiche dessinée sans fond de carte (réseau lent ou absent)")
+    else:
+        log("affiche dessinée avec son fond de carte")
+    shell("input keyevent KEYCODE_BACK")
+    time.sleep(1)
+    if find("Partager l'affiche"):
+        shell("input keyevent KEYCODE_BACK")
+        time.sleep(1)
+    check_alive("après la préparation de l'affiche")
 
 
 def offline_maps(gps):
@@ -383,7 +448,7 @@ def offline_maps(gps):
     shot("carte_velo_hors_ligne")
     check_alive("avec la carte hors ligne")
 
-    route_by_address()
+    route_by_address(gps)
 
     log("mode avion : la carte et l'altitude doivent fonctionner sans réseau")
     shell("cmd connectivity airplane-mode enable")

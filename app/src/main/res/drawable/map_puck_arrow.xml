@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Position sur la carte quand on roule : une flèche qui montre le sens de la marche (pointe vers le haut = nord). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="46dp"
+    android:height="46dp"
+    android:viewportWidth="92"
+    android:viewportHeight="92">
+  <!-- Ombre portée, pour se détacher des fonds clairs. -->
+  <path
+      android:fillColor="#000000"
+      android:fillAlpha="0.22"
+      android:strokeColor="#000000"
+      android:strokeAlpha="0.22"
+      android:strokeWidth="12"
+      android:strokeLineJoin="round"
+      android:pathData="M46,13L73,77L46,64L19,77Z"/>
+  <!-- Contour blanc. -->
+  <path
+      android:fillColor="#FFFFFF"
+      android:strokeColor="#FFFFFF"
+      android:strokeWidth="12"
+      android:strokeLineJoin="round"
+      android:pathData="M46,10L73,74L46,61L19,74Z"/>
+  <!-- La flèche. -->
+  <path
+      android:fillColor="#1A73E8"
+      android:strokeColor="#1A73E8"
+      android:strokeWidth="3"
+      android:strokeLineJoin="round"
+      android:pathData="M46,10L73,74L46,61L19,74Z"/>
+</vector>

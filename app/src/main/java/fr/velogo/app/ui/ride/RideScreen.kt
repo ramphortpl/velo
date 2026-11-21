@@ -1,5 +1,6 @@
 package fr.velogo.app.ui.ride
 
+import android.location.Location
 import android.view.WindowManager
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -8,8 +9,18 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalWindowInfo
 import fr.velogo.app.data.SavedRouteRepository
+import android.graphics.Bitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import fr.velogo.app.map.PlanMarker
+import fr.velogo.app.map.RouteSnapshot
 import fr.velogo.app.nav.GuidanceState
+import fr.velogo.app.nav.NavigationController
+import fr.velogo.app.nav.PosterMap
+import fr.velogo.app.nav.PosterText
+import fr.velogo.app.nav.RoutePoster
+import fr.velogo.app.nav.RouteShare
+import fr.velogo.app.ui.nav.ShareRouteContent
+import fr.velogo.core.nav.Route
 import fr.velogo.app.ui.nav.GUIDANCE_BANNER_HEIGHT
 import fr.velogo.app.ui.nav.GuidanceBanner
 import fr.velogo.app.ui.nav.PlaceSearchDialog
@@ -183,8 +194,14 @@ fun RideScreen(
     var pressedPoint by remember { mutableStateOf<LatLon?>(null) }
     var showSavedRoutes by remember { mutableStateOf(false) }
     var routeNameDraft by remember { mutableStateOf<String?>(null) }
+    /** L'itinéraire dont on prépare le partage (affiche ou fichier GPX), s'il y en a un. */
+    var shareTarget by remember { mutableStateOf<ShareTarget?>(null) }
     var proposeRecording by remember { mutableStateOf(false) }
     var panelHeightPx by remember { mutableIntStateOf(0) }
+    /** Propositions d'itinéraire : panneau déplié (le détail) ou replié (la carte en grand). */
+    var plannerExpanded by rememberSaveable { mutableStateOf(false) }
+    /** Augmente à chaque fois que la carte doit se recadrer sur les itinéraires proposés. */
+    var fitRequest by remember { mutableIntStateOf(0) }
     // Cartes hors ligne : la carte se recharge quand une région est installée ou supprimée.
     val offlineRevision by container.offline.store.epoch.collectAsStateWithLifecycle()
     val offlineFiles by container.offline.store.installed.collectAsStateWithLifecycle()
@@ -205,9 +222,15 @@ fun RideScreen(
             lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 container.gps.fixes.collect { gps ->
                     lastAccuracy = gps.fix.accuracyM
-                    val speed = gps.fix.speedMps
-                    lastBearing = if (speed != null && speed >= MOVING_MPS) gps.fix.bearingDeg else null
-                    mapState.updateLocation(gps.location)
+                    lastBearing = if (gps.speedMps >= MOVING_MPS) gps.courseDeg else null
+                    var shown = gps.location
+                    if (!shown.hasBearing()) {
+                        // Guidage lancé à l'arrêt : en attendant de rouler, la flèche montre où part l'itinéraire.
+                        container.navigation.guidance.value?.let { current ->
+                            shown = Location(shown).apply { bearing = current.route.bearingAt(current.nav.progressM).toFloat() }
+                        }
+                    }
+                    mapState.updateLocation(shown)
                 }
             }
         }
@@ -309,16 +332,50 @@ fun RideScreen(
             }
         )
     }
-    // Quand des propositions arrivent, la carte se cadre dessus, au-dessus du panneau.
-    LaunchedEffect(planner.options) {
+    val fitDensity = LocalDensity.current
+    val fitTopPx = with(fitDensity) { (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + TOP_BAR_HEIGHT).roundToPx() } + fitPaddingPx
+    val bottomPaddingPx = with(fitDensity) { bottomPadding.roundToPx() }
+    /** Cadre la carte sur les itinéraires proposés, dans la place que laisse le panneau. */
+    val fitPlannedRoutes: (Boolean) -> Unit = { animate ->
+        BoundingBox.of(planner.options.flatMap { it.route.points })?.let { box ->
+            mapState.fit(box, fitPaddingPx, topPx = fitTopPx, bottomPx = panelHeightPx + bottomPaddingPx + fitPaddingPx, animate = animate)
+        }
+    }
+    // Quand des propositions arrivent (ou qu'on rouvre le panneau sur elles), il se replie et la carte se cadre
+    // dessus, en grand.
+    LaunchedEffect(planner.options, planner.open) {
         if (planner.open && planner.options.isNotEmpty()) {
-            BoundingBox.of(planner.options.flatMap { it.route.points })?.let { box ->
-                mapState.fit(box, fitPaddingPx, topPx = fitPaddingPx * 3, bottomPx = (screenHeightPx * 0.55f).toInt())
-            }
+            plannerExpanded = false
+            // Le temps que le panneau prenne sa nouvelle taille : c'est elle qui dit où cadrer.
+            awaitStable { panelHeightPx }
+            fitPlannedRoutes(false)
+        }
+    }
+    LaunchedEffect(fitRequest) {
+        if (fitRequest > 0 && planner.open && planner.options.isNotEmpty()) {
+            awaitStable { panelHeightPx }
+            fitPlannedRoutes(true)
         }
     }
     LaunchedEffect(planner.open) { if (planner.open) mode = RideMode.MAP }
-    LaunchedEffect(guidance != null) { if (guidance != null) mapState.follow() }
+    // Guidage : la carte passe en vue de guidage (dans le sens de la marche, inclinée) et suit la position.
+    LaunchedEffect(guidance != null) { mapState.setNavigation(guidance != null) }
+    val navTopPx = with(fitDensity) {
+        (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + TOP_BAR_HEIGHT + 12.dp + GUIDANCE_BANNER_HEIGHT + 8.dp +
+            (if (snapshot.isActive) MAP_STRIP_HEIGHT + 8.dp else 0.dp)).roundToPx()
+    }
+    val navBottomPx = with(fitDensity) { (bottomPadding + CONTROLS_HEIGHT + 24.dp).roundToPx() }
+    LaunchedEffect(navTopPx, navBottomPx) { mapState.setNavigationInsets(navTopPx, navBottomPx) }
+    // Dès qu'on touche à la carte, le panneau déplié se replie pour la laisser voir ; un appui sur un autre
+    // itinéraire proposé le choisit.
+    DisposableEffect(mapState) {
+        mapState.onUserMove = { if (planner.open && planner.options.isNotEmpty() && plannerExpanded) plannerExpanded = false }
+        mapState.onRouteTapped = { index -> if (planner.open) navigation.select(index) }
+        onDispose {
+            mapState.onUserMove = null
+            mapState.onRouteTapped = null
+        }
+    }
     // Un appui long sur la carte place un point d'itinéraire.
     DisposableEffect(mapState, planner.open, planner.end == null, planner.options.isEmpty()) {
         mapState.onLongPress = { point ->
@@ -401,7 +458,14 @@ fun RideScreen(
     BackHandler(enabled = isForeground && mode == RideMode.DATA && !snapshot.isActive) { mode = RideMode.MAP }
     // Retour : des propositions vers les points, puis fermeture du panneau d'itinéraire.
     BackHandler(enabled = isForeground && planner.open) {
-        if (planner.options.isNotEmpty() && !planner.isImported) navigation.editPoints() else navigation.closePlanner()
+        when {
+            planner.options.isNotEmpty() && plannerExpanded -> {
+                plannerExpanded = false
+                fitRequest++
+            }
+            planner.options.isNotEmpty() && !planner.isImported -> navigation.editPoints()
+            else -> navigation.closePlanner()
+        }
     }
 
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -428,8 +492,12 @@ fun RideScreen(
         override fun save() { routeNameDraft = planner.importedName ?: planner.end?.label ?: "Itinéraire" }
         override fun share() {
             val route = planner.selectedOption?.route ?: return
-            val name = planner.importedName ?: planner.end?.label?.let { "Vers $it" } ?: "Itinéraire VeloGo"
-            scope.launch { runCatching { context.startActivity(SavedRouteRepository.shareIntent(context, name, route)) } }
+            val destination = planner.end?.label?.takeIf { it != NavigationController.MAP_POINT }
+            shareTarget = ShareTarget(
+                route = route,
+                title = planner.importedName ?: "Sortie vélo",
+                subtitle = if (planner.isImported || destination == null) "" else "Vers $destination",
+            )
         }
         override fun importGpx() { runCatching { gpxPicker.launch(arrayOf("*/*")) } }
         override fun openSaved() { showSavedRoutes = true }
@@ -460,6 +528,14 @@ fun RideScreen(
             guidance = guidance,
             plannerOpen = planner.open,
             plannerHeight = if (planner.open) panelHeight else 0.dp,
+            routesShown = planner.open && planner.options.isNotEmpty(),
+            onFitRoute = {
+                val current = guidance
+                if (current == null) fitPlannedRoutes(true)
+                else BoundingBox.of(current.route.points)?.let { box ->
+                    mapState.fit(box, fitPaddingPx, topPx = navTopPx + fitPaddingPx, bottomPx = navBottomPx + fitPaddingPx, animate = true)
+                }
+            },
             onRoute = { navigation.openPlanner() },
             onStopGuidance = { navigation.stopGuidance() },
             weather = glance,
@@ -495,6 +571,13 @@ fun RideScreen(
                 maxHeight = with(density) { (screenHeightPx * 0.6f).toDp() },
                 modifier = Modifier.onSizeChanged { panelHeightPx = it.height },
                 weather = plannerWeather,
+                expanded = plannerExpanded,
+                onExpandedChange = { wanted ->
+                    if (plannerExpanded != wanted) {
+                        plannerExpanded = wanted
+                        fitRequest++
+                    }
+                },
             )
         }
     }
@@ -575,6 +658,45 @@ fun RideScreen(
             },
             dismissButton = { TextButton(onClick = { routeNameDraft = null }) { Text("Annuler") } },
         )
+    }
+
+    shareTarget?.let { target ->
+        var title by rememberSaveable(target) { mutableStateOf(target.title) }
+        var subtitle by rememberSaveable(target) { mutableStateOf(target.subtitle) }
+        // Le fond de carte est photographié une fois (version claire du fond affiché) ; en l'attendant, et sans
+        // réseau, l'affiche se contente du tracé.
+        var map by remember(target) { mutableStateOf<PosterMap?>(null) }
+        var mapPending by remember(target) { mutableStateOf(true) }
+        LaunchedEffect(target) {
+            map = RouteSnapshot.capture(context, MapStyleSpec(layer, dark = false, revision = spec.revision), target.route)
+            mapPending = false
+        }
+        val text = PosterText(title, subtitle, if (map != null) layer.attribution else "")
+        val poster by produceState<Bitmap?>(null, target, map, text) {
+            // Pendant qu'on écrit le titre, l'affiche attend une pause avant de se redessiner.
+            if (value != null) delay(300)
+            value = withContext(Dispatchers.Default) { RoutePoster.render(context, target.route, text, map) }
+        }
+        ModalBottomSheet(onDismissRequest = { shareTarget = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            ShareRouteContent(
+                poster = remember(poster) { poster?.asImageBitmap() },
+                mapPending = mapPending,
+                withMap = map != null,
+                title = title,
+                subtitle = subtitle,
+                onTitle = { title = it },
+                onSubtitle = { subtitle = it },
+                onSharePoster = {
+                    val image = poster
+                    if (image != null) scope.launch { runCatching { context.startActivity(RouteShare.posterIntent(context, image, text, target.route)) } }
+                },
+                onShareGpx = {
+                    scope.launch {
+                        runCatching { context.startActivity(SavedRouteRepository.shareIntent(context, title.ifBlank { "Itinéraire VeloGo" }, target.route)) }
+                    }
+                },
+            )
+        }
     }
 
     if (showSavedRoutes) {
@@ -722,6 +844,9 @@ fun RideScreen(
     }
 }
 
+/** Un itinéraire à partager, avec ce que son affiche annonce au départ (l'utilisateur peut le changer). */
+private class ShareTarget(val route: Route, val title: String, val subtitle: String)
+
 /** Repères d'un itinéraire déjà calculé : étapes et arrivée, et le départ si on le demande. */
 private fun waypointMarkers(waypoints: List<LatLon>, withStart: Boolean): List<PlanMarker> =
     waypoints.mapIndexedNotNull { index, point ->
@@ -766,6 +891,9 @@ fun RideChrome(
     /** Le panneau d'itinéraire est ouvert : il remplace les boutons de la sortie, sur [plannerHeight]. */
     plannerOpen: Boolean = false,
     plannerHeight: Dp = 0.dp,
+    /** Des itinéraires proposés sont dessinés sur la carte : un bouton permet de les revoir en entier. */
+    routesShown: Boolean = false,
+    onFitRoute: () -> Unit = {},
     onRoute: () -> Unit = {},
     onStopGuidance: () -> Unit = {},
     /** La météo du moment, si elle est connue : pastille sur la carte, ligne sous les chiffres. */
@@ -786,6 +914,9 @@ fun RideChrome(
                     topPadding = topInset + TOP_BAR_HEIGHT + 12.dp + bannerSpace,
                     bottomPadding = bottomPadding + (if (plannerOpen) plannerHeight + 12.dp else CONTROLS_HEIGHT + 24.dp),
                     showRouteButton = !plannerOpen,
+                    guiding = guidance != null,
+                    showFitRoute = routesShown || guidance != null,
+                    onFitRoute = onFitRoute,
                     weather = weather,
                     onWeather = onWeather,
                     onLayers = onLayers,
@@ -858,6 +989,27 @@ fun RideChrome(
 }
 
 private val TOP_BAR_HEIGHT = 48.dp
+/** Hauteur du rappel des données posé sur la carte pendant une sortie. */
+private val MAP_STRIP_HEIGHT = 78.dp
+
+/**
+ * Attend qu'une mesure (la hauteur du panneau d'itinéraire, qui s'anime) ne bouge plus : un quart de seconde
+ * sans changement, ou une seconde et demie au plus.
+ */
+private suspend fun awaitStable(value: () -> Int) {
+    var last = value()
+    var calm = 0
+    repeat(25) {
+        delay(60)
+        val now = value()
+        if (now == last) {
+            if (++calm >= 4) return
+        } else {
+            calm = 0
+            last = now
+        }
+    }
+}
 /** En dessous de cette vitesse, le cap donné par le GPS ne veut rien dire. */
 private const val MOVING_MPS = 2.0
 
@@ -937,6 +1089,9 @@ private fun MapOverlays(
     topPadding: Dp,
     bottomPadding: Dp,
     showRouteButton: Boolean,
+    guiding: Boolean,
+    showFitRoute: Boolean,
+    onFitRoute: () -> Unit,
     weather: WeatherGlance?,
     onWeather: () -> Unit,
     onLayers: () -> Unit,
@@ -963,16 +1118,24 @@ private fun MapOverlays(
                     Icon(painterResource(R.drawable.ic_route), contentDescription = "Itinéraire")
                 }
             }
+            if (showFitRoute) {
+                SmallFloatingActionButton(onClick = onFitRoute, containerColor = MaterialTheme.colorScheme.surface) {
+                    Icon(painterResource(R.drawable.ic_fit_route), contentDescription = "Voir tout l'itinéraire")
+                }
+            }
             SmallFloatingActionButton(onClick = onLayers, containerColor = MaterialTheme.colorScheme.surface) {
                 Icon(painterResource(R.drawable.ic_layers), contentDescription = "Changer de fond de carte")
             }
             if (hasLocationPermission) {
-                SmallFloatingActionButton(onClick = onToggleHeading, containerColor = MaterialTheme.colorScheme.surface) {
-                    Icon(
-                        painterResource(if (headingUp) R.drawable.ic_navigation_filled else R.drawable.ic_north),
-                        contentDescription = if (headingUp) "Carte orientée dans le sens de la marche" else "Nord en haut",
-                        tint = if (headingUp) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    )
+                // En guidage, la carte est toujours dans le sens de la marche : ce réglage ne sert qu'en dehors.
+                if (!guiding) {
+                    SmallFloatingActionButton(onClick = onToggleHeading, containerColor = MaterialTheme.colorScheme.surface) {
+                        Icon(
+                            painterResource(if (headingUp) R.drawable.ic_navigation_filled else R.drawable.ic_north),
+                            contentDescription = if (headingUp) "Carte orientée dans le sens de la marche" else "Nord en haut",
+                            tint = if (headingUp) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
                 }
                 SmallFloatingActionButton(onClick = onRecenter, containerColor = MaterialTheme.colorScheme.surface) {
                     Icon(
@@ -980,6 +1143,24 @@ private fun MapOverlays(
                         contentDescription = "Recentrer sur ma position",
                         tint = if (following) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     )
+                }
+            }
+        }
+
+        // En guidage, dès qu'on a déplacé la carte : un gros bouton pour revenir à la vue de guidage.
+        if (guiding && !following && hasLocationPermission) {
+            Surface(
+                onClick = onRecenter,
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shadowElevation = 6.dp,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 34.dp),
+            ) {
+                Row(Modifier.padding(start = 16.dp, end = 22.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(painterResource(R.drawable.ic_navigation_filled), contentDescription = null, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Recentrer", style = MaterialTheme.typography.titleMedium)
                 }
             }
         }

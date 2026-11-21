@@ -1,5 +1,43 @@
 # Nouveautés de VeloGo
 
+## Version 0.6 — Carte en grand, affiche à partager, guidage avec flèche
+
+- **Itinéraire choisi : la carte en grand.** Dès que les itinéraires sont calculés, le panneau du bas se replie
+  de lui-même : il ne garde que les propositions et le bouton « Démarrer le guidage », et la carte se cadre sur le
+  trajet, sur presque tout l'écran. « Détails » (ou la poignée du panneau, à tirer vers le haut) déplie le profil,
+  la nature des voies et la météo ; « Voir la carte » le replie. Si tu déplaces ou zoomes la carte pendant qu'il
+  est déplié, il se replie tout seul.
+- **Choisir un itinéraire en le touchant** : un appui sur un tracé gris de la carte le sélectionne. Le bouton
+  « Voir tout l'itinéraire » (les quatre coins, à droite) recadre la carte sur le trajet entier.
+- **Une affiche à partager** : le bouton de partage du panneau montre l'aperçu d'une affiche de la sortie : la
+  carte avec le tracé et son sens, la distance, le dénivelé, la durée estimée et le profil. Tu peux changer son
+  titre et ajouter une ligne (« Dimanche 9 h, devant la mairie »), puis « Partager l'affiche » l'envoie par
+  WhatsApp, SMS, e-mail… avec une légende qui reprend les chiffres. Le fichier GPX reste disponible juste en
+  dessous, pour ceux qui veulent le charger dans leur GPS.
+- **Guidage comme sur un GPS de voiture** : ta position devient une **flèche** qui montre ton sens de marche.
+  Pendant le guidage, la carte tourne avec toi (ce qui est devant toi est en haut), s'incline et se rapproche, et
+  la flèche se place vers le bas de l'écran pour laisser voir la route à venir. Si tu déplaces la carte, un gros
+  bouton « Recentrer » y ramène ; « Voir tout l'itinéraire » montre le trajet entier.
+- Le téléphone n'a pas de boussole : la flèche suit ton déplacement. À l'arrêt elle garde ta dernière direction,
+  et au départ d'un guidage elle montre dans quel sens part l'itinéraire.
+- Correction : après le calcul d'un itinéraire, ta position restait affichée dans le haut de l'écran pendant le
+  guidage. Elle est maintenant toujours là où on l'attend.
+
+### À tester sur le téléphone
+
+1. Calcule un itinéraire : la carte doit montrer le trajet en grand. Zoome dessus, touche un autre tracé, ouvre
+   « Détails », reviens avec « Voir la carte ».
+2. Touche le bouton de partage du panneau, change le titre, puis « Partager l'affiche » vers WhatsApp : tes amis
+   doivent recevoir l'image et sa légende.
+3. Démarre le guidage et roule : la flèche pointe devant toi, la carte tourne dans les virages. Déplace la carte
+   au doigt, puis touche « Recentrer ».
+
+### Limites connues
+
+- Sans boussole, le téléphone ne sait pas vers où il est tourné tant que tu n'as pas roulé quelques mètres.
+- L'affiche a besoin du réseau pour son fond de carte (sauf si le fond choisi est la carte « Vélo hors ligne ») :
+  sans lui, elle montre le tracé seul, sur un fond uni.
+
 ## Jalon 5 — Statistiques, records et segments
 
 - **Statistiques** (Historique > Statistiques) : distance, nombre de sorties, durée, dénivelé, vitesse moyenne et

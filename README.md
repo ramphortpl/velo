@@ -12,8 +12,9 @@ téléphone.
 - **Cartes** : plusieurs fonds en ligne (plan, CyclOSM, Plan IGN, photos aériennes) et une carte vélo **hors ligne**
   par région (pistes, voies vertes, véloroutes, relief), en clair ou en sombre.
 - **Itinéraires** : calculés sur le téléphone, même sans réseau : le plus rapide, le plus sûr, le moins de dénivelé,
-  pour vélo de route, VTC/gravel ou VTT. Guidage avec alerte et recalcul hors itinéraire, voix en option.
-  Import et export GPX.
+  pour vélo de route, VTC/gravel ou VTT. Guidage comme sur un GPS de voiture (flèche de direction, carte dans le
+  sens de la marche), avec alerte et recalcul hors itinéraire, voix en option. Affiche de l'itinéraire à partager
+  (WhatsApp, SMS…), import et export GPX.
 - **Météo** : prévisions Météo-France (via Open-Meteo), pluie au quart d'heure, vent de face ou de dos, météo le
   long de l'itinéraire à l'heure de passage, alerte pluie pendant la sortie.
 - **Historique** : chaque sortie avec sa carte, ses chiffres et ses graphiques ; totaux par semaine, mois et
@@ -50,7 +51,8 @@ La fabrication de l'APK est automatique à chaque modification, mais sa **signat
 1. Sur GitHub : **Settings > Secrets and variables > Actions > New repository secret**.
 2. Nom : `VELOGO_KEYSTORE_PASSWORD`. Valeur : le mot de passe de la clé de signature (il n'est écrit nulle part
    dans le dépôt).
-3. Relance le workflow **APK VeloGo** (onglet Actions) : l'APK signé apparaît dans les Releases.
+3. Relance le workflow **APK VeloGo** (onglet Actions) : l'APK signé apparaît dans les Releases une vingtaine de
+   minutes plus tard, une fois passé l'essai automatique sur un émulateur Android.
 
 Tant que ce secret manque, les tests tournent mais aucun APK n'est publié. Dès ses premières secondes, le
 workflow dit si le secret est absent ou s'il n'ouvre pas la clé (il indique alors sa longueur : le bon mot de

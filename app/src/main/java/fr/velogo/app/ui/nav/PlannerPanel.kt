@@ -1,8 +1,13 @@
 package fr.velogo.app.ui.nav
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,11 +39,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -79,6 +89,7 @@ interface PlannerActions {
     fun startGuidance()
     fun toggleVoice()
     fun save()
+    /** Ouvre le partage de l'itinéraire : affiche à envoyer, ou fichier GPX. */
     fun share()
     fun importGpx()
     fun openSaved()
@@ -98,6 +109,10 @@ data class PlannerWeather(
 /**
  * Panneau de préparation d'un itinéraire, posé en bas de la carte : d'abord les points (départ, étapes, arrivée),
  * puis les itinéraires proposés. La carte reste visible et utilisable au-dessus.
+ *
+ * Une fois les itinéraires proposés, le panneau est replié par défaut ([expanded] faux) : il ne montre que les
+ * propositions et le bouton de départ, pour laisser la carte en grand. On le déplie pour le détail (profil,
+ * nature des voies, météo) avec sa poignée, en la tirant ou en la touchant, ou avec le bouton « Détails ».
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,6 +125,8 @@ fun PlannerPanel(
     modifier: Modifier = Modifier,
     /** Météo du trajet choisi ; null si la météo est désactivée. */
     weather: PlannerWeather? = null,
+    expanded: Boolean = true,
+    onExpandedChange: (Boolean) -> Unit = {},
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -118,11 +135,19 @@ fun PlannerPanel(
         shadowElevation = 12.dp,
     ) {
         // Le bouton principal reste toujours visible en bas ; le reste défile au-dessus s'il manque de place.
-        Column(Modifier.heightIn(max = maxHeight).padding(bottom = 12.dp)) {
-            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                if (state.options.isEmpty()) PointsStage(state, hasRoutingData, actions) else ResultsStage(state, weather, actions)
+        Column(Modifier.animateContentSize(tween(220)).heightIn(max = maxHeight).padding(bottom = 12.dp)) {
+            if (state.options.isEmpty()) {
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                    PointsStage(state, hasRoutingData, actions)
+                }
+                PointsFooter(state, actions)
+            } else {
+                ResultsHeader(state, expanded, onExpandedChange, actions)
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                    if (expanded) ResultsDetails(state, weather, actions) else ResultsSummary(state, actions)
+                }
+                ResultsFooter(voiceEnabled, actions)
             }
-            if (state.options.isEmpty()) PointsFooter(state, actions) else ResultsFooter(voiceEnabled, actions)
         }
     }
 }
@@ -282,14 +307,60 @@ private fun PointRow(
 
 // --- Étape 2 : les propositions -------------------------------------------------------------------------------
 
+/**
+ * Haut du panneau des propositions : la poignée, puis le titre et ses boutons. Toute cette zone se tire vers le
+ * haut pour déplier le panneau, vers le bas pour le replier ; un appui sur la poignée fait la même chose.
+ */
 @Composable
-private fun ResultsStage(state: PlannerState, weather: PlannerWeather?, actions: PlannerActions) {
+private fun ResultsHeader(state: PlannerState, expanded: Boolean, onExpandedChange: (Boolean) -> Unit, actions: PlannerActions) {
     val title = state.importedName ?: if (state.options.size == 1) "1 itinéraire" else "${state.options.size} itinéraires"
-    Header(title, onClose = actions::close, onBack = if (state.isImported) null else actions::edit) {
-        IconButton(onClick = actions::save) { Icon(painterResource(R.drawable.ic_bookmark_add), contentDescription = "Enregistrer cet itinéraire") }
-        IconButton(onClick = actions::share) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Exporter en GPX") }
+    val change by rememberUpdatedState(onExpandedChange)
+    val isExpanded by rememberUpdatedState(expanded)
+    val threshold = with(LocalDensity.current) { 28.dp.toPx() }
+    var dragged by remember { mutableFloatStateOf(0f) }
+    val drag = rememberDraggableState { delta -> dragged += delta }
+    Column(
+        Modifier.draggable(
+            state = drag,
+            orientation = Orientation.Vertical,
+            onDragStarted = { dragged = 0f },
+            onDragStopped = { velocity ->
+                when {
+                    dragged < -threshold || velocity < -900f -> change(true)
+                    dragged > threshold || velocity > 900f -> change(false)
+                }
+            },
+        )
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(22.dp)
+                .clickable(onClickLabel = if (expanded) "Replier pour voir la carte en grand" else "Déplier le détail") { change(!isExpanded) }
+                .semantics { contentDescription = if (expanded) "Replier le panneau" else "Déplier le panneau" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(Modifier.width(40.dp).height(5.dp).clip(CircleShape).background(MaterialTheme.colorScheme.outlineVariant))
+        }
+        Row(Modifier.fillMaxWidth().padding(start = if (state.isImported) 24.dp else 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (!state.isImported) {
+                IconButton(onClick = actions::edit) { Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Modifier les points") }
+            }
+            Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            TextButton(onClick = { change(!isExpanded) }) {
+                Text(if (expanded) "Voir la carte" else "Détails", maxLines = 1)
+                Spacer(Modifier.width(2.dp))
+                Icon(painterResource(if (expanded) R.drawable.ic_expand_more else R.drawable.ic_expand_less), contentDescription = null, modifier = Modifier.size(20.dp))
+            }
+            IconButton(onClick = actions::share) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Partager l'itinéraire") }
+            IconButton(onClick = actions::close) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Fermer l'itinéraire") }
+        }
     }
+}
 
+/** Panneau replié : les propositions en une ligne chacune. La carte garde toute la place au-dessus. */
+@Composable
+private fun ResultsSummary(state: PlannerState, actions: PlannerActions) {
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -299,6 +370,26 @@ private fun ResultsStage(state: PlannerState, weather: PlannerWeather?, actions:
                 title = if (state.isImported) "Trace à suivre" else optionTitle(option),
                 option = option,
                 selected = index == state.selected,
+                compact = true,
+                onClick = { actions.select(index) },
+            )
+        }
+    }
+}
+
+/** Panneau déplié : les propositions en grand, puis le détail de celle qui est choisie. */
+@Composable
+private fun ResultsDetails(state: PlannerState, weather: PlannerWeather?, actions: PlannerActions) {
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        state.options.forEachIndexed { index, option ->
+            OptionCard(
+                title = if (state.isImported) "Trace à suivre" else optionTitle(option),
+                option = option,
+                selected = index == state.selected,
+                compact = false,
                 onClick = { actions.select(index) },
             )
         }
@@ -317,8 +408,12 @@ private fun ResultsStage(state: PlannerState, weather: PlannerWeather?, actions:
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
             )
         }
+        TextButton(onClick = actions::save, modifier = Modifier.padding(horizontal = 12.dp)) {
+            Icon(painterResource(R.drawable.ic_bookmark_add), contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Enregistrer cet itinéraire")
+        }
     }
-
 }
 
 @Composable
@@ -365,34 +460,50 @@ private fun WeatherLine(weather: PlannerWeather, onClick: () -> Unit) {
     }
 }
 
+/**
+ * Une proposition d'itinéraire. En version [compact] (panneau replié), tout tient sur deux lignes ; sinon la
+ * distance est écrite en grand pour comparer d'un coup d'œil.
+ */
 @Composable
-private fun OptionCard(title: String, option: RouteOption, selected: Boolean, onClick: () -> Unit) {
+private fun OptionCard(title: String, option: RouteOption, selected: Boolean, compact: Boolean, onClick: () -> Unit) {
     val route = option.route
     val summary = "${Formats.distanceAuto(route.distanceM)}, ${Formats.durationWords((route.durationS * 1000).toLong())}, " +
         "${Formats.meters(route.ascentM)} mètres de dénivelé"
+    val titleColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
         onClick = onClick,
-        modifier = Modifier.width(196.dp).semantics { contentDescription = "$title : $summary" },
+        modifier = Modifier.width(if (compact) 214.dp else 196.dp).semantics { contentDescription = "$title : $summary" },
         shape = RoundedCornerShape(20.dp),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
         border = BorderStroke(2.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent),
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                minLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(Formats.distanceAuto(route.distanceM), style = NumberStyle.copy(fontSize = 30.sp), color = MaterialTheme.colorScheme.onSurface)
-            Text(
-                "${Formats.durationWords((route.durationS * 1000).toLong())} · ↗ ${Formats.meters(route.ascentM)} m",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-            )
+        if (compact) {
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
+                Text(title, style = MaterialTheme.typography.labelLarge, color = titleColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(Formats.distanceAuto(route.distanceM), style = NumberStyle.copy(fontSize = 22.sp), color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "${Formats.durationWords((route.durationS * 1000).toLong())} · ↗ ${Formats.meters(route.ascentM)} m",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(bottom = 2.dp),
+                    )
+                }
+            }
+        } else {
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                Text(title, style = MaterialTheme.typography.labelLarge, color = titleColor, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(Formats.distanceAuto(route.distanceM), style = NumberStyle.copy(fontSize = 30.sp), color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    "${Formats.durationWords((route.durationS * 1000).toLong())} · ↗ ${Formats.meters(route.ascentM)} m",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }

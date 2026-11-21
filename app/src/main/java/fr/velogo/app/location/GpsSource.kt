@@ -14,6 +14,7 @@ import androidx.core.location.LocationListenerCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.core.location.LocationRequestCompat
 import androidx.core.location.altitude.AltitudeConverterCompat
+import fr.velogo.core.geo.CourseEstimator
 import fr.velogo.core.geo.LatLon
 import fr.velogo.core.ride.Fix
 import kotlinx.coroutines.CoroutineScope
@@ -29,8 +30,14 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.shareIn
 import kotlin.math.abs
 
-/** Une position GPS : la version « calcul » ([fix]) et l'objet Android d'origine ([location]) pour la carte. */
-class GpsFix(val fix: Fix, val location: Location)
+/**
+ * Une position GPS : la version « calcul » ([fix]) et l'objet Android ([location]) pour la carte.
+ *
+ * [courseDeg] est le sens de la marche (0 = nord, 90 = est) : celui du GPS quand on roule, sinon celui déduit du
+ * déplacement, et à l'arrêt le dernier connu. [location] le porte aussi, pour que la flèche de la carte et la
+ * carte orientée dans le sens de la marche fonctionnent même si le GPS ne donne pas de cap.
+ */
+class GpsFix(val fix: Fix, val location: Location, val courseDeg: Double? = null, val speedMps: Double = fix.speedMps ?: 0.0)
 
 /**
  * Le GPS du téléphone, partagé par toute l'appli (carte et enregistrement).
@@ -44,6 +51,9 @@ class GpsSource(private val context: Context, scope: CoroutineScope) {
 
     private val locationManager = context.getSystemService(LocationManager::class.java)
     private val thread = HandlerThread("velogo-gps").apply { start() }
+
+    /** Sens de la marche, suivi d'une position à l'autre (toujours depuis le fil du GPS). */
+    private val course = CourseEstimator()
 
     /** Change quand l'autorisation de localisation vient d'être accordée, pour (re)lancer l'écoute. */
     private val permissionEpoch = MutableStateFlow(0)
@@ -124,7 +134,13 @@ class GpsSource(private val context: Context, scope: CoroutineScope) {
             verticalAccuracyM = if (location.hasVerticalAccuracy()) location.verticalAccuracyMeters.toDouble() else null,
             bearingDeg = if (location.hasBearing()) location.bearing.toDouble() else null,
         )
-        return GpsFix(fix, location)
+        val estimate = course.update(fix.lat, fix.lon, fix.monoMs, fix.bearingDeg, fix.speedMps)
+        val shown = Location(location).apply {
+            val bearingDeg = estimate.bearingDeg
+            if (bearingDeg != null) bearing = bearingDeg.toFloat() else removeBearing()
+            if (!hasSpeed()) speed = estimate.speedMps.toFloat()
+        }
+        return GpsFix(fix, shown, estimate.bearingDeg, estimate.speedMps)
     }
 
     /**

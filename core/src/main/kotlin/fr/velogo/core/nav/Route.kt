@@ -95,6 +95,38 @@ class Route(
         return true
     }
 
+    /** Le point de l'itinéraire situé à [progressM] mètres du départ (ramené entre le départ et l'arrivée). */
+    fun positionAt(progressM: Double): LatLon {
+        val d = progressM.coerceIn(0.0, distanceM)
+        // Premier point situé à cette distance ou au-delà.
+        var lo = 0
+        var hi = distances.size - 1
+        while (lo < hi) {
+            val mid = (lo + hi) / 2
+            if (distances[mid] >= d) hi = mid else lo = mid + 1
+        }
+        if (lo == 0) return points[0]
+        val step = distances[lo] - distances[lo - 1]
+        if (step <= 0.0) return points[lo]
+        val f = (d - distances[lo - 1]) / step
+        val a = points[lo - 1]
+        val b = points[lo]
+        return LatLon(a.lat + (b.lat - a.lat) * f, a.lon + (b.lon - a.lon) * f)
+    }
+
+    /**
+     * Direction dans laquelle part l'itinéraire à [progressM] mètres du départ, en degrés (0 = nord, 90 = est).
+     * Elle est prise sur les [aheadM] mètres qui suivent, pour ne pas dépendre d'un tout petit bout de tracé ;
+     * à l'arrivée, sur les derniers mètres.
+     */
+    fun bearingAt(progressM: Double, aheadM: Double = 15.0): Double {
+        val from = progressM.coerceIn(0.0, (distanceM - aheadM).coerceAtLeast(0.0))
+        val a = positionAt(from)
+        val b = positionAt(from + aheadM)
+        return if (a == b) Geo.bearingDeg(points.first().lat, points.first().lon, points.last().lat, points.last().lon)
+        else Geo.bearingDeg(a.lat, a.lon, b.lat, b.lon)
+    }
+
     /** Distance en mètres du point [p] à l'itinéraire (recherche sur toute la trace). */
     fun distanceTo(p: LatLon): Double {
         var best = Double.MAX_VALUE

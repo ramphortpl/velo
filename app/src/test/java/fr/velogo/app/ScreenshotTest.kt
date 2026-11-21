@@ -1,9 +1,21 @@
 package fr.velogo.app
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.res.painterResource
+import fr.velogo.app.nav.PosterText
+import fr.velogo.app.nav.RoutePoster
+import fr.velogo.app.ui.nav.ShareRouteContent
+import org.robolectric.RuntimeEnvironment
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -484,16 +496,27 @@ class ScreenshotTest {
         override fun openWeather() = Unit
     }
 
-    private fun planner(state: PlannerState, hasData: Boolean = true, weather: PlannerWeather? = null): @Composable () -> Unit = {
+    private fun planner(state: PlannerState, hasData: Boolean = true, weather: PlannerWeather? = null, expanded: Boolean = true): @Composable () -> Unit = {
         VeloGoTheme(mode = ThemeMode.LIGHT) {
-            Box(Modifier.fillMaxSize().background(Color(0xFFDDE7DD)), contentAlignment = Alignment.BottomCenter) {
+            // La barre d'onglets du bas de l'écran est figurée par une bande : le panneau se pose juste au-dessus.
+            Box(Modifier.fillMaxSize().background(Color(0xFFDDE7DD)).padding(bottom = 80.dp), contentAlignment = Alignment.BottomCenter) {
                 PlannerPanel(
-                    state = state, hasRoutingData = hasData, voiceEnabled = true, actions = NoPlannerActions, maxHeight = 560.dp,
-                    weather = weather,
+                    state = state, hasRoutingData = hasData, voiceEnabled = true, actions = NoPlannerActions, maxHeight = 548.dp,
+                    weather = weather, expanded = expanded,
                 )
             }
         }
     }
+
+    private fun proposals() = PlannerState(
+        open = true, bike = BikeType.HYBRID, end = PlanPoint(LatLon(45.7, 6.3), "Gare d'Albertville"),
+        options = listOf(
+            RouteOption(sampleRoute(), listOf(RoutePreference.FAST)),
+            RouteOption(sampleRoute(1, 1.08), listOf(RoutePreference.SAFE)),
+            RouteOption(sampleRoute(2, 0.8), listOf(RoutePreference.FLAT)),
+        ),
+        selected = 0,
+    )
 
     @Test
     fun itineraire_points() = captureRoboImage(
@@ -513,32 +536,59 @@ class ScreenshotTest {
         content = planner(PlannerState(open = true, bike = BikeType.ROAD), hasData = false),
     )
 
+    /** Les propositions telles qu'elles arrivent : panneau replié, la carte garde presque tout l'écran. */
     @Test
     fun itineraire_propositions() = captureRoboImage(
         "$OUT/itineraire_propositions.png",
-        content = planner(
-            PlannerState(
-                open = true, bike = BikeType.HYBRID, end = PlanPoint(LatLon(45.7, 6.3), "Gare d'Albertville"),
-                options = listOf(
-                    RouteOption(sampleRoute(), listOf(RoutePreference.FAST)),
-                    RouteOption(sampleRoute(1, 1.08), listOf(RoutePreference.SAFE)),
-                    RouteOption(sampleRoute(2, 0.8), listOf(RoutePreference.FLAT)),
-                ),
-                selected = 0,
-            ),
-            weather = PlannerWeather("11 à 14° · vent de face 15 km/h · pluie vers 15:30 (km 24)", wet = true),
-        ),
+        content = planner(proposals(), weather = PlannerWeather("11 à 14° · vent de face 15 km/h · pluie vers 15:30 (km 24)", wet = true), expanded = false),
     )
+
+    /** Le même panneau déplié : profil, nature des voies, météo du trajet. */
+    @Test
+    fun itineraire_details() = captureRoboImage(
+        "$OUT/itineraire_details.png",
+        content = planner(proposals(), weather = PlannerWeather("11 à 14° · vent de face 15 km/h · pluie vers 15:30 (km 24)", wet = true), expanded = true),
+    )
+
+    @Test
+    fun itineraire_partage() {
+        val route = sampleRoute()
+        val poster = RoutePoster.render(RuntimeEnvironment.getApplication(), route, PosterText("Sortie vélo", "Vers Gare d'Albertville"), map = null)
+        captureRoboImage("$OUT/itineraire_partage.png") {
+            VeloGoTheme(mode = ThemeMode.LIGHT) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    ShareRouteContent(
+                        poster = poster.asImageBitmap(), mapPending = false, withMap = false,
+                        title = "Sortie vélo", subtitle = "Vers Gare d'Albertville",
+                        onTitle = {}, onSubtitle = {}, onSharePoster = {}, onShareGpx = {},
+                        modifier = Modifier.padding(top = 24.dp),
+                    )
+                }
+            }
+        }
+    }
+
+    /** Les deux repères de position de la carte, agrandis : le point à l'arrêt, la flèche quand on roule. */
+    @Test
+    fun repere_position() = captureRoboImage("$OUT/repere_position.png") {
+        Row(Modifier.background(Color(0xFFDDE7DD)).padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+            Image(painterResource(R.drawable.map_puck_dot), contentDescription = null, modifier = Modifier.size(56.dp))
+            Spacer(Modifier.width(32.dp))
+            Image(painterResource(R.drawable.map_puck_arrow), contentDescription = null, modifier = Modifier.size(184.dp))
+            Spacer(Modifier.width(32.dp))
+            Image(painterResource(R.drawable.map_puck_arrow), contentDescription = null, modifier = Modifier.size(46.dp))
+        }
+    }
 
     private fun guidance(nav: NavState, rerouting: Boolean = false) =
         GuidanceState(sampleRoute(), nav, BikeType.HYBRID, RoutePreference.FAST, "Gare d'Albertville", rerouting = rerouting)
 
-    private fun guided(mode: RideMode, state: GuidanceState, sunlight: Boolean = false): @Composable () -> Unit = {
+    private fun guided(mode: RideMode, state: GuidanceState, sunlight: Boolean = false, following: Boolean = true): @Composable () -> Unit = {
         VeloGoTheme(mode = ThemeMode.LIGHT) {
             Box(Modifier.fillMaxSize().background(Color(0xFFDDE7DD))) {
                 RideChrome(
                     snapshot = recording, mode = mode, onMode = {}, themeMode = ThemeMode.LIGHT, sunlight = sunlight,
-                    attribution = "© OpenStreetMap · Protomaps · Mapterhorn (IGN)", following = true, headingUp = true,
+                    attribution = "© OpenStreetMap · Protomaps · Mapterhorn (IGN)", following = following, headingUp = true,
                     hasLocationPermission = true, accuracyM = 4.0,
                     topInset = 28.dp, bottomPadding = 80.dp, snackbar = SnackbarHostState(),
                     onLayers = {}, onRecenter = {}, onToggleHeading = {}, onRequestPermission = {},
@@ -557,6 +607,8 @@ class ScreenshotTest {
             next = route.instructions[0], distanceToNextM = 180.0, then = route.instructions[1], arrived = false,
         )
         captureRoboImage("$OUT/guidage_carte.png", content = guided(RideMode.MAP, guidance(nav)))
+        // Carte déplacée à la main pendant le guidage : le bouton « Recentrer » ramène à la vue de guidage.
+        captureRoboImage("$OUT/guidage_recentrer.png", content = guided(RideMode.MAP, guidance(nav), following = false))
     }
 
     @Test

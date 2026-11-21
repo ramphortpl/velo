@@ -1,7 +1,7 @@
 name: APK VeloGo
 
-# À chaque push : tests, APK signé (toujours avec la même clé) publié dans les Releases,
-# et essai de bout en bout sur un émulateur Android.
+# À chaque push : tests, APK signé (toujours avec la même clé), essai de bout en bout sur un émulateur Android,
+# puis, si tout a réussi, publication de l'APK dans les Releases.
 on:
   push:
     branches: ["main", "claude/**"]
@@ -30,6 +30,9 @@ jobs:
     name: Tests et APK signé
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      version: ${{ steps.version.outputs.name }}
+      signe: ${{ steps.cle.outputs.presente }}
     steps:
       - uses: actions/checkout@v7
 
@@ -166,30 +169,6 @@ jobs:
           name: VeloGo-${{ steps.version.outputs.name }}
           path: VeloGo-${{ steps.version.outputs.name }}.apk
 
-      - name: Publier dans les Releases
-        if: steps.cle.outputs.presente == 'oui'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.name }}
-        run: |
-          {
-            echo "## VeloGo $VERSION"
-            echo
-            awk '/^## /{n++} n==1{print}' docs/NOUVEAUTES.md | tail -n +2
-            echo
-            echo "**Installation** : télécharge \`VeloGo-$VERSION.apk\` ci-dessous sur ton téléphone et ouvre-le. Il se met à jour par-dessus la version déjà installée, sans rien effacer."
-            echo
-            echo "Si un Samsung refuse l'installation : paramètres du téléphone > Sécurité et confidentialité > Bloqueur automatique, à désactiver le temps d'installer."
-          } > notes.md
-          gh release create "v$VERSION" "VeloGo-$VERSION.apk" \
-            --title "VeloGo $VERSION" --notes-file notes.md --target "$GITHUB_SHA" --latest
-          echo "### VeloGo $VERSION publié" >> "$GITHUB_STEP_SUMMARY"
-          echo "https://github.com/${{ github.repository }}/releases/tag/v$VERSION" >> "$GITHUB_STEP_SUMMARY"
-          # On ne garde que les 8 dernières versions de l'appli (les Releases de cartes ne sont pas touchées).
-          gh release list --limit 100 --json tagName,createdAt \
-            --jq '[.[] | select(.tagName | startswith("v"))] | sort_by(.createdAt) | reverse | .[8:] | .[].tagName' \
-            | while read -r TAG; do gh release delete "$TAG" --yes --cleanup-tag || true; done
-
   essai:
     name: Essai sur émulateur Android 15
     runs-on: ubuntu-latest
@@ -254,3 +233,41 @@ jobs:
           name: essai-emulateur
           path: essai/
           if-no-files-found: warn
+
+  # La version n'est publiée qu'une fois l'essai de bout en bout réussi : ce qui arrive dans les Releases, et donc
+  # sur le téléphone, a tourné sur un vrai Android.
+  publication:
+    name: Publication dans les Releases
+    needs: [apk, essai]
+    if: needs.apk.outputs.signe == 'oui'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: VeloGo-${{ needs.apk.outputs.version }}
+
+      - name: Publier dans les Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.apk.outputs.version }}
+        run: |
+          {
+            echo "## VeloGo $VERSION"
+            echo
+            awk '/^## /{n++} n==1{print}' docs/NOUVEAUTES.md | tail -n +2
+            echo
+            echo "**Installation** : télécharge \`VeloGo-$VERSION.apk\` ci-dessous sur ton téléphone et ouvre-le. Il se met à jour par-dessus la version déjà installée, sans rien effacer."
+            echo
+            echo "Si un Samsung refuse l'installation : paramètres du téléphone > Sécurité et confidentialité > Bloqueur automatique, à désactiver le temps d'installer."
+          } > notes.md
+          gh release create "v$VERSION" "VeloGo-$VERSION.apk" \
+            --title "VeloGo $VERSION" --notes-file notes.md --target "$GITHUB_SHA" --latest
+          echo "### VeloGo $VERSION publié" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/${{ github.repository }}/releases/tag/v$VERSION" >> "$GITHUB_STEP_SUMMARY"
+          # On ne garde que les 8 dernières versions de l'appli (les Releases de cartes ne sont pas touchées).
+          gh release list --limit 100 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("v"))] | sort_by(.createdAt) | reverse | .[8:] | .[].tagName' \
+            | while read -r TAG; do gh release delete "$TAG" --yes --cleanup-tag || true; done

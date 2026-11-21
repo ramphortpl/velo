@@ -47,10 +47,7 @@ class SavedRouteRepository(db: VeloGoDatabase) {
     companion object {
         /** Écrit l'itinéraire en GPX dans le dossier de partage et renvoie l'intention « Partager ». */
         suspend fun shareIntent(context: Context, name: String, route: Route): Intent = withContext(Dispatchers.IO) {
-            val dir = File(context.cacheDir, "exports").apply { mkdirs() }
-            dir.listFiles()?.forEach { it.delete() }
-            val safeName = name.replace(Regex("[^\\p{L}\\p{N} _-]"), "").trim().ifEmpty { "itineraire" }.take(60)
-            val file = File(dir, "VeloGo_$safeName.gpx")
+            val file = File(ShareFiles.directory(context), "VeloGo_${ShareFiles.safeName(name, "itineraire")}.gpx")
             val points = route.points.mapIndexed { i, p -> TrackPoint(timeMs = 0, lat = p.lat, lon = p.lon, altitudeM = route.elevations?.get(i)) }
             val waypoints = route.waypoints.mapIndexed { i, w ->
                 val label = when (i) {

@@ -52,9 +52,16 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
   reprise au redémarrage du service ou proposée à la reprise à l'ouverture de l'appli.
 - **GPS** : `GpsSource` = GPS brut d'Android (`LocationManager`, 1 Hz, sans services Google), partagé ; il
   s'éteint quand plus personne n'écoute. Altitude convertie au niveau de la mer (`AltitudeConverterCompat`).
+  Chaque position porte le **sens de la marche** (`GpsFix.courseDeg`, calculé par `core/geo/CourseEstimator`) :
+  le cap du GPS quand on roule, sinon celui déduit du déplacement, et à l'arrêt le dernier connu.
 - **Carte** : `VeloMap` (MapView dans `AndroidView`, mode SurfaceView) pilotée par `VeloMapState`, qui garde ce
   qui doit être dessiné et le redessine après chaque changement de fond. La trace en direct est découpée en
-  morceaux figés + une « queue » de 300 points pour rester fluide après des heures.
+  morceaux figés + une « queue » de 300 points pour rester fluide après des heures. La position est un point
+  tant que le sens de la marche est inconnu, puis une flèche (`map_puck_dot`, `map_puck_arrow`). Pendant un
+  guidage, `setNavigation(true)` met la carte en **vue de guidage** : suivi dans le sens de la marche
+  (`CameraMode.TRACKING_GPS`), inclinée (50°), rapprochée, position descendue vers le bas de l'écran
+  (`setNavigationInsets`). `fit` cadre une emprise vue de dessus ; `onUserMove` et `onRouteTapped` préviennent
+  l'écran quand on déplace la carte ou qu'on touche un itinéraire proposé.
 - **Navigation** : l'écran « Rouler » (carte + enregistrement) reste composé en permanence sous les autres ;
   Historique et Réglages se posent par-dessus via Navigation 3 (`AppRoot`). La carte n'est jamais recréée en
   changeant d'onglet ; son rendu est coupé dès qu'elle est recouverte.
@@ -73,6 +80,13 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
   est dans `core/nav` : `RouteFollower` (progression, sortie d'itinéraire), `GuidanceAnnouncer` et
   `GuidancePhrases` (quand parler, et quoi dire). `VoiceGuide` est le seul endroit qui touche au son.
   L'écran « Rouler » affiche `PlannerPanel` en bas de la carte et `GuidanceBanner` sous la barre du haut.
+  Une fois les itinéraires proposés, le panneau est **replié par défaut** (propositions compactes + bouton de
+  départ) et la carte se cadre sur le trajet dans la place restante ; « Détails » ou la poignée le déplient.
+- **Affiche à partager** : `RoutePoster` dessine l'affiche d'un itinéraire (1080 × 1350, `android.graphics`,
+  sans passer par l'écran) ; `RouteSnapshot` photographie le fond de carte hors écran (`MapSnapshotter`, même
+  client réseau que la carte, donc carte hors ligne comprise) et, s'il n'arrive pas en douze secondes, l'affiche
+  montre le tracé seul ; `RouteShare` l'envoie en JPEG avec une légende. `ShareRouteContent` est la feuille
+  d'aperçu (titre et deuxième ligne modifiables).
 - **Météo** : `WeatherController` (dans le conteneur) tient la météo du lieu (`WeatherState`) et celle de
   l'itinéraire préparé ou suivi (`RouteWeatherState`). `OpenMeteo` interroge l'API (une seule requête pour
   plusieurs lieux) et lit la réponse ; `WeatherRepository` garde les dernières prévisions du lieu en mémoire et
@@ -102,8 +116,9 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
   du service et des notifications sont dans `strings.xml`).
 - **Écrans testables** : chaque écran a un composable « contenu » sans accès aux données (`RideChrome`,
   `HistoryContent`, `RideDetailBody`, `SettingsContent`, `OfflineMapsContent`, `PlannerPanel`, `PlaceSearchContent`,
-  `SavedRoutesList`, `WeatherContent`, `StatsContent`, `SegmentsContent`, `SegmentDetailBody`, `SegmentEditor`)
-  rendu en image par `ScreenshotTest`.
+  `SavedRoutesList`, `ShareRouteContent`, `WeatherContent`, `StatsContent`, `SegmentsContent`,
+  `SegmentDetailBody`, `SegmentEditor`) rendu en image par `ScreenshotTest`. `RoutePosterTest` dessine l'affiche
+  pour de bon et range ses images au même endroit (`affiche*.png`).
   Attention : une animation sans fin (barre de progression indéterminée) bloque la capture.
 
 ## Vérification sans téléphone
@@ -188,6 +203,18 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
 - **Profils** : route = `fastbike`, VTC/gravel = `trekking`, VTT = `mtb` ; « sûr » pousse l'évitement du trafic,
   « peu de dénivelé » renchérit les montées (`RoutingProfiles.choose`). Les paramètres injectés sont toujours
   numériques (1/0). La durée vient du modèle cinématique de BRouter avec la puissance du réglage « Allure ».
+- **Marges de la carte « collantes »** : dans MapLibre, les marges données à un cadrage (`fit`) restent
+  attachées à la caméra. Sans remise à zéro, la position suivie se retrouvait dans le haut de l'écran après le
+  calcul d'un itinéraire. Tout passage en suivi (`startTracking`) règle donc explicitement marges et inclinaison,
+  une fois la transition finie (pendant une transition, la carte ignore ces réglages).
+- **Sens de la marche sans boussole** : il vient du déplacement. À l'arrêt on garde le dernier cap (le bruit du
+  GPS ferait tourner la flèche) ; au départ d'un guidage, tant qu'on n'a pas roulé, la flèche prend la direction
+  de l'itinéraire (`Route.bearingAt`). Le fournisseur de positions de test de l'émulateur ne donne ni cap ni
+  vitesse : c'est ce calcul qui y fait apparaître la flèche.
+- **Repères de position aux couleurs fixées** : la teinte que MapLibre propose d'appliquer au repère effacerait
+  le contour blanc de la flèche ; les deux dessins portent donc leurs couleurs.
+- **Fichiers partagés gardés un jour** (`ShareFiles`) : l'appli qui les reçoit peut encore les lire après notre
+  retour au premier plan ; les effacer à chaque nouveau partage cassait le précédent.
 - **Guidage vocal** : synthèse vocale d'Android, focus audio `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` le temps de la
   phrase (la musique baisse, ne s'arrête pas), désactivé par défaut. Aucune autre demande de focus dans l'appli.
 - **Pas de nom de rue dans les consignes** : les données BRouter n'en contiennent pas.
@@ -232,8 +259,10 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   continue sans publier ; présent mais faux, il le dit tout de suite (avec sa longueur) et fait échouer le job
   après les tests. Les espaces et retours à la ligne collés autour du mot de passe sont ignorés, dans le
   workflow comme dans `app/build.gradle.kts`.
-- `.github/workflows/build.yml` : à chaque push, tests + lint, puis APK signé publié en Release
-  (`v<majeur>.<mineur>.<numéro de build>`). `versionCode` = numéro de build GitHub, donc chaque APK s'installe
+- `.github/workflows/build.yml` : à chaque push, tests + lint et APK signé (job `apk`), essai sur émulateur
+  (job `essai`), puis, **seulement si les deux ont réussi**, publication en Release par le job `publication`
+  (`v<majeur>.<mineur>.<numéro de build>`), une vingtaine de minutes après le push : ce qui arrive sur le
+  téléphone a tourné sur un vrai Android. `versionCode` = numéro de build GitHub, donc chaque APK s'installe
   par-dessus le précédent. Le mineur de `version.properties` suit les jalons.
 - Les notes de version viennent de la première section de `docs/NOUVEAUTES.md`.
 - Première version publiée : `v0.5.11` (21/11/2026). Pour contrôler un APK publié :
@@ -284,6 +313,7 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
 3. Itinéraires BRouter embarqué + guidage *(fait)*
 4. Météo Open-Meteo (modèles Météo-France AROME) *(fait)*
 5. Stats, records, segments, finitions *(fait)*
+6. Itinéraire en grand, affiche à partager, guidage avec flèche de direction *(fait)*
 
 ## Sources de données et attributions
 

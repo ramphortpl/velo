@@ -3,6 +3,7 @@ package fr.velogo.app.map
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
+import android.graphics.RectF
 import android.location.Location
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -18,6 +19,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import fr.velogo.app.R
 import fr.velogo.app.recording.LiveTrack
 import fr.velogo.core.geo.BoundingBox
 import fr.velogo.core.geo.Geo
@@ -29,6 +31,7 @@ import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.LocationComponentOptions
 import org.maplibre.android.location.OnCameraTrackingChangedListener
+import org.maplibre.android.location.OnLocationCameraTransitionListener
 import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.maps.MapLibreMap
@@ -107,14 +110,32 @@ class VeloMapState {
 
     /** Appelé quand on appuie longuement sur la carte (pour y placer un point d'itinéraire). */
     var onLongPress: ((LatLon) -> Unit)? = null
+
+    /** Appelé quand on commence à déplacer, zoomer ou tourner la carte au doigt. */
+    var onUserMove: (() -> Unit)? = null
+
+    /** Appelé quand on touche un des itinéraires proposés, avec son rang. */
+    var onRouteTapped: ((Int) -> Unit)? = null
     private var topInsetPx = 0
+
+    /** Guidage : carte dans le sens de la marche, inclinée et rapprochée, position dans le bas de l'écran. */
+    private var navigation = false
+    private var navTopPx = 0
+    private var navBottomPx = 0
+
+    /** Vrai pendant qu'on relance soi-même le suivi : la carte annonce alors un arrêt du suivi qui n'en est pas un. */
+    private var restartingTracking = false
 
     private val trackingListener = object : OnCameraTrackingChangedListener {
         override fun onCameraTrackingDismissed() {
-            isFollowing = false
+            if (!restartingTracking) isFollowing = false
         }
 
-        override fun onCameraTrackingChanged(currentMode: Int) = Unit
+        override fun onCameraTrackingChanged(currentMode: Int) {
+            // En guidage, la carte doit rester dans le sens de la marche : si un geste l'en a sortie (rotation au
+            // doigt), on le signale comme un suivi interrompu, et « Recentrer » y ramène.
+            if (!restartingTracking && navigation && currentMode != CameraMode.TRACKING_GPS) isFollowing = false
+        }
     }
 
     // --- Cycle de vie (appelé par le composable) ------------------------------------------------------------
@@ -133,7 +154,7 @@ class VeloMapState {
             // Les mentions obligatoires sont affichées en clair par l'écran, dans un coin de la carte.
             isAttributionEnabled = false
             isTiltGesturesEnabled = false
-            isCompassEnabled = true
+            isCompassEnabled = !navigation
             setCompassFadeFacingNorth(true)
         }
         applyCompassMargins()
@@ -146,6 +167,22 @@ class VeloMapState {
             val listener = onLongPress
             listener?.invoke(LatLon(point.latitude, point.longitude))
             listener != null
+        }
+        map.addOnCameraMoveStartedListener { reason ->
+            if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) onUserMove?.invoke()
+        }
+        // Un appui sur un des itinéraires en retrait le choisit.
+        map.addOnMapClickListener { point ->
+            val listener = onRouteTapped ?: return@addOnMapClickListener false
+            val screen = map.projection.toScreenLocation(point)
+            val reach = TAP_REACH_DP * (context.resources.displayMetrics.density)
+            val area = RectF(screen.x - reach, screen.y - reach, screen.x + reach, screen.y + reach)
+            val index = runCatching {
+                map.queryRenderedFeatures(area, "$SRC_ROUTES_OTHER-trait", "$SRC_ROUTES_OTHER-liseré")
+                    .firstNotNullOfOrNull { feature -> feature.getNumberProperty("rang")?.toInt() }
+            }.getOrNull()
+            if (index != null) listener(index)
+            index != null
         }
         spec?.let { loadStyle(it) }
     }
@@ -239,10 +276,10 @@ class VeloMapState {
         style.addSource(GeoJsonSource(SRC_ROUTES_OTHER, FeatureCollection.fromFeatures(emptyList<Feature>())))
         style.addSource(GeoJsonSource(SRC_ROUTE, FeatureCollection.fromFeatures(emptyList<Feature>())))
         style.addSource(GeoJsonSource(SRC_PLAN, FeatureCollection.fromFeatures(emptyList<Feature>())))
-        style.addLayer(line("$SRC_ROUTES_OTHER-liseré", SRC_ROUTES_OTHER, c.trackCasing, ROUTE_WIDTH + 2.5f))
-        style.addLayer(line("$SRC_ROUTES_OTHER-trait", SRC_ROUTES_OTHER, c.routeOther, ROUTE_WIDTH - 1f))
-        style.addLayer(line("$SRC_ROUTE-liseré", SRC_ROUTE, c.trackCasing, ROUTE_WIDTH + 3.5f))
-        style.addLayer(line("$SRC_ROUTE-trait", SRC_ROUTE, c.route, ROUTE_WIDTH))
+        style.addLayer(line("$SRC_ROUTES_OTHER-liseré", SRC_ROUTES_OTHER, c.trackCasing, routeWidth(2.5f, 0.85f)))
+        style.addLayer(line("$SRC_ROUTES_OTHER-trait", SRC_ROUTES_OTHER, c.routeOther, routeWidth(0f, 0.85f)))
+        style.addLayer(line("$SRC_ROUTE-liseré", SRC_ROUTE, c.trackCasing, routeWidth(3.5f, 1f)))
+        style.addLayer(line("$SRC_ROUTE-trait", SRC_ROUTE, c.route, routeWidth(0f, 1f)))
 
         style.addSource(GeoJsonSource(SRC_RIDE, FeatureCollection.fromFeatures(emptyList<Feature>())))
         style.addSource(GeoJsonSource(SRC_FROZEN, FeatureCollection.fromFeatures(emptyList<Feature>())))
@@ -299,6 +336,24 @@ class VeloMapState {
             PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
             PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
         )
+
+    private fun line(id: String, source: String, color: Int, width: Expression): LineLayer =
+        LineLayer(id, source).withProperties(
+            PropertyFactory.lineColor(color),
+            PropertyFactory.lineWidth(width),
+            PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+            PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+        )
+
+    /**
+     * Épaisseur d'un trait d'itinéraire : fin vu de loin (pour comparer des tracés), épais vu de près (pour le
+     * suivre du coin de l'œil pendant le guidage). [extra] s'ajoute pour le liseré clair qui l'entoure.
+     */
+    private fun routeWidth(extra: Float, factor: Float): Expression = Expression.interpolate(
+        Expression.exponential(1.4f), Expression.zoom(),
+        Expression.stop(9, 4.5f * factor + extra), Expression.stop(14, 6f * factor + extra),
+        Expression.stop(16.5, 9f * factor + extra), Expression.stop(19, 14f * factor + extra),
+    )
 
     /** Surligne les pistes cyclables et voies vertes du fond vectoriel (schéma OpenMapTiles). */
     private fun addCycleways(style: Style, c: MapColors, belowLayerId: String?) {
@@ -404,8 +459,12 @@ class VeloMapState {
                 Feature.fromGeometry(MultiLineString.fromLineStrings(lines.map { line -> LineString.fromLngLats(line.map { it.toPoint() }) }))
             )
         val main = routes.getOrNull(routeSelected)?.takeIf { it.size >= 2 }
-        val others = routes.filterIndexed { i, line -> i != routeSelected && line.size >= 2 }
-        (style.getSource(SRC_ROUTES_OTHER) as? GeoJsonSource)?.setGeoJson(collection(others))
+        // Chaque tracé en retrait porte son rang : un appui dessus le choisit.
+        val others = routes.mapIndexedNotNull { i, line ->
+            if (i == routeSelected || line.size < 2) null
+            else Feature.fromGeometry(LineString.fromLngLats(line.map { it.toPoint() })).apply { addNumberProperty("rang", i) }
+        }
+        (style.getSource(SRC_ROUTES_OTHER) as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(others))
         (style.getSource(SRC_ROUTE) as? GeoJsonSource)?.setGeoJson(collection(listOfNotNull(main)))
     }
 
@@ -462,8 +521,10 @@ class VeloMapState {
                 .pulseEnabled(false)
                 .accuracyAlpha(0.16f)
                 .accuracyColor(c.puck)
-                .foregroundTintColor(c.puck)
-                .bearingTintColor(c.puck)
+                // Point à l'arrêt, flèche dès qu'on connaît le sens de la marche : dessins aux couleurs fixées
+                // (une teinte appliquée ici effacerait le contour blanc de la flèche).
+                .foregroundDrawable(R.drawable.map_puck_dot)
+                .gpsDrawable(R.drawable.map_puck_arrow)
                 .backgroundTintColor(Color.WHITE)
                 // Repère plus gros que d'origine : il doit se voir d'un coup d'œil sur un guidon, en plein jour.
                 .minZoomIconScale(PUCK_SCALE_FAR)
@@ -485,57 +546,144 @@ class VeloMapState {
             component.setMaxAnimationFps(PUCK_FPS)
             locationShown = true
             component.forceLocationUpdate(l)
-            if (isFollowing) component.setCameraMode(trackingMode(), 600L, FOLLOW_ZOOM, null, null, null)
+            if (isFollowing) startTracking(600L, FOLLOW_ZOOM)
         } else {
             component.forceLocationUpdate(l)
         }
-        // Sans boussole, le sens de marche ne vient que du déplacement : flèche quand on roule, point sinon.
-        val moving = l.hasBearing() && l.hasSpeed() && l.speed >= MOVING_SPEED_MPS
-        val wanted = if (moving) RenderMode.GPS else RenderMode.NORMAL
+        // Sans boussole, le sens de la marche ne vient que du déplacement : une flèche dès qu'il est connu (la
+        // position qu'on reçoit le garde à l'arrêt), un simple point tant qu'on n'a pas encore roulé.
+        val wanted = if (l.hasBearing()) RenderMode.GPS else RenderMode.NORMAL
         if (component.renderMode != wanted) component.renderMode = wanted
     }
 
-    private fun trackingMode(): Int = if (headingUp) CameraMode.TRACKING_GPS else CameraMode.TRACKING
+    private fun trackingMode(): Int = if (navigation || headingUp) CameraMode.TRACKING_GPS else CameraMode.TRACKING
 
-    /** Recentre la carte sur la position et reprend le suivi. */
+    /**
+     * Met la carte en suivi de la position, dans la vue qui convient : celle du guidage (dans le sens de la
+     * marche, inclinée, rapprochée, position vers le bas de l'écran) ou la vue ordinaire, à plat.
+     * Les réglages fins (inclinaison, marges) ne sont acceptés par la carte qu'une fois la transition finie.
+     */
     @SuppressLint("MissingPermission")
-    fun follow() {
-        isFollowing = true
+    private fun startTracking(durationMs: Long, minZoom: Double) {
         val map = map ?: return
         if (!locationShown) return
-        val zoom = map.cameraPosition.zoom.coerceAtLeast(FOLLOW_ZOOM)
-        map.locationComponent.setCameraMode(trackingMode(), 500L, zoom, if (headingUp) null else 0.0, null, null)
+        val component = map.locationComponent
+        val nav = navigation
+        val zoom = if (nav) NAV_ZOOM else map.cameraPosition.zoom.coerceAtLeast(minZoom)
+        val bearing = if (nav || headingUp) null else 0.0
+        val tilt = if (nav) NAV_TILT else 0.0
+        // D'un suivi à un autre, la carte ne ferait que changer de mode en gardant l'orientation et l'inclinaison
+        // d'avant. En repartant de « pas de suivi », elle fait une vraie transition vers la vue demandée.
+        restartingTracking = true
+        runCatching { if (component.cameraMode != CameraMode.NONE) component.cameraMode = CameraMode.NONE }
+        restartingTracking = false
+        component.setCameraMode(trackingMode(), durationMs, zoom, bearing, tilt, object : OnLocationCameraTransitionListener {
+            override fun onLocationCameraTransitionFinished(cameraMode: Int) {
+                // Entre-temps on a pu quitter le suivi ou changer de vue : seul le dernier état compte.
+                if (!isFollowing || nav != navigation || this@VeloMapState.map !== map) return
+                runCatching {
+                    component.tiltWhileTracking(tilt, SETTLE_MS)
+                    if (nav) component.zoomWhileTracking(NAV_ZOOM, SETTLE_MS)
+                    component.paddingWhileTracking(trackingPadding(), SETTLE_MS)
+                }
+            }
+
+            override fun onLocationCameraTransitionCanceled(cameraMode: Int) = Unit
+        })
     }
 
-    /** Carte orientée dans le sens de la marche (vrai) ou nord en haut (faux). */
-    @SuppressLint("MissingPermission")
+    /**
+     * Marges de la carte pendant le suivi, [gauche, haut, droite, bas] : la position se place au milieu de ce
+     * qu'elles laissent libre. En guidage, elle est descendue vers le bas de l'écran pour montrer la route devant.
+     */
+    private fun trackingPadding(): DoubleArray {
+        val height = mapView?.height ?: 0
+        if (!navigation || height <= 0) return doubleArrayOf(0.0, 0.0, 0.0, 0.0)
+        val free = (height - navTopPx - navBottomPx).coerceAtLeast(0)
+        val puckY = navTopPx + free * NAV_PUCK_POSITION
+        val top = (2 * puckY - height + navBottomPx).coerceIn(0.0, (height - navBottomPx).toDouble().coerceAtLeast(0.0))
+        return doubleArrayOf(0.0, top, 0.0, navBottomPx.toDouble())
+    }
+
+    /** Recentre la carte sur la position et reprend le suivi. */
+    fun follow() {
+        isFollowing = true
+        startTracking(500L, FOLLOW_ZOOM)
+    }
+
+    /** Carte orientée dans le sens de la marche (vrai) ou nord en haut (faux), hors guidage. */
     fun setHeadingUp(enabled: Boolean) {
         if (headingUp == enabled) return
         headingUp = enabled
-        val map = map ?: return
-        if (!locationShown || !isFollowing) return
-        map.locationComponent.setCameraMode(trackingMode(), 500L, null, if (enabled) null else 0.0, null, null)
+        if (isFollowing && !navigation) startTracking(500L, 0.0)
     }
 
-    /** Cadre la carte sur une emprise (par exemple toute une sortie). */
     /**
-     * Cadre la carte sur une emprise (par exemple toute une sortie). [topPx] et [bottomPx] réservent la place
-     * de ce qui recouvre la carte en haut et en bas (bandeau, panneau d'itinéraire).
+     * Vue de guidage (vrai) ou vue ordinaire (faux). La vue de guidage suit la position dans le sens de la
+     * marche, carte inclinée ; on la quitte en déplaçant la carte, on y revient avec [follow].
      */
-    fun fit(box: BoundingBox, paddingPx: Int, topPx: Int = paddingPx, bottomPx: Int = paddingPx) {
+    fun setNavigation(enabled: Boolean) {
+        if (navigation == enabled) return
+        navigation = enabled
+        // La boussole de la carte ne sert à rien en guidage (la flèche dit tout) et se glisserait sous le bandeau.
+        map?.uiSettings?.isCompassEnabled = !enabled
+        when {
+            // Le guidage commence : on revient toujours sur la position, dans la vue de guidage.
+            enabled -> follow()
+            isFollowing -> startTracking(700L, FOLLOW_ZOOM)
+            else -> {
+                // La carte était déplacée à la main : on la remet simplement à plat, nord en haut.
+                val map = map ?: return
+                runCatching {
+                    map.animateCamera(
+                        CameraUpdateFactory.newCameraPosition(
+                            CameraPosition.Builder(map.cameraPosition).tilt(0.0).bearing(0.0).padding(0.0, 0.0, 0.0, 0.0).build()
+                        ),
+                        SETTLE_MS.toInt(),
+                    )
+                }
+            }
+        }
+    }
+
+    /** Ce qui recouvre la carte en haut et en bas pendant le guidage (bandeau, boutons), en pixels. */
+    @SuppressLint("MissingPermission")
+    fun setNavigationInsets(topPx: Int, bottomPx: Int) {
+        if (navTopPx == topPx && navBottomPx == bottomPx) return
+        navTopPx = topPx
+        navBottomPx = bottomPx
+        val map = map ?: return
+        if (navigation && isFollowing && locationShown) runCatching { map.locationComponent.paddingWhileTracking(trackingPadding(), SETTLE_MS) }
+    }
+
+    /**
+     * Cadre la carte sur une emprise (par exemple toute une sortie), vue de dessus et nord en haut. [topPx] et
+     * [bottomPx] réservent la place de ce qui recouvre la carte en haut et en bas (bandeau, panneau d'itinéraire).
+     */
+    fun fit(box: BoundingBox, paddingPx: Int, topPx: Int = paddingPx, bottomPx: Int = paddingPx, animate: Boolean = false) {
         pendingFit = Fit(box, paddingPx, topPx, bottomPx)
         val map = map ?: return
         if (style == null) return
         isFollowing = false
         runCatching { map.locationComponent.cameraMode = CameraMode.NONE }
         val tiny = (box.maxLat - box.minLat) < 1e-4 && (box.maxLon - box.minLon) < 1e-4
-        if (tiny) {
-            map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng((box.minLat + box.maxLat) / 2, (box.minLon + box.maxLon) / 2), 15.0))
+        val update = if (tiny) {
+            CameraUpdateFactory.newCameraPosition(
+                CameraPosition.Builder()
+                    .target(LatLng((box.minLat + box.maxLat) / 2, (box.minLon + box.maxLon) / 2))
+                    .zoom(15.0).bearing(0.0).tilt(0.0)
+                    .padding(paddingPx.toDouble(), topPx.toDouble(), paddingPx.toDouble(), bottomPx.toDouble())
+                    .build()
+            )
         } else {
-            val bounds = LatLngBounds.from(box.maxLat, box.maxLon, box.minLat, box.minLon)
-            // Si les marges demandées ne laissent pas de place (très petit écran), on retombe sur un cadrage simple.
-            runCatching { map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, paddingPx, topPx, paddingPx, bottomPx)) }
-                .onFailure { runCatching { map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, paddingPx)) } }
+            CameraUpdateFactory.newLatLngBounds(LatLngBounds.from(box.maxLat, box.maxLon, box.minLat, box.minLon), 0.0, 0.0, paddingPx, topPx, paddingPx, bottomPx)
+        }
+        fun apply(u: org.maplibre.android.camera.CameraUpdate) = if (animate) map.animateCamera(u, FIT_MS) else map.moveCamera(u)
+        // Si les marges demandées ne laissent pas de place (très petit écran), on retombe sur un cadrage simple.
+        runCatching { apply(update) }.onFailure {
+            runCatching {
+                apply(CameraUpdateFactory.newLatLngBounds(LatLngBounds.from(box.maxLat, box.maxLon, box.minLat, box.minLon), 0.0, 0.0, paddingPx, paddingPx, paddingPx, paddingPx))
+            }
         }
         pendingFit = null
     }
@@ -566,7 +714,6 @@ class VeloMapState {
         const val SRC_ROUTES_OTHER = "velogo-itineraires"
         const val SRC_ROUTE = "velogo-itineraire"
         const val SRC_PLAN = "velogo-etapes"
-        const val ROUTE_WIDTH = 6f
         const val OPENMAPTILES_SOURCE = "openmaptiles"
         const val TRACK_WIDTH = 4.5f
         const val MIN_ZOOM = 4.4
@@ -575,7 +722,15 @@ class VeloMapState {
         const val PUCK_FPS = 30
         const val PUCK_SCALE_FAR = 1.0f
         const val PUCK_SCALE_NEAR = 1.5f
-        const val MOVING_SPEED_MPS = 1.2f
+        /** Vue de guidage : assez près pour lire les carrefours, assez inclinée pour voir loin devant. */
+        const val NAV_ZOOM = 16.6
+        const val NAV_TILT = 50.0
+        /** Où se place la position dans la partie libre de l'écran pendant le guidage (0 = en haut, 1 = en bas). */
+        const val NAV_PUCK_POSITION = 0.72
+        const val SETTLE_MS = 450L
+        const val FIT_MS = 450
+        /** On choisit un itinéraire en retrait en le touchant, à un doigt près. */
+        const val TAP_REACH_DP = 22f
     }
 }
 
