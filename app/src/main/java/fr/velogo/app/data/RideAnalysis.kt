@@ -34,12 +34,14 @@ class RideAnalysis(private val db: VeloGoDatabase, private val rides: RideReposi
     /** Analyse une sortie terminée (sans effet sur une sortie en cours ou disparue). */
     suspend fun analyze(rideId: Long) = mutex.withLock { analyzeLocked(rideId, db.segments().all()) }
 
-    /** Analyse les sorties qui ne l'ont pas encore été (anciennes sorties, sorties importées). */
-    suspend fun analyzePending() = mutex.withLock {
-        val pending = db.rides().needingAnalysis(VERSION)
-        if (pending.isEmpty()) return@withLock
-        val segments = db.segments().all()
-        for (ride in pending) analyzeLocked(ride.id, segments)
+    /**
+     * Analyse les sorties qui ne l'ont pas encore été (anciennes sorties, sorties importées), une par une : entre
+     * deux sorties, une autre demande (un segment qu'on vient de créer, par exemple) peut passer.
+     */
+    suspend fun analyzePending() {
+        for (ride in db.rides().needingAnalysis(VERSION)) {
+            mutex.withLock { analyzeLocked(ride.id, db.segments().all()) }
+        }
     }
 
     /** Cherche un segment (nouveau) dans toutes les sorties déjà enregistrées. */

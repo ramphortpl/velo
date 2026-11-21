@@ -42,8 +42,7 @@ class RideArchive(private val context: Context, private val rides: RideRepositor
 
     /** Écrit toutes les sorties dans le fichier choisi. Renvoie leur nombre. */
     suspend fun exportAll(target: Uri, onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }): Int = withContext(Dispatchers.IO) {
-        val output = context.contentResolver.openOutputStream(target, "wt") ?: throw IOException("Impossible d'écrire dans ce fichier")
-        output.use { exportTo(it, onProgress) }
+        GpxExport.openForWriting(context, target).use { exportTo(it, onProgress) }
     }
 
     /** Ajoute à l'historique les sorties du fichier choisi (une archive ZIP de GPX, ou un GPX seul). */

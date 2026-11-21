@@ -114,7 +114,9 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Trois niveaux 
    serveur de tuiles local, du catalogue et de `ReliefSource` (une vraie tuile de relief, altitudes comparées à
    celles du service de l'IGN) ; météo testée contre un faux serveur (intercepteur OkHttp, aucun réseau) ;
    segments, meilleurs temps et sauvegarde testés de bout en bout sur une vraie base Room en mémoire
-   (`RideAnalysisTest`, `RideArchiveTest`). Sur l'ordinateur, ces tests ouvrent la base avec le SQLite d'Android
+   (`RideAnalysisTest`, `RideArchiveTest`) ; `DatabaseMigrationTest` fabrique une base à l'ancien format d'après
+   son schéma exporté, y range une sortie et l'ouvre avec l'appli d'aujourd'hui (à compléter à chaque nouvelle
+   version de la base). Sur l'ordinateur, ces tests ouvrent la base avec le SQLite d'Android
    simulé par Robolectric (`AndroidSQLiteDriver`) : celui que l'appli embarque (`BundledSQLiteDriver`) n'a pas de
    bibliothèque native hors Android.
 3. `routing` : itinéraires calculés pour de vrai autour de Corte avec `src/test/resources/dalles` (80 Ko de

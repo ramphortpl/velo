@@ -73,7 +73,7 @@ fun SegmentEditor(
     ) {
         Text("Nouveau segment", style = MaterialTheme.typography.titleLarge)
         Text(
-            "Choisis le début et la fin du morceau à chronométrer : une côte, une ligne droite, un tour complet…",
+            "Choisis le début et la fin du morceau à chronométrer.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -83,7 +83,7 @@ fun SegmentEditor(
             ProfileChart(
                 series = altitude,
                 lineColor = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.fillMaxWidth().height(120.dp),
+                modifier = Modifier.fillMaxWidth().height(110.dp),
                 formatY = { Formats.meters(it.toDouble()) },
                 formatX = { Formats.decimal(it.toDouble(), 1) + " km" },
                 range = first..last,

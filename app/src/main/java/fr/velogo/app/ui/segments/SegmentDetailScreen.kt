@@ -131,9 +131,12 @@ fun SegmentDetailScreen(segmentId: Long, onBack: () -> Unit, onOpenRide: (Long) 
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { inner ->
         val current = segment
+        // Le tracé n'est décodé qu'une fois : la carte ne se recadre pas à chaque passage qui s'ajoute à la liste.
         val line = remember(current?.points) { current?.let { Polyline.decode(it.points) } }
+        val lines = remember(line) { line?.let { listOf(it) } }
+        val bounds = remember(line) { line?.let { BoundingBox.of(it) } }
         SegmentDetailBody(current, efforts, searching, onOpenRide, Modifier.padding(inner)) { modifier ->
-            TrackMap(line?.let { listOf(it) }, line?.let { BoundingBox.of(it) }, modifier)
+            TrackMap(lines, bounds, modifier)
         }
     }
 

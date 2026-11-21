@@ -28,6 +28,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +71,7 @@ import fr.velogo.app.ui.util.Dates
 import fr.velogo.app.ui.veloViewModel
 import fr.velogo.core.format.Formats
 import fr.velogo.core.geo.LatLon
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Détail d'une sortie : carte, chiffres, graphiques d'altitude et de vitesse, export GPX. */
@@ -96,6 +99,14 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, onOpenSegment: (Long) -> 
     var segmentError by remember { mutableStateOf<String?>(null) }
     var creating by remember { mutableStateOf(false) }
     BackHandler(enabled = editing) { editing = false }
+    val startSegment = {
+        // Par défaut, le tiers central de la sortie : on voit tout de suite les deux poignées.
+        val totalKm = ((track?.profile?.lastOrNull()?.distanceM ?: 0.0) / 1000.0).toFloat()
+        range = (totalKm / 3f)..(totalKm * 2f / 3f)
+        typedName = null
+        segmentError = null
+        editing = true
+    }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(GpxExport.MIME)) { uri ->
         val current = ride
@@ -127,12 +138,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, onOpenSegment: (Long) -> 
                             enabled = (track?.profile?.size ?: 0) >= 2,
                             onClick = {
                                 menuOpen = false
-                                // Par défaut, le tiers central de la sortie : on voit tout de suite les deux poignées.
-                                val totalKm = ((track?.profile?.lastOrNull()?.distanceM ?: 0.0) / 1000.0).toFloat()
-                                range = (totalKm / 3f)..(totalKm * 2f / 3f)
-                                typedName = null
-                                segmentError = null
-                                editing = true
+                                startSegment()
                             },
                         )
                         DropdownMenuItem(
@@ -156,9 +162,16 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, onOpenSegment: (Long) -> 
     ) { inner ->
         val data = track
         val marker = selected?.let { i -> data?.profile?.getOrNull(i) }?.let { LatLon(it.lat, it.lon) }
-        // Le morceau choisi pour le segment, montré sur la carte avec ses deux bouts.
-        val portion = remember(editing, range, data) {
-            if (editing) vm.portion(range.start * 1000.0, range.endInclusive * 1000.0) else emptyList()
+        // Le morceau choisi pour le segment, montré sur la carte avec ses deux bouts. La carte n'est redessinée
+        // que lorsque le doigt se pose : la suivre à chaque image pendant le glissement la ferait saccader.
+        var portion by remember { mutableStateOf<List<LatLon>>(emptyList()) }
+        LaunchedEffect(editing, range, data) {
+            if (!editing) {
+                portion = emptyList()
+            } else {
+                delay(MAP_HIGHLIGHT_DELAY_MS)
+                portion = vm.portion(range.start * 1000.0, range.endInclusive * 1000.0)
+            }
         }
         val ends = remember(portion) {
             if (portion.size >= 2) listOf(PlanMarker(portion.first(), PlanMarker.Kind.START), PlanMarker(portion.last(), PlanMarker.Kind.END)) else emptyList()
@@ -202,6 +215,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, onOpenSegment: (Long) -> 
             segments = segmentRows,
             bests = bestRows,
             onOpenSegment = onOpenSegment,
+            onCreateSegment = startSegment,
             editor = editor,
         ) { modifier -> TrackMap(data?.segments, data?.bounds, modifier, marker = marker, highlight = portion, planMarkers = ends) }
     }
@@ -257,6 +271,8 @@ fun RideDetailBody(
     /** Les distances sur lesquelles cette sortie détient le record : (« 10 km », « 21:34 »). */
     bests: List<Pair<String, String>> = emptyList(),
     onOpenSegment: (Long) -> Unit = {},
+    /** Ouvre la création d'un segment à partir de cette sortie ; sans lui, le bouton n'est pas proposé. */
+    onCreateSegment: (() -> Unit)? = null,
     /** Création d'un segment : quand il est là, il remplace les chiffres et les graphiques sous la carte. */
     editor: (@Composable (Modifier) -> Unit)? = null,
     map: @Composable (Modifier) -> Unit,
@@ -298,6 +314,13 @@ fun RideDetailBody(
                             zeroBased = true,
                         )
                     }
+                    if (onCreateSegment != null) {
+                        FilledTonalButton(onClick = onCreateSegment, modifier = Modifier.fillMaxWidth()) {
+                            Icon(painterResource(R.drawable.ic_timer), contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Créer un segment à partir de cette sortie")
+                        }
+                    }
                 }
             }
         }
@@ -307,9 +330,12 @@ fun RideDetailBody(
                 details(Modifier.weight(1f).fillMaxHeight())
             }
         } else {
+            // Pendant la création d'un segment, la carte cède un peu de place : tous les réglages et le bouton
+            // « Créer » tiennent à l'écran sans défiler.
+            val mapShare = if (editor != null) 0.3f else 0.4f
             Column(Modifier.fillMaxSize()) {
-                map(Modifier.fillMaxWidth().weight(0.4f))
-                details(Modifier.fillMaxWidth().weight(0.6f))
+                map(Modifier.fillMaxWidth().weight(mapShare))
+                details(Modifier.fillMaxWidth().weight(1f - mapShare))
             }
         }
     }
@@ -331,6 +357,7 @@ private fun portionMeasures(data: RideTrackData, range: ClosedFloatingPointRange
 }
 
 private const val PORTION_ASCENT_THRESHOLD_M = 3.0
+private const val MAP_HIGHLIGHT_DELAY_MS = 120L
 
 /** Ce que cette sortie a de remarquable : ses records sur les distances de référence, ses temps sur les segments. */
 @Composable

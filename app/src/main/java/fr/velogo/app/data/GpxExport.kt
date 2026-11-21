@@ -11,6 +11,8 @@ import fr.velogo.core.ride.TrackPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
+import java.io.OutputStream
 
 /** Export d'une sortie au format GPX, vers un fichier choisi par l'utilisateur ou vers une autre appli. */
 object GpxExport {
@@ -37,9 +39,20 @@ object GpxExport {
 
     /** Écrit le GPX à l'emplacement choisi dans le sélecteur de fichiers d'Android. */
     suspend fun writeTo(context: Context, target: Uri, ride: RideEntity, points: List<TrackPoint>) = withContext(Dispatchers.IO) {
-        context.contentResolver.openOutputStream(target, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+        openForWriting(context, target).bufferedWriter(Charsets.UTF_8).use {
             Gpx.write(it, ride.name, points, source = ride.altitudeSource)
         }
-            ?: error("Impossible d'écrire dans ce fichier")
+    }
+
+    /**
+     * Ouvre en écriture le fichier choisi par l'utilisateur. On demande d'abord à le vider (« wt ») ; certains
+     * espaces de stockage (en ligne, notamment) ne connaissent que l'écriture simple, qui convient aussi puisque
+     * le fichier vient d'être créé.
+     */
+    fun openForWriting(context: Context, target: Uri): OutputStream {
+        val resolver = context.contentResolver
+        return runCatching { resolver.openOutputStream(target, "wt") }.getOrNull()
+            ?: resolver.openOutputStream(target, "w")
+            ?: throw IOException("Impossible d'écrire dans ce fichier")
     }
 }

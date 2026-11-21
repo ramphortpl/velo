@@ -20,6 +20,7 @@ import fr.velogo.app.ui.history.RideDetailBody
 import fr.velogo.app.ui.history.RideTrackData
 import fr.velogo.app.ui.ride.RideChrome
 import fr.velogo.app.ui.ride.RideMode
+import fr.velogo.app.ui.settings.ArchiveState
 import fr.velogo.app.ui.settings.SettingsActions
 import fr.velogo.app.ui.settings.SettingsContent
 import fr.velogo.app.ui.settings.UpdateCheck
@@ -352,6 +353,29 @@ class ScreenshotTest {
                     onOpenAbout = {},
                     onOpenOfflineMaps = {},
                     contentPadding = PaddingValues(bottom = 80.dp),
+                )
+            }
+        }
+    }
+
+    /** La page des réglages en entier (écran fictif très haut), sauvegarde des sorties en cours. */
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h3300dp-420dpi")
+    fun reglages_page_entiere() = captureRoboImage("$OUT/reglages_page_entiere.png") {
+        VeloGoTheme(mode = ThemeMode.LIGHT) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                SettingsContent(
+                    settings = Settings(voiceGuidance = true),
+                    update = null,
+                    check = UpdateCheck.UP_TO_DATE,
+                    batteryOk = true,
+                    notificationsOk = true,
+                    isSamsung = true,
+                    actions = NoActions,
+                    onOpenAbout = {},
+                    onOpenOfflineMaps = {},
+                    contentPadding = PaddingValues(bottom = 80.dp),
+                    archive = ArchiveState.Done("12 sorties sauvegardées."),
                 )
             }
         }

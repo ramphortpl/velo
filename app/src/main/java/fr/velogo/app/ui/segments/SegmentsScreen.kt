@@ -95,7 +95,7 @@ fun SegmentsContent(rows: List<SegmentRow>?, onBack: () -> Unit, onOpenSegment: 
                 items(rows, key = { it.id }) { row -> SegmentCard(row, onClick = { onOpenSegment(row.id) }) }
                 item(key = "aide") {
                     Text(
-                        "Pour ajouter un segment, ouvre une sortie puis choisis « Créer un segment » dans le menu.",
+                        "Pour ajouter un segment, ouvre une sortie puis touche « Créer un segment », sous ses graphiques.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
@@ -149,7 +149,7 @@ private fun EmptySegments(modifier: Modifier = Modifier) {
         Text(
             "Un segment, c'est un bout de route que tu choisis (une côte, une ligne droite, ton tour habituel) : " +
                 "VeloGo y chronomètre chacun de tes passages et garde ton record.\n\n" +
-                "Pour en créer un, ouvre une sortie dans l'historique puis choisis « Créer un segment » dans le menu.",
+                "Pour en créer un, ouvre une sortie dans l'historique puis touche « Créer un segment », sous ses graphiques.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

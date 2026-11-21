@@ -251,6 +251,9 @@ def segment_from_ride():
         return
     shot("segment_creation")
     # Le nom est proposé d'office : il n'y a qu'à valider le morceau choisi par défaut (le tiers central).
+    # (Un glissement vers le haut d'abord, au cas où le bouton serait sous le bas de l'écran.)
+    shell("input swipe 540 2150 540 1500 300")
+    time.sleep(1)
     tap("Créer le segment")
     if not wait_for("PASSAGES", 15):
         shot("segment_non_cree")

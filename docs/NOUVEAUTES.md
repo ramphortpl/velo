@@ -24,7 +24,8 @@
 ### À tester sur le téléphone
 
 1. Historique : le résumé de la semaine en haut, puis « Statistiques » ; passe de Semaine à Mois et Année.
-2. Ouvre une sortie > menu ⋮ > « Créer un segment… » : règle le début et la fin, puis « Créer le segment ».
+2. Ouvre une sortie, puis « Créer un segment » sous ses graphiques (ou dans le menu ⋮) : règle le début et la
+   fin, puis « Créer le segment ».
    La sortie d'origine doit apparaître comme premier passage ; refais le même trajet pour voir le classement.
 3. Réglages > Mes données > « Sauvegarder mes sorties » : range l'archive dans tes fichiers, ouvre-la pour voir
    un GPX par sortie.
