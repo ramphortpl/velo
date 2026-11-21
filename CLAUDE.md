@@ -354,7 +354,7 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   partir de l'artefact `essai-emulateur` d'une fabrication réussie : ce sont de vrais écrans, pas des maquettes.
   La capture de la météo manque dans bien des essais (quota d'Open-Meteo sur les machines de GitHub) : on donne
   alors un second dossier de captures, plus ancien, où elle existe. L'image actuelle vient de la fabrication
-  n° 19 (version 0.6.19).
+  n° 22 (version 0.6.22, la première au nouveau logo).
 
 ## Fabrication des cartes hors ligne
 
