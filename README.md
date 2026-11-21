@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ramphortpl/velo/refs/heads/claude/android-bike-app-france-bjp48m/docs/logo/icone.png" alt="Logo de VeloGo : le mot « VeloGo », dont les lettres « oGo » dessinent un vélo, sur un fond de carte" width="200">
+</p>
+
 # VeloGo
 
 Appli Android de vélo pour un usage personnel, en France : enregistrement GPS des sorties, itinéraires vélo et
@@ -132,7 +136,9 @@ les calculs, `brouter`, `routing`, `app`). L'architecture, les décisions et les
 ```
 
 L'image d'aperçu de cette page se refait à partir des captures de l'essai sur émulateur :
-`python3 outils/apercu_readme.py dossier_des_captures docs/apercu.jpg`.
+`python3 outils/apercu_readme.py dossier_des_captures docs/apercu.jpg`. Le logo (dossier `docs/logo/`) et tout ce
+qui en découle dans l'appli (icône, écran de démarrage, notification, affiche) se refont avec
+`python3 outils/logo.py`.
 
 ## Licences et données
 
