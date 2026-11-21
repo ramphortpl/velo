@@ -39,7 +39,7 @@ d'adresses IGN), `weather/` (météo Open-Meteo : client, mémoire, alerte pluie
 Releases GitHub).
 
 Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetiler, contours des régions, style),
-`outils/` (essai sur émulateur), `.github/workflows/` (`build.yml` pour l'APK, `cartes.yml` pour les cartes).
+`outils/` (essai sur émulateur, image d'aperçu et page d'accueil du dépôt), `.github/workflows/` (`build.yml` pour l'APK, `cartes.yml` pour les cartes).
 
 ## Architecture de l'appli
 
@@ -311,6 +311,20 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   version par défaut est sous licence propriétaire (gratuite pour un dépôt public).
 - `outils/ci_outils_de_construction.sh` : premier appel à Gradle, trois tentatives (30 s puis 90 s d'attente),
   la dernière avec la cause exacte de l'échec.
+
+## Page d'accueil du dépôt
+
+- GitHub affiche en page d'accueil le README de la branche par défaut, `main`. Tant que la branche de travail
+  n'est pas fusionnée, `main` ne contient que ce README : c'est une copie de celui de la branche de travail, dont
+  les liens vers les autres fichiers (image d'aperçu, nouveautés, ce fichier) pointent vers la branche de travail,
+  avec une ligne qui dit où est le code. `python3 outils/readme_accueil.py` écrit cette copie ; elle est à refaire
+  et à déposer sur `main` quand le README change (écrite pour la première fois le 21/11/2026, à la demande de
+  l'utilisateur, seul fichier jamais modifié sur `main`).
+- `main` reste un ancêtre de la branche de travail (son commit de README y a été fusionné en gardant le README de
+  la branche) : le jour de la fusion, ce sera une simple avance rapide, et le README d'origine, aux liens
+  relatifs, remplacera la copie.
+- `docs/apercu.jpg` (neuf écrans) se refait avec `python3 outils/apercu_readme.py <captures> docs/apercu.jpg` à
+  partir de l'artefact `essai-emulateur` d'une fabrication réussie : ce sont de vrais écrans, pas des maquettes.
 
 ## Fabrication des cartes hors ligne
 
