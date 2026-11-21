@@ -17,8 +17,11 @@ val versionProps = Properties().apply {
 val buildNumber = providers.gradleProperty("velogo.buildNumber").orNull?.toIntOrNull() ?: 0
 val appVersionName = "${versionProps["major"]}.${versionProps["minor"]}.$buildNumber"
 
-// Le mot de passe de la clé n'existe que dans le secret GitHub VELOGO_KEYSTORE_PASSWORD.
-val keystorePassword = providers.environmentVariable("VELOGO_KEYSTORE_PASSWORD").orNull?.takeIf { it.isNotBlank() }
+// Le mot de passe de la clé n'existe que dans le secret GitHub VELOGO_KEYSTORE_PASSWORD. Il ne contient ni espace
+// ni retour à la ligne : ceux qu'un copier-coller aurait glissés autour sont ignorés.
+val keystorePassword = providers.environmentVariable("VELOGO_KEYSTORE_PASSWORD").orNull
+    ?.filterNot { it.isWhitespace() }
+    ?.takeIf { it.isNotEmpty() }
 
 android {
     namespace = "fr.velogo.app"

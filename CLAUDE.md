@@ -225,6 +225,10 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
 - Clé : `signing/velogo-release.p12` (PKCS12, RSA 4096, chiffrée AES-256 par un mot de passe aléatoire de
   40 caractères). **Le mot de passe n'est que dans le secret GitHub `VELOGO_KEYSTORE_PASSWORD`** ; ne jamais
   l'écrire dans le dépôt.
+- Le workflow vérifie le secret dès le début (`keytool -list` sur la clé du dépôt) : absent, il prévient et
+  continue sans publier ; présent mais faux, il le dit tout de suite (avec sa longueur) et fait échouer le job
+  après les tests. Les espaces et retours à la ligne collés autour du mot de passe sont ignorés, dans le
+  workflow comme dans `app/build.gradle.kts`.
 - `.github/workflows/build.yml` : à chaque push, tests + lint, puis APK signé publié en Release
   (`v<majeur>.<mineur>.<numéro de build>`). `versionCode` = numéro de build GitHub, donc chaque APK s'installe
   par-dessus le précédent. Le mineur de `version.properties` suit les jalons.

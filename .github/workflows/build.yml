@@ -40,6 +40,51 @@ jobs:
             "$SDKMANAGER" "platforms;android-37.1" "build-tools;37.0.0" | grep -v '^\[' || true
           fi
 
+      # Dès le début, pour le dire tout de suite : le secret est-il là, et ouvre-t-il bien la clé du dépôt ?
+      - name: Clé de signature
+        id: cle
+        env:
+          VELOGO_KEYSTORE_PASSWORD: ${{ secrets.VELOGO_KEYSTORE_PASSWORD }}
+        run: |
+          # Le mot de passe ne contient ni espace ni retour à la ligne : ceux qu'un copier-coller aurait ajoutés sont ignorés.
+          MDP="$(printf '%s' "$VELOGO_KEYSTORE_PASSWORD" | tr -d '[:space:]')"
+          if [ -z "$MDP" ]; then
+            echo "presente=non" >> "$GITHUB_OUTPUT"
+            echo "::warning::Secret VELOGO_KEYSTORE_PASSWORD absent : les tests tournent mais aucun APK ne sera publié. Ajoute-le dans Settings > Secrets and variables > Actions."
+            {
+              echo "### Aucun APK publié"
+              echo "Le secret \`VELOGO_KEYSTORE_PASSWORD\` n'existe pas encore dans ce dépôt."
+              echo "Ajoute-le dans **Settings > Secrets and variables > Actions**, puis relance ce workflow (bouton *Re-run all jobs*)."
+            } >> "$GITHUB_STEP_SUMMARY"
+          elif MDP="$MDP" keytool -list -keystore signing/velogo-release.p12 -storetype PKCS12 -storepass:env MDP > /dev/null 2>&1; then
+            echo "presente=oui" >> "$GITHUB_OUTPUT"
+            echo "Le secret ouvre bien la clé de signature."
+          else
+            echo "presente=fausse" >> "$GITHUB_OUTPUT"
+            case "$MDP" in
+              *[!A-Za-z0-9]*) NATURE=" et contient autre chose que des lettres et des chiffres" ;;
+              *) NATURE="" ;;
+            esac
+            echo "::error::Le secret VELOGO_KEYSTORE_PASSWORD n'ouvre pas la clé de signature : il fait ${#MDP} caractères${NATURE}, alors que le mot de passe en fait 40 (lettres et chiffres uniquement). Aucun APK ne sera publié."
+            {
+              echo "### Le secret de signature n'est pas le bon"
+              echo "Le secret \`VELOGO_KEYSTORE_PASSWORD\` existe, mais il n'ouvre pas la clé \`signing/velogo-release.p12\` :"
+              echo "il fait ${#MDP} caractères${NATURE}, alors que le mot de passe en fait 40 (lettres et chiffres uniquement)."
+              echo
+              echo "Pour le corriger : **Settings > Secrets and variables > Actions**, le crayon à côté de \`VELOGO_KEYSTORE_PASSWORD\`,"
+              echo "colle le mot de passe exact, **Update secret**, puis relance ce workflow (bouton *Re-run all jobs*)."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Une seconde tentative si le téléchargement des outils échoue (panne passagère d'un dépôt de bibliothèques).
+      - name: Outils de construction
+        run: |
+          ./gradlew help --console=plain -q || {
+            echo "::warning::Téléchargement des outils de construction en échec : nouvelle tentative dans 30 secondes."
+            sleep 30
+            ./gradlew help --console=plain -q
+          }
+
       - name: Tests et vérifications
         run: ./gradlew test lintDebug --console=plain
 
@@ -50,22 +95,11 @@ jobs:
           MINOR=$(grep '^minor=' version.properties | cut -d= -f2)
           echo "name=$MAJOR.$MINOR.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
-      - name: Secret de signature
-        id: cle
-        env:
-          VELOGO_KEYSTORE_PASSWORD: ${{ secrets.VELOGO_KEYSTORE_PASSWORD }}
+      - name: Secret de signature incorrect
+        if: steps.cle.outputs.presente == 'fausse'
         run: |
-          if [ -n "$VELOGO_KEYSTORE_PASSWORD" ]; then
-            echo "presente=oui" >> "$GITHUB_OUTPUT"
-          else
-            echo "presente=non" >> "$GITHUB_OUTPUT"
-            echo "::warning::Secret VELOGO_KEYSTORE_PASSWORD absent : les tests sont passés mais aucun APK n'est publié. Ajoute-le dans Settings > Secrets and variables > Actions."
-            {
-              echo "### Aucun APK publié"
-              echo "Le secret \`VELOGO_KEYSTORE_PASSWORD\` n'existe pas encore dans ce dépôt."
-              echo "Ajoute-le dans **Settings > Secrets and variables > Actions**, puis relance ce workflow (bouton *Re-run all jobs*)."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
+          echo "::error::Les tests sont passés, mais le secret VELOGO_KEYSTORE_PASSWORD n'ouvre pas la clé de signature : aucun APK publié. La marche à suivre est dans le résumé de cette exécution."
+          exit 1
 
       - name: APK signé
         if: steps.cle.outputs.presente == 'oui'
@@ -130,6 +164,15 @@ jobs:
             yes | "$SDKMANAGER" --licenses > /dev/null || true
             "$SDKMANAGER" "platforms;android-37.1" "build-tools;37.0.0" | grep -v '^\[' || true
           fi
+
+      # Une seconde tentative si le téléchargement des outils échoue (panne passagère d'un dépôt de bibliothèques).
+      - name: Outils de construction
+        run: |
+          ./gradlew help --console=plain -q || {
+            echo "::warning::Téléchargement des outils de construction en échec : nouvelle tentative dans 30 secondes."
+            sleep 30
+            ./gradlew help --console=plain -q
+          }
 
       - name: APK d'essai (même code minifié que la version publiée)
         run: ./gradlew :app:assembleSmoke --console=plain -Pvelogo.buildNumber=${{ github.run_number }}

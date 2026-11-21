@@ -40,7 +40,9 @@ La fabrication de l'APK est automatique à chaque modification, mais sa **signat
    dans le dépôt).
 3. Relance le workflow **APK VeloGo** (onglet Actions) : l'APK signé apparaît dans les Releases.
 
-Tant que ce secret manque, les tests tournent mais aucun APK n'est publié.
+Tant que ce secret manque, les tests tournent mais aucun APK n'est publié. Dès ses premières secondes, le
+workflow dit si le secret est absent ou s'il n'ouvre pas la clé (il indique alors sa longueur : le bon mot de
+passe fait 40 caractères, lettres et chiffres uniquement) ; le détail est dans le résumé de l'exécution.
 
 Les cartes hors ligne sont fabriquées par le workflow **Cartes hors ligne** et publiées dans la Release `cartes`.
 Leur mise à jour mensuelle automatique ne fonctionne qu'une fois la branche de travail fusionnée dans `main`.
