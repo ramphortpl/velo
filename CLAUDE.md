@@ -471,6 +471,12 @@ Mise à jour du 22/11/2026 (`v0.6.23`, fabrication n° 23) : position approchée
 vérifié sur le Xiaomi où le problème a été vu. Si le GPS n'y répond toujours pas dehors, demander ce qu'affiche
 la feuille « Signal GPS » (titre, satellites captés et utilisés) : c'est le seul diagnostic disponible.
 
+Mise à jour du 22/11/2026 (`v0.6.24`, fabrication n° 24) : boucles (« Boucle », « Revenir au départ »), étapes
+numérotées, avertissement « repasse par le départ » et « Arrêter au départ ». La boucle a été calculée sur
+l'émulateur en mode avion (étape « 1 » dessinée sur la carte). Le trajet « Entraînement 1 » de l'utilisateur
+n'a pas pu être relu (il est sur son téléphone) : son explication repose sur ses deux photos et sur le même
+itinéraire refait avec les dalles d'Île-de-France ; à confirmer par ce qu'affiche le panneau quand il le rouvre.
+
 ## Sources de données et attributions
 
 OpenStreetMap (ODbL) · OpenFreeMap / OpenMapTiles · CyclOSM (serveurs OSM France : en ligne uniquement,
