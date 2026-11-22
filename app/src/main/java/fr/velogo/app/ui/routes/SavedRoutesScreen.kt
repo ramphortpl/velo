@@ -122,12 +122,16 @@ class SavedRoutesViewModel(private val container: AppContainer) : ViewModel() {
     /** Les dessins des tracés, préparés un à un en tâche de fond (la liste ne charge pas les tracés eux-mêmes). */
     val previews: StateFlow<Map<Long, String>> = _previews
 
+    /** Longueur du tracé dont on a déjà le dessin : un trajet raccourci change de longueur, son dessin est à refaire. */
+    private val drawn = HashMap<Long, Double>()
+
     init {
         viewModelScope.launch {
             container.savedRoutes.observe().collect { list ->
                 for (route in list) {
-                    if (route.id in _previews.value) continue
+                    if (drawn[route.id] == route.distanceM) continue
                     val preview = runCatching { container.savedRoutes.preview(route.id) }.getOrNull() ?: continue
+                    drawn[route.id] = route.distanceM
                     _previews.update { it + (route.id to preview) }
                 }
             }
@@ -147,7 +151,7 @@ class SavedRoutesViewModel(private val container: AppContainer) : ViewModel() {
             if (loaded != null) {
                 val bike = BikeType.entries.firstOrNull { it.name == loaded.first.bike } ?: BikeType.HYBRID
                 if (guiding) container.navigation.stopGuidance()
-                container.navigation.showSaved(loaded.first.name, loaded.second, bike)
+                container.navigation.showSaved(loaded.first.name, loaded.second, bike, savedId = id)
             }
             onDone(loaded != null)
         }

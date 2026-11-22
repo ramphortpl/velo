@@ -635,6 +635,44 @@ def route_by_address(gps):
     saved_routes()
 
 
+def loop_route():
+    """Une boucle, sans réseau : départ et arrivée au même endroit, une étape placée par un appui long sur la carte.
+
+    Le panneau d'itinéraire est ouvert, sans arrivée. À la fin, il est remis dans cet état."""
+    log("itinéraire : boucle (retour au départ)")
+    if not tap("Boucle", timeout=8, required=False):
+        shot("boucle_bouton_absent")
+        fail("le bouton « Boucle » est absent du panneau d'itinéraire")
+        return
+    if not wait_for("Retour au départ (boucle)", 6):
+        fail("après « Boucle », l'arrivée n'est pas « Retour au départ »")
+        return
+    # En boucle, un appui long sur la carte ajoute une étape (ici quelques centaines de mètres au nord).
+    shell("input swipe 540 640 540 640 1400")
+    if wait_for("ÉTAPE 1", 8):
+        tap("Calculer l'itinéraire")
+        found = wait_for_pattern(r"\d itinéraires?", 60)
+        time.sleep(3)
+        shot("itineraire_boucle")
+        if not found:
+            fail("aucune boucle calculée")
+        else:
+            log(f"boucle : {found}")
+            # Une boucle qui s'arrête à son retour n'est pas un trajet « qui repasse par son départ puis continue ».
+            if find("Repasse par le départ", exact=False):
+                fail("une simple boucle est annoncée comme repassant par son départ")
+            check_alive("après le calcul d'une boucle")
+        tap("Modifier les points", timeout=6, required=False)
+        wait_for("Calculer l'itinéraire", 8)
+        tap("Retirer l'étape 1", timeout=6, required=False)
+    else:
+        shot("boucle_sans_etape")
+        fail("en boucle, l'appui long sur la carte n'ajoute pas d'étape")
+    tap("Ne plus revenir au départ", timeout=6, required=False)
+    if not wait_for("Choisir l'arrivée", 6):
+        fail("le panneau d'itinéraire ne revient pas à « Choisir l'arrivée » après la boucle")
+
+
 def save_route():
     """Dans le détail déplié : « Enregistrer cet itinéraire », pour le retrouver dans l'onglet « Trajets »."""
     for _ in range(4):
@@ -817,6 +855,7 @@ def offline_maps(gps):
         guided = False
         if tap("Itinéraire"):
             time.sleep(2)
+            loop_route()
             # Appui long sur la carte, quelques centaines de mètres au nord de la position.
             shell("input swipe 540 640 540 640 1400")
             time.sleep(1)

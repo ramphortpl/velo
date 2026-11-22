@@ -12,6 +12,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -68,6 +69,8 @@ import fr.velogo.core.format.Formats
 import fr.velogo.core.nav.BikeType
 import fr.velogo.core.nav.Maneuver
 import fr.velogo.core.nav.Route
+import fr.velogo.core.nav.RouteShape
+import fr.velogo.core.nav.StartReturn
 import fr.velogo.core.nav.WayMix
 
 /** Quel point de l'itinéraire on est en train de choisir. */
@@ -81,9 +84,15 @@ interface PlannerActions {
     fun pick(target: PlanTarget)
     fun useMyPosition()
     fun removeVia(index: Int)
+    /** Avance l'étape d'un rang : l'itinéraire y passera avant celle qui la précédait. */
+    fun moveViaUp(index: Int)
     fun removeEnd()
+    /** Boucle : l'itinéraire revient au point de départ. */
+    fun setLoop(enabled: Boolean)
     fun reverse()
     fun compute()
+    /** L'itinéraire repasse par son départ puis continue : l'arrêter à ce retour. */
+    fun stopAtStart()
     /** Revient des propositions aux points de l'itinéraire. */
     fun edit()
     fun select(index: Int)
@@ -173,37 +182,60 @@ private fun PointsStage(state: PlannerState, hasRoutingData: Boolean, actions: P
         onClear = if (state.start != null) actions::useMyPosition else null,
         clearLabel = "Repartir de ma position",
     )
+    // Les étapes sont parcourues dans l'ordre de la liste : chacune porte son numéro, ici comme sur la carte.
     state.vias.forEachIndexed { index, via ->
         PointRow(
             color = VIA_COLOR, caption = "ÉTAPE ${index + 1}", value = via.label, placeholder = false,
             onClick = { }, onClear = { actions.removeVia(index) }, clearLabel = "Retirer l'étape ${index + 1}",
+            onMoveUp = if (index > 0) ({ actions.moveViaUp(index) }) else null,
+            moveUpLabel = "Passer par l'étape ${index + 1} avant l'étape $index",
         )
     }
-    PointRow(
-        color = rideColors.stop, caption = "ARRIVÉE",
-        value = state.end?.label ?: "Choisir l'arrivée",
-        placeholder = state.end == null,
-        onClick = { actions.pick(PlanTarget.END) },
-        onClear = if (state.end != null) actions::removeEnd else null,
-        clearLabel = "Retirer l'arrivée",
-    )
+    if (state.loop) {
+        PointRow(
+            color = rideColors.stop, caption = "ARRIVÉE", value = "Retour au départ (boucle)", placeholder = false,
+            onClick = { actions.pick(PlanTarget.END) },
+            onClear = { actions.setLoop(false) }, clearLabel = "Ne plus revenir au départ",
+        )
+    } else {
+        PointRow(
+            color = rideColors.stop, caption = "ARRIVÉE",
+            value = state.end?.label ?: "Choisir l'arrivée",
+            placeholder = state.end == null,
+            onClick = { actions.pick(PlanTarget.END) },
+            onClear = if (state.end != null) actions::removeEnd else null,
+            clearLabel = "Retirer l'arrivée",
+        )
+    }
 
-    Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = { actions.pick(PlanTarget.VIA) }, enabled = state.end != null) {
+    FlowRow(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.Center) {
+        TextButton(onClick = { actions.pick(PlanTarget.VIA) }, enabled = state.end != null || state.loop) {
             Icon(painterResource(R.drawable.ic_add), contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
             Text("Ajouter une étape")
         }
-        if (state.start != null && state.end != null) {
+        if (!state.loop) {
+            TextButton(onClick = { actions.setLoop(true) }) {
+                Icon(painterResource(R.drawable.ic_replay), contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Boucle")
+            }
+        }
+        if ((state.start != null && state.end != null) || (state.loop && state.vias.size >= 2)) {
             TextButton(onClick = actions::reverse) {
                 Icon(painterResource(R.drawable.ic_swap_vert), contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Inverser")
+                Text(if (state.loop) "Autre sens" else "Inverser")
             }
         }
     }
     Text(
-        "Astuce : un appui long sur la carte place un point.",
+        when {
+            state.loop && state.vias.isEmpty() ->
+                "Boucle : ajoute au moins une étape par laquelle passer. Chaque appui long sur la carte en ajoute une, dans l'ordre où tu les places."
+            state.loop -> "L'itinéraire passe par les étapes dans l'ordre, puis revient au départ. Un appui long sur la carte ajoute une étape."
+            else -> "Astuce : un appui long sur la carte place un point. Pour revenir à ton point de départ, choisis « Boucle »."
+        },
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 24.dp, vertical = 2.dp),
@@ -245,7 +277,7 @@ private fun PointsStage(state: PlannerState, hasRoutingData: Boolean, actions: P
 private fun PointsFooter(state: PlannerState, actions: PlannerActions) {
     Button(
         onClick = actions::compute,
-        enabled = state.end != null && !state.computing,
+        enabled = state.canCompute && !state.computing,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(56.dp),
     ) {
         if (state.computing) {
@@ -281,6 +313,7 @@ private fun BikeSelector(bike: BikeType, onBike: (BikeType) -> Unit) {
 private fun PointRow(
     color: Color, caption: String, value: String, placeholder: Boolean,
     onClick: () -> Unit, onClear: (() -> Unit)?, clearLabel: String,
+    onMoveUp: (() -> Unit)? = null, moveUpLabel: String = "",
 ) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 24.dp, end = 8.dp).heightIn(min = 54.dp),
@@ -297,6 +330,11 @@ private fun PointRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        if (onMoveUp != null) {
+            IconButton(onClick = onMoveUp) {
+                Icon(painterResource(R.drawable.ic_north), contentDescription = moveUpLabel, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         if (onClear != null) {
             IconButton(onClick = onClear) {
@@ -362,6 +400,7 @@ private fun ResultsHeader(state: PlannerState, expanded: Boolean, onExpandedChan
 /** Panneau replié : les propositions en une ligne chacune. La carte garde toute la place au-dessus. */
 @Composable
 private fun ResultsSummary(state: PlannerState, actions: PlannerActions) {
+    StartReturnNotice(state, compact = true, onStop = actions::stopAtStart)
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -396,6 +435,7 @@ private fun ResultsDetails(state: PlannerState, weather: PlannerWeather?, action
         }
     }
 
+    StartReturnNotice(state, compact = false, onStop = actions::stopAtStart)
     val selected = state.selectedOption
     if (selected != null) {
         RouteProfile(selected.route, Modifier.fillMaxWidth().padding(start = 12.dp, end = 16.dp, top = 10.dp).height(96.dp))
@@ -434,6 +474,65 @@ private fun ResultsFooter(voiceEnabled: Boolean, actions: PlannerActions) {
                 painterResource(if (voiceEnabled) R.drawable.ic_volume_up else R.drawable.ic_volume_off),
                 contentDescription = if (voiceEnabled) "Guidage vocal activé" else "Guidage vocal désactivé",
             )
+        }
+    }
+}
+
+/**
+ * Ce que le panneau dit d'un itinéraire qui repasse par son départ puis continue : la phrase, et le bouton qui
+ * l'arrête à ce retour. Fonction pure, vérifiée par les tests.
+ */
+data class StartReturnText(val message: String, val button: String)
+
+fun startReturnText(back: StartReturn, compact: Boolean): StartReturnText {
+    val loop = Formats.distanceAuto(back.distanceM)
+    val more = Formats.distanceAuto(back.remainingM)
+    return if (compact) {
+        StartReturnText("Repasse par le départ après $loop, puis continue $more.", "Arrêter au départ")
+    } else {
+        StartReturnText(
+            "Cet itinéraire revient à son point de départ après $loop, puis continue encore $more jusqu'à l'arrivée. " +
+                "Sur la carte, les deux passages se superposent : on n'y voit qu'une boucle.",
+            "Arrêter au départ ($loop)",
+        )
+    }
+}
+
+/**
+ * Avertit qu'un itinéraire repasse par son départ puis continue : les kilomètres d'après ce retour se
+ * superposent au début du tracé et ne se voient pas sur la carte, alors qu'ils comptent dans la distance annoncée.
+ */
+@Composable
+private fun StartReturnNotice(state: PlannerState, compact: Boolean, onStop: () -> Unit) {
+    val route = state.selectedOption?.route ?: return
+    val back = remember(route) { RouteShape.returnToStart(route) } ?: return
+    val text = startReturnText(back, compact)
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = if (compact) 0.dp else 8.dp, bottom = 8.dp),
+    ) {
+        if (compact) {
+            Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+                )
+                TextButton(onClick = onStop) { Text(text.button, maxLines = 1) }
+            }
+        } else {
+            Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 6.dp)) {
+                Row {
+                    Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text(text.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                }
+                TextButton(onClick = onStop, modifier = Modifier.align(Alignment.End)) { Text(text.button, maxLines = 1) }
+            }
         }
     }
 }

@@ -53,7 +53,8 @@ sealed interface SearchResult {
 
 /**
  * Recherche d'une adresse ou d'un lieu, en plein écran. Les propositions arrivent pendant la frappe.
- * [offerMyPosition] ajoute « Ma position » en tête (pour le point de départ).
+ * [offerMyPosition] ajoute « Ma position » en tête (pour le point de départ) ; [offerLoop] ajoute « Revenir au
+ * départ » (pour l'arrivée : l'itinéraire devient une boucle).
  */
 @Composable
 fun PlaceSearchDialog(
@@ -63,6 +64,8 @@ fun PlaceSearchDialog(
     onPlace: (Place) -> Unit,
     onMyPosition: () -> Unit,
     onDismiss: () -> Unit,
+    offerLoop: Boolean = false,
+    onLoop: () -> Unit = {},
 ) {
     var query by remember { mutableStateOf("") }
     var result by remember { mutableStateOf<SearchResult>(SearchResult.Idle) }
@@ -87,6 +90,7 @@ fun PlaceSearchDialog(
                 title = title, query = query, onQuery = { query = it }, result = result, offerMyPosition = offerMyPosition,
                 onPlace = onPlace, onMyPosition = onMyPosition, onDismiss = onDismiss,
                 fieldModifier = Modifier.focusRequester(focus),
+                offerLoop = offerLoop, onLoop = onLoop,
             )
         }
     }
@@ -105,6 +109,8 @@ fun PlaceSearchContent(
     onMyPosition: () -> Unit,
     onDismiss: () -> Unit,
     fieldModifier: Modifier = Modifier,
+    offerLoop: Boolean = false,
+    onLoop: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -133,6 +139,11 @@ fun PlaceSearchContent(
             if (offerMyPosition) {
                 item {
                     ResultRow(R.drawable.ic_my_location_filled, "Ma position", "Partir de l'endroit où je suis", onMyPosition)
+                }
+            }
+            if (offerLoop) {
+                item {
+                    ResultRow(R.drawable.ic_replay, "Revenir au départ", "Faire une boucle : tu choisis ensuite par où passer", onLoop)
                 }
             }
             when (result) {

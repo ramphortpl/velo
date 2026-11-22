@@ -14,6 +14,7 @@ import fr.velogo.core.nav.BikeType
 import fr.velogo.core.nav.Instruction
 import fr.velogo.core.nav.Maneuver
 import fr.velogo.core.nav.Route
+import fr.velogo.core.nav.RouteShape
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -64,6 +65,47 @@ class SavedRouteRepositoryTest {
             instructions = listOf(Instruction(count / 2, distances[count / 2], Maneuver.LEFT), Instruction(count - 1, distances.last(), Maneuver.ARRIVE)),
             waypoints = listOf(points.first(), points.last()),
         )
+    }
+
+    /**
+     * Le cas vécu : un trajet qui fait une boucle de 8 km, repasse par son départ, puis repart sur 3 km par les
+     * routes du début. Raccourci, il garde son nom, sa date et son rang ; seul son tracé change.
+     */
+    @Test
+    fun `un trajet raccourci remplace l ancien sous le meme nom`() = runBlocking<Unit> {
+        val home = LatLon(48.997, 2.218)
+        val points = ArrayList<LatLon>()
+        points.add(home)
+        fun go(bearing: Double, meters: Int) = repeat(meters / 50) { points.add(Geo.offset(points.last().lat, points.last().lon, bearing, 50.0)) }
+        go(0.0, 2_000); go(90.0, 2_000); go(180.0, 2_000); go(270.0, 2_000); go(0.0, 3_000)
+        val distances = Route.cumulativeDistances(points)
+        val whole = Route(
+            points = points, elevations = DoubleArray(points.size) { 60.0 + (it % 40) }, distances = distances,
+            durationS = distances.last() / 5.0, ascentM = 300.0, descentM = 280.0,
+            instructions = listOf(Instruction(40, distances[40], Maneuver.RIGHT), Instruction(points.size - 1, distances.last(), Maneuver.ARRIVE)),
+            waypoints = listOf(home, points[40], home, points.last()),
+        )
+        val id = routes.save("Entraînement 1", whole, BikeType.HYBRID)
+        val before = routes.observe().first().single()
+        assertEquals(11_000.0, before.distanceM, 30.0)
+
+        val back = RouteShape.returnToStart(routes.load(id)!!.second)!!
+        assertEquals(8_000.0, back.distanceM, 30.0)
+        assertEquals(3_000.0, back.remainingM, 30.0)
+        routes.replace(id, whole.truncatedAt(back.index))
+
+        val after = routes.observe().first().single()
+        assertEquals(id, after.id)
+        assertEquals("Entraînement 1", after.name)
+        assertEquals(before.createdAtMs, after.createdAtMs)
+        assertEquals(8_000.0, after.distanceM, 30.0)
+        assertEquals(whole.durationS * 8.0 / 11.0, after.durationS, 5.0)
+        val reread = routes.load(id)!!.second
+        assertEquals(8_000.0, reread.distanceM, 30.0)
+        assertTrue(RouteShape.isLoop(reread))
+        assertNull(RouteShape.returnToStart(reread))
+        assertEquals(Maneuver.ARRIVE, reread.instructions.last().maneuver)
+        assertEquals(reread.points.size - 1, reread.instructions.last().index)
     }
 
     @Test

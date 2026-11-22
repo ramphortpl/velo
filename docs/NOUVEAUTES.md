@@ -1,5 +1,44 @@
 # Nouveautés de VeloGo
 
+## Version 0.6, mise à jour — Des boucles, et des trajets qui disent ce qu'ils contiennent
+
+- **Pourquoi un trajet annoncé 40 km n'en faisait que 31.** Quand l'arrivée d'un itinéraire reste posée quelque
+  part (Bouffémont, par exemple) et que le retour à la maison est ajouté comme simple étape, l'itinéraire fait la
+  boucle, repasse par la maison, puis **repart vers l'arrivée** par les routes du début. Sur la carte, ce dernier
+  morceau est caché sous le premier passage : on ne voit qu'une boucle, alors que la distance annoncée compte les
+  deux. La sortie, elle, s'arrête à la maison : il manque les kilomètres de ce dernier morceau.
+- **Un bouton « Boucle »** dans la préparation d'un itinéraire (et « Revenir au départ » quand tu choisis
+  l'arrivée) : l'itinéraire part de ton point de départ et y revient. Tu n'as plus qu'à dire par où passer : chaque
+  étape ajoutée (recherche, ou appui long sur la carte) est parcourue dans l'ordre où tu les places. « Autre sens »
+  fait la même boucle dans l'autre sens.
+- **Les étapes sont numérotées**, dans la liste comme sur la carte (1, 2, 3…) : on voit dans quel ordre
+  l'itinéraire les enchaîne. Une flèche à côté de chaque étape la fait passer avant la précédente.
+- **L'appli prévient quand un itinéraire repasse par son départ puis continue** : « Repasse par le départ après
+  29,3 km, puis continue 10,9 km. » Le bouton « Arrêter au départ » règle la chose d'un appui : un itinéraire en
+  préparation devient une boucle ; un trajet enregistré est raccourci (après confirmation) et remplace l'ancien
+  sous le même nom.
+- Fermer un trajet enregistré le range : le bouton « Itinéraire » rouvre ensuite un panneau vierge, prêt pour un
+  nouvel itinéraire.
+
+### Pour ton trajet « Entraînement 1 »
+
+1. Onglet « Trajets », ouvre « Entraînement 1 » : le panneau doit annoncer qu'il repasse par le départ, et de
+   combien il continue ensuite.
+2. Touche « Arrêter au départ », puis « Raccourcir » : le trajet fera une trentaine de kilomètres et s'arrêtera
+   chez toi. La distance annoncée sera celle que tu rouleras.
+3. Pour le prochain : « Itinéraire », « Boucle », puis un appui long sur la carte pour chaque endroit par où
+   passer, dans l'ordre (Chauvry, Bouffémont, Andilly…), et « Calculer l'itinéraire ».
+
+### Limites connues
+
+- L'avertissement ne concerne que les itinéraires qui repassent à moins de 200 m de leur point de départ sans y
+  finir. Un itinéraire peut encore emprunter deux fois la même route ailleurs (un aller-retour vers une étape, par
+  exemple) : la carte ne montre toujours qu'un seul trait.
+- Un trajet enregistré se raccourcit sans être recalculé : sa durée est répartie au prorata de la distance, et la
+  répartition par nature de voie n'est plus affichée pour lui.
+- Une sortie compte ce qui a été roulé : si tu t'écartes de l'itinéraire ou que tu l'arrêtes avant la fin, sa
+  distance diffère de celle annoncée.
+
 ## Version 0.6, mise à jour — Ta position même quand le GPS cherche ses satellites
 
 - **Ta position tout de suite, même en intérieur.** Jusqu'ici VeloGo n'écoutait que le GPS « satellites » : tant

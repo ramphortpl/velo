@@ -2,8 +2,14 @@ package fr.velogo.app.map
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Typeface
+import androidx.core.graphics.createBitmap
+import kotlin.math.roundToInt
 import android.location.Location
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -69,7 +75,12 @@ data class MapColors(
 )
 
 /** Un point d'itinéraire à dessiner sur la carte. */
-data class PlanMarker(val position: LatLon, val kind: Kind) {
+data class PlanMarker(
+    val position: LatLon,
+    val kind: Kind,
+    /** Rang de l'étape (1, 2, 3…), écrit dans son repère pour montrer l'ordre du parcours ; 0 pour ne rien écrire. */
+    val number: Int = 0,
+) {
     enum class Kind { START, VIA, END }
 }
 
@@ -309,7 +320,8 @@ class VeloMapState {
         )
         style.addLayer(
             CircleLayer("$SRC_PLAN-points", SRC_PLAN).withProperties(
-                PropertyFactory.circleRadius(9f),
+                // Une étape est un peu plus grosse que le départ et l'arrivée : son numéro doit y tenir.
+                PropertyFactory.circleRadius(Expression.match(Expression.get("kind"), Expression.literal("VIA"), Expression.literal(11f), Expression.literal(9f))),
                 PropertyFactory.circleColor(
                     Expression.match(
                         Expression.get("kind"),
@@ -322,6 +334,18 @@ class VeloMapState {
                 PropertyFactory.circleStrokeWidth(3f),
             )
         )
+        // Le numéro de chaque étape, écrit dans son repère : il montre l'ordre du parcours. Dessiné par l'appli
+        // (une image par chiffre), car tous les fonds de carte n'apportent pas de police de caractères.
+        context?.let { ctx ->
+            for (number in 1..MAX_STEP_NUMBER) style.addImage("$STEP_IMAGE$number", stepNumberImage(ctx, number))
+            style.addLayer(
+                SymbolLayer("$SRC_PLAN-numeros", SRC_PLAN).withProperties(
+                    PropertyFactory.iconImage(Expression.get(STEP_PROPERTY)),
+                    PropertyFactory.iconAllowOverlap(true),
+                    PropertyFactory.iconIgnorePlacement(true),
+                ).withFilter(Expression.has(STEP_PROPERTY))
+            )
+        }
         style.addLayer(
             CircleLayer("$SRC_MARKER-point", SRC_MARKER).withProperties(
                 PropertyFactory.circleRadius(8f),
@@ -330,6 +354,21 @@ class VeloMapState {
                 PropertyFactory.circleStrokeWidth(4f),
             )
         )
+    }
+
+    /** Le chiffre d'une étape, en blanc sur fond transparent, à poser sur son repère. */
+    private fun stepNumberImage(ctx: Context, number: Int): Bitmap {
+        val metrics = ctx.resources.displayMetrics
+        val size = (STEP_IMAGE_DP * metrics.density).roundToInt().coerceAtLeast(8)
+        val image = createBitmap(size, size).apply { density = metrics.densityDpi }
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.DEFAULT_BOLD
+            textSize = size * 0.72f
+        }
+        Canvas(image).drawText(number.toString(), size / 2f, size / 2f - (paint.descent() + paint.ascent()) / 2f, paint)
+        return image
     }
 
     private fun line(id: String, source: String, color: Int, width: Float): LineLayer =
@@ -479,7 +518,12 @@ class VeloMapState {
 
     private fun applyPlanMarkers() {
         val style = style ?: return
-        val features = planMarkers.map { m -> Feature.fromGeometry(m.position.toPoint()).apply { addStringProperty("kind", m.kind.name) } }
+        val features = planMarkers.map { m ->
+            Feature.fromGeometry(m.position.toPoint()).apply {
+                addStringProperty("kind", m.kind.name)
+                if (m.kind == PlanMarker.Kind.VIA && m.number in 1..MAX_STEP_NUMBER) addStringProperty(STEP_PROPERTY, "$STEP_IMAGE${m.number}")
+            }
+        }
         (style.getSource(SRC_PLAN) as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(features))
     }
 
@@ -747,6 +791,11 @@ class VeloMapState {
         const val SRC_ROUTES_OTHER = "velogo-itineraires"
         const val SRC_ROUTE = "velogo-itineraire"
         const val SRC_PLAN = "velogo-etapes"
+        /** Les étapes numérotées : nom de leurs images, propriété qui dit laquelle afficher, taille du chiffre. */
+        const val STEP_IMAGE = "velogo-etape-"
+        const val STEP_PROPERTY = "numero"
+        const val MAX_STEP_NUMBER = 9
+        const val STEP_IMAGE_DP = 18f
         const val OPENMAPTILES_SOURCE = "openmaptiles"
         const val TRACK_WIDTH = 4.5f
         const val MIN_ZOOM = 4.4

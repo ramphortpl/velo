@@ -6,9 +6,11 @@ import fr.velogo.core.nav.BikeType
 import fr.velogo.core.nav.Maneuver
 import fr.velogo.core.nav.Route
 import fr.velogo.core.nav.RoutePreference
+import fr.velogo.core.nav.RouteShape
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
@@ -104,6 +106,60 @@ class BRouterPlannerTest {
         assertTrue(direct.distanceTo(CITADELLE) > 150)
         assertTrue(via.distanceM > direct.distanceM)
         assertEquals(3, via.waypoints.size)
+    }
+
+    @Test
+    fun `une boucle part et revient au meme endroit en passant par ses etapes`() {
+        // Gare → entrée de la Restonica → route du sud → gare : le moteur accepte un départ et une arrivée confondus.
+        val loop = route(GARE, GARE, BikeType.ROAD, via = listOf(RESTONICA, SUD))
+        assertTrue("départ à ${Geo.distanceM(loop.points.first(), GARE)} m de la gare", Geo.distanceM(loop.points.first(), GARE) < 60)
+        assertTrue("arrivée à ${Geo.distanceM(loop.points.last(), GARE)} m de la gare", Geo.distanceM(loop.points.last(), GARE) < 60)
+        assertTrue(RouteShape.isLoop(loop))
+        assertNull("une boucle qui s'arrête à son retour ne « continue » pas", RouteShape.returnToStart(loop))
+        // Les deux étapes sont posées à l'écart des routes, comme un point placé au doigt : le moteur les rattache
+        // à la voie la plus proche, et l'itinéraire passe à quelques centaines de mètres d'elles.
+        assertTrue("à ${loop.distanceTo(RESTONICA)} m de la Restonica", loop.distanceTo(RESTONICA) < 450)
+        assertTrue("à ${loop.distanceTo(SUD)} m du point sud", loop.distanceTo(SUD) < 300)
+        // Elle fait au moins l'aller et le retour jusqu'à son étape la plus lointaine.
+        val farthest = route(GARE, SUD, BikeType.ROAD)
+        assertTrue("${loop.distanceM} m pour ${farthest.distanceM} m à vol de route", loop.distanceM > 1.8 * farthest.distanceM)
+        assertEquals(Maneuver.ARRIVE, loop.instructions.last().maneuver)
+        assertEquals(4, loop.waypoints.size)
+        // L'ordre des étapes est l'ordre du parcours : la Restonica est atteinte avant la route du sud.
+        fun reachedAt(target: LatLon) = loop.distances[loop.points.indices.minBy { Geo.distanceM(loop.points[it], target) }]
+        assertTrue(reachedAt(RESTONICA) < reachedAt(SUD))
+    }
+
+    /**
+     * Le piège du 22/11/2026, en petit : l'arrivée (la citadelle) reste en place et le retour à la gare est ajouté
+     * comme simple étape. L'itinéraire fait la boucle, repasse par la gare, puis repart vers la citadelle. Coupé au
+     * retour à la gare, il redevient la boucle, à quelques mètres près celle qu'on aurait calculée directement.
+     */
+    @Test
+    fun `un itineraire qui repasse par son depart puis continue se coupe en boucle`() {
+        val whole = route(GARE, CITADELLE, BikeType.ROAD, via = listOf(RESTONICA, SUD, GARE))
+        val loop = route(GARE, GARE, BikeType.ROAD, via = listOf(RESTONICA, SUD))
+        val tail = route(GARE, CITADELLE, BikeType.ROAD)
+        assertEquals("boucle + trajet vers l'arrivée", loop.distanceM + tail.distanceM, whole.distanceM, 60.0)
+        assertFalse(RouteShape.isLoop(whole))
+
+        val back = RouteShape.returnToStart(whole)
+        assertNotNull("le retour au départ en cours de route est reconnu", back)
+        assertEquals(loop.distanceM, back!!.distanceM, 60.0)
+        assertEquals(tail.distanceM, back.remainingM, 60.0)
+
+        val cut = whole.truncatedAt(back.index)
+        assertEquals(loop.distanceM, cut.distanceM, 60.0)
+        assertTrue(RouteShape.isLoop(cut))
+        assertNull(RouteShape.returnToStart(cut))
+        assertTrue(cut.isSameAs(loop))
+        // Durée et dénivelé de la boucle coupée : ceux de la boucle calculée, à peu de chose près.
+        assertEquals(loop.durationS, cut.durationS, loop.durationS * 0.12)
+        assertEquals(loop.ascentM, cut.ascentM, 25.0)
+        assertEquals(Maneuver.ARRIVE, cut.instructions.last().maneuver)
+        assertEquals(cut.points.size - 1, cut.instructions.last().index)
+        // Les étapes de la boucle restent des repères ; la gare, devenue l'arrivée, n'en est plus une.
+        assertEquals(4, cut.waypoints.size)
     }
 
     @Test

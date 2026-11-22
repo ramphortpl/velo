@@ -18,6 +18,7 @@ import fr.velogo.core.nav.NavState
 import fr.velogo.core.nav.Route
 import fr.velogo.core.nav.RouteFollower
 import fr.velogo.core.nav.RoutePreference
+import fr.velogo.core.nav.RouteShape
 import fr.velogo.core.ride.AscentAccumulator
 import fr.velogo.core.ride.TrackPoint
 import fr.velogo.routing.PlanFailure
@@ -45,17 +46,24 @@ data class PlannerState(
     val start: PlanPoint? = null,
     val vias: List<PlanPoint> = emptyList(),
     val end: PlanPoint? = null,
+    /** Boucle : l'itinéraire revient à son point de départ, qui est donc aussi l'arrivée ([end] est alors vide). */
+    val loop: Boolean = false,
     val computing: Boolean = false,
     val options: List<RouteOption> = emptyList(),
     val selected: Int = 0,
     val error: String? = null,
     /** L'échec vient de données d'itinéraire absentes : l'écran propose d'aller les télécharger. */
     val needsData: Boolean = false,
-    /** La proposition affichée est une trace importée (GPX) et non un calcul. */
+    /** La proposition affichée est une trace importée (GPX) ou un trajet enregistré, et non un calcul. */
     val importedName: String? = null,
+    /** Le trajet affiché vient des trajets enregistrés : son identifiant, pour pouvoir y ranger une correction. */
+    val savedId: Long? = null,
 ) {
     val selectedOption: RouteOption? get() = options.getOrNull(selected)
     val isImported: Boolean get() = importedName != null
+
+    /** Il y a de quoi calculer : une arrivée, ou une boucle avec au moins une étape par laquelle passer. */
+    val canCompute: Boolean get() = if (loop) vias.isNotEmpty() else end != null
 }
 
 /** Le guidage en cours. */
@@ -114,9 +122,13 @@ class NavigationController(
         }
     }
 
+    /**
+     * Ferme le panneau. Un itinéraire en préparation est gardé pour y revenir ; un trajet enregistré ou importé,
+     * qui n'a rien à modifier, est rangé : le bouton « Itinéraire » rouvre alors un panneau vierge.
+     */
     fun closePlanner() {
         computeJob?.cancel()
-        _planner.update { it.copy(open = false, computing = false) }
+        _planner.update { if (it.isImported) PlannerState(bike = it.bike) else it.copy(open = false, computing = false) }
     }
 
     /** Oublie l'itinéraire en préparation. */
@@ -140,9 +152,18 @@ class NavigationController(
     }
 
     fun setEnd(position: LatLon, label: String? = null) {
-        _planner.update { it.copy(end = PlanPoint(position, label ?: MAP_POINT)) }
+        _planner.update { it.copy(end = PlanPoint(position, label ?: MAP_POINT), loop = false) }
         invalidate()
         if (label == null) nameLater(position)
+    }
+
+    /**
+     * Boucle : l'itinéraire revient à son point de départ. Les étapes disent par où passer, dans l'ordre où on
+     * les ajoute ; il n'y a plus d'autre arrivée à choisir.
+     */
+    fun setLoop(enabled: Boolean) {
+        _planner.update { it.copy(loop = enabled, end = if (enabled) null else it.end) }
+        invalidate()
     }
 
     fun addVia(position: LatLon, label: String? = null) {
@@ -157,17 +178,31 @@ class NavigationController(
         invalidate()
     }
 
-    fun removeEnd() {
-        _planner.update { it.copy(end = null) }
+    /** Avance une étape d'un rang : l'itinéraire y passera avant celle qui la précédait. */
+    fun moveViaUp(index: Int) {
+        if (index !in 1 until _planner.value.vias.size) return
+        _planner.update { it.copy(vias = it.vias.toMutableList().apply { add(index - 1, removeAt(index)) }) }
         invalidate()
     }
 
-    /** Inverse le sens de l'itinéraire. Sans effet si le départ est « ma position ». */
+    fun removeEnd() {
+        _planner.update { it.copy(end = null, loop = false) }
+        invalidate()
+    }
+
+    /**
+     * Inverse le sens de l'itinéraire. Une boucle se parcourt dans l'autre sens (mêmes étapes, ordre inverse) ;
+     * un aller simple échange départ et arrivée, ce qui est sans effet si le départ est « ma position ».
+     */
     fun reverse() {
         val state = _planner.value
-        val start = state.start ?: return
-        val end = state.end ?: return
-        _planner.update { it.copy(start = end, end = start, vias = it.vias.reversed()) }
+        if (state.loop) {
+            _planner.update { it.copy(vias = it.vias.reversed()) }
+        } else {
+            val start = state.start ?: return
+            val end = state.end ?: return
+            _planner.update { it.copy(start = end, end = start, vias = it.vias.reversed()) }
+        }
         invalidate()
     }
 
@@ -183,16 +218,20 @@ class NavigationController(
     /** Calcule les itinéraires entre les points choisis. */
     fun compute() {
         val state = _planner.value
-        val end = state.end ?: return
+        if (!state.canCompute) return
         computeJob?.cancel()
-        _planner.update { it.copy(computing = true, error = null, needsData = false, options = emptyList(), selected = 0, importedName = null) }
+        _planner.update {
+            it.copy(computing = true, error = null, needsData = false, options = emptyList(), selected = 0, importedName = null, savedId = null)
+        }
         computeJob = scope.launch {
             val start = state.start?.position ?: currentPosition()
             if (start == null) {
                 _planner.update { it.copy(computing = false, error = "Position inconnue : attends le GPS ou choisis un point de départ.") }
                 return@launch
             }
-            val waypoints = listOf(start) + state.vias.map { it.position } + end.position
+            // Une boucle revient là d'où elle part ; sinon l'arrivée est le point choisi.
+            val end = if (state.loop) start else state.end?.position ?: return@launch
+            val waypoints = listOf(start) + state.vias.map { it.position } + end
             when (val result = routes.options(waypoints, state.bike, prefs.value.riderPowerW)) {
                 is RouteOptions.Found -> _planner.update { it.copy(computing = false, options = result.options, selected = 0) }
                 is RouteOptions.Failed -> _planner.update {
@@ -219,17 +258,55 @@ class NavigationController(
         }
     }
 
-    /** Reprend un itinéraire enregistré : il redevient la proposition affichée, prête à être suivie. */
-    fun showSaved(name: String, route: Route, bike: BikeType) {
+    /**
+     * Reprend un itinéraire enregistré : il redevient la proposition affichée, prête à être suivie. [savedId] est
+     * son identifiant dans les trajets enregistrés.
+     */
+    fun showSaved(name: String, route: Route, bike: BikeType, savedId: Long? = null) {
         computeJob?.cancel()
         _planner.update {
-            PlannerState(open = true, bike = bike, options = listOf(RouteOption(route, emptyList())), importedName = name)
+            PlannerState(open = true, bike = bike, options = listOf(RouteOption(route, emptyList())), importedName = name, savedId = savedId)
         }
+    }
+
+    /**
+     * L'itinéraire choisi repasse par son point de départ puis continue (voir [RouteShape.returnToStart]) : on
+     * l'arrête à ce retour.
+     *
+     * Un itinéraire en préparation devient une boucle, avec les étapes d'avant le retour, et se recalcule. Un
+     * trajet enregistré ou importé, qui ne se recalcule jamais, est coupé tel quel : la fonction le renvoie alors,
+     * pour qu'il puisse être réenregistré.
+     */
+    fun stopAtStart(): Route? {
+        val state = _planner.value
+        val option = state.selectedOption ?: return null
+        val back = RouteShape.returnToStart(option.route) ?: return null
+        if (!state.isImported) {
+            // Les étapes atteintes avant le retour au départ : l'itinéraire y passe dans l'ordre, on les retrouve
+            // donc l'une après l'autre le long du tracé. Celle qui ramenait au départ, et les suivantes, s'en vont.
+            val before = ArrayList<PlanPoint>()
+            var cursor = 0
+            for (via in state.vias) {
+                cursor = nearestIndex(option.route, via.position, cursor)
+                if (option.route.distances[cursor] >= back.distanceM - RouteShape.NEAR_M) break
+                before.add(via)
+            }
+            if (before.isNotEmpty()) {
+                _planner.update { it.copy(loop = true, end = null, vias = before) }
+                compute()
+                return null
+            }
+        }
+        val shortened = option.route.truncatedAt(back.index)
+        _planner.update { it.copy(options = listOf(option.copy(route = shortened)), selected = 0) }
+        return shortened
     }
 
     private fun invalidate() {
         computeJob?.cancel()
-        _planner.update { it.copy(computing = false, options = emptyList(), selected = 0, error = null, needsData = false, importedName = null) }
+        _planner.update {
+            it.copy(computing = false, options = emptyList(), selected = 0, error = null, needsData = false, importedName = null, savedId = null)
+        }
     }
 
     /** Remplace « Point sur la carte » par l'adresse la plus proche, si le réseau répond. */
@@ -264,7 +341,7 @@ class NavigationController(
     fun startGuidance() {
         val state = _planner.value
         val option = state.selectedOption ?: return
-        val destination = state.importedName ?: state.end?.label ?: "Arrivée"
+        val destination = state.importedName ?: if (state.loop) LOOP_DESTINATION else state.end?.label ?: "Arrivée"
         begin(option.route, state.bike, option.preferences.firstOrNull() ?: RoutePreference.FAST, destination, followOnly = state.isImported)
         _planner.update { it.copy(open = false) }
     }
@@ -354,6 +431,21 @@ class NavigationController(
         }
     }
 
+    /** Rang du point de la trace le plus proche de [target], cherché à partir du rang [from] (le premier s'il y en a plusieurs). */
+    private fun nearestIndex(route: Route, target: LatLon, from: Int): Int {
+        var best = from
+        var bestM = Double.MAX_VALUE
+        for (i in from until route.points.size) {
+            // Calcul local, léger : il s'agit seulement de comparer des distances entre elles.
+            val d = Geo.distanceToSegmentM(target, route.points[i], route.points[i]).distanceM
+            if (d < bestM) {
+                bestM = d
+                best = i
+            }
+        }
+        return best
+    }
+
     /** Distance, le long de l'itinéraire, du point de la trace le plus proche de [target]. */
     private fun progressOf(route: Route, target: LatLon): Double {
         var best = Double.MAX_VALUE
@@ -370,6 +462,8 @@ class NavigationController(
 
     companion object {
         const val MAP_POINT = "Point sur la carte"
+        /** Ce que le guidage annonce comme destination d'une boucle. */
+        const val LOOP_DESTINATION = "Retour au départ"
         const val MAX_VIAS = 8
         private const val POSITION_TIMEOUT_MS = 8_000L
         private const val PRECISE_WAIT_MS = 3_000L

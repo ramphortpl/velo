@@ -81,6 +81,62 @@ class Route(
     fun withElevations(newElevations: DoubleArray, ascentM: Double, descentM: Double): Route =
         Route(points, newElevations, distances, durationS, ascentM, descentM, instructions, waypoints, mix)
 
+    /**
+     * Le début de l'itinéraire, jusqu'au point [index] compris, qui devient l'arrivée. Les consignes rencontrées
+     * en chemin sont gardées. La durée est répartie au prorata de la distance et le dénivelé au prorata de ce que
+     * le profil conservé monte et descend ; la répartition par nature de voie, qu'on ne sait pas recompter sur un
+     * morceau, est abandonnée plutôt qu'inventée.
+     */
+    fun truncatedAt(index: Int): Route {
+        require(index in 1 until points.size) { "coupe hors de l'itinéraire" }
+        if (index == points.size - 1) return this
+        val count = index + 1
+        val keptPoints = points.subList(0, count).toList()
+        val keptDistances = distances.copyOf(count)
+        val keptElevations = elevations?.copyOf(count)
+        val share = if (distanceM > 0.0) keptDistances.last() / distanceM else 1.0
+        var ascentShare = share
+        var descentShare = share
+        if (elevations != null && keptElevations != null) {
+            val whole = climb(elevations)
+            val part = climb(keptElevations)
+            if (whole.first > 0.0) ascentShare = (part.first / whole.first).coerceIn(0.0, 1.0)
+            if (whole.second > 0.0) descentShare = (part.second / whole.second).coerceIn(0.0, 1.0)
+        }
+        val end = keptPoints.last()
+        val start = waypoints.first()
+        // Les étapes par lesquelles le début de l'itinéraire passe encore, sauf celle qui devient l'arrivée.
+        val steps = waypoints.drop(1).dropLast(1).filter { step ->
+            Geo.distanceM(step, end) > STEP_MERGE_M && Geo.distanceM(step, start) > STEP_MERGE_M && nearKept(step, keptPoints)
+        }
+        return Route(
+            points = keptPoints,
+            elevations = keptElevations,
+            distances = keptDistances,
+            durationS = durationS * share,
+            ascentM = ascentM * ascentShare,
+            descentM = descentM * descentShare,
+            instructions = instructions.filter { it.maneuver != Maneuver.ARRIVE && it.index < index } +
+                Instruction(index, keptDistances.last(), Maneuver.ARRIVE),
+            waypoints = listOf(start) + steps + end,
+            mix = null,
+        )
+    }
+
+    private fun nearKept(p: LatLon, kept: List<LatLon>): Boolean {
+        for (i in 0 until kept.size - 1) {
+            if (Geo.distanceToSegmentM(p, kept[i], kept[i + 1]).distanceM <= STEP_REACH_M) return true
+        }
+        return false
+    }
+
+    /** Ce qu'un profil monte et descend, en ignorant les petites oscillations. */
+    private fun climb(profile: DoubleArray): Pair<Double, Double> {
+        val accumulator = fr.velogo.core.ride.AscentAccumulator(CLIMB_THRESHOLD_M)
+        for (e in profile) accumulator.add(e)
+        return accumulator.ascentM to accumulator.descentM
+    }
+
     /** Vrai si les deux itinéraires suivent pratiquement le même tracé (à [toleranceM] près). */
     fun isSameAs(other: Route, toleranceM: Double = 30.0): Boolean {
         if (kotlin.math.abs(distanceM - other.distanceM) > distanceM * 0.02 + 50.0) return false
@@ -138,6 +194,15 @@ class Route(
     }
 
     companion object {
+        private const val CLIMB_THRESHOLD_M = 3.0
+        /** Une étape à moins de cette distance (m) du départ ou de l'arrivée se confond avec eux. */
+        private const val STEP_MERGE_M = 300.0
+        /**
+         * Une étape est « sur » l'itinéraire s'il passe à moins de cette distance (m) d'elle : un point posé au
+         * doigt à côté d'une route est rattaché par le moteur à la voie la plus proche, parfois à 400 m.
+         */
+        private const val STEP_REACH_M = 600.0
+
         /** Distances cumulées le long d'une ligne brisée. */
         fun cumulativeDistances(points: List<LatLon>): DoubleArray {
             val out = DoubleArray(points.size)

@@ -51,6 +51,7 @@ import fr.velogo.app.update.UpdateInfo
 import fr.velogo.core.geo.BoundingBox
 import fr.velogo.core.geo.Geo
 import fr.velogo.core.geo.LatLon
+import fr.velogo.core.nav.RouteShape
 import fr.velogo.core.geo.Polyline
 import fr.velogo.core.ride.AltitudeSource
 import fr.velogo.core.ride.RideAnalyzer
@@ -585,9 +586,12 @@ class ScreenshotTest {
         override fun pick(target: PlanTarget) = Unit
         override fun useMyPosition() = Unit
         override fun removeVia(index: Int) = Unit
+        override fun moveViaUp(index: Int) = Unit
         override fun removeEnd() = Unit
+        override fun setLoop(enabled: Boolean) = Unit
         override fun reverse() = Unit
         override fun compute() = Unit
+        override fun stopAtStart() = Unit
         override fun edit() = Unit
         override fun select(index: Int) = Unit
         override fun startGuidance() = Unit
@@ -632,6 +636,65 @@ class ScreenshotTest {
                 end = PlanPoint(LatLon(45.7, 6.3), "Gare d'Albertville"),
             )
         ),
+    )
+
+    // --- Boucles ------------------------------------------------------------------------------------------------
+
+    /** Une boucle en préparation : étapes numérotées et réordonnables, arrivée « Retour au départ ». */
+    @Test
+    fun itineraire_boucle_points() = captureRoboImage(
+        "$OUT/itineraire_boucle_points.png",
+        content = planner(
+            PlannerState(
+                open = true, bike = BikeType.ROAD, loop = true,
+                vias = listOf(
+                    PlanPoint(LatLon(49.05, 2.267), "Chauvry"),
+                    PlanPoint(LatLon(49.04, 2.293), "Bouffémont"),
+                    PlanPoint(LatLon(49.005, 2.302), "Andilly"),
+                ),
+            )
+        ),
+    )
+
+    /** Boucle demandée, pas encore d'étape : le panneau dit quoi faire et le calcul attend. */
+    @Test
+    fun itineraire_boucle_sans_etape() = captureRoboImage(
+        "$OUT/itineraire_boucle_sans_etape.png",
+        content = planner(PlannerState(open = true, bike = BikeType.ROAD, loop = true)),
+    )
+
+    /**
+     * Le trajet du 22/11/2026 : une boucle de 29 km qui repasse par le départ, puis 11 km de plus vers l'arrivée
+     * par les routes du début. Sur la carte on ne voit que la boucle : le panneau le dit et propose de s'y arrêter.
+     */
+    private fun loopThenTail(): PlannerState {
+        val home = LatLon(48.997, 2.218)
+        val points = ArrayList<LatLon>()
+        points.add(home)
+        fun go(bearing: Double, meters: Int) = repeat(meters / 100) { points.add(Geo.offset(points.last().lat, points.last().lon, bearing, 100.0)) }
+        // Un losange qui se referme sur la maison (29,2 km), puis de nouveau ses premiers côtés (10,9 km).
+        go(30.0, 7_300); go(110.0, 7_300); go(210.0, 7_300); go(290.0, 7_300); go(30.0, 7_300); go(110.0, 3_600)
+        val distances = Route.cumulativeDistances(points)
+        val route = Route(
+            points = points, elevations = DoubleArray(points.size) { 70.0 + 60.0 * kotlin.math.sin(it / 35.0) + it * 0.05 }, distances = distances,
+            durationS = 123 * 60.0, ascentM = 505.0, descentM = 470.0,
+            instructions = listOf(Instruction(points.size - 1, distances.last(), Maneuver.ARRIVE)),
+            waypoints = listOf(home, points[73], points[146], home, points.last()),
+        )
+        checkNotNull(RouteShape.returnToStart(route)) { "l'itinéraire d'exemple doit repasser par son départ" }
+        return PlannerState(open = true, bike = BikeType.HYBRID, options = listOf(RouteOption(route, emptyList())), importedName = "Entraînement 1", savedId = 1)
+    }
+
+    @Test
+    fun itineraire_repasse_par_le_depart() = captureRoboImage(
+        "$OUT/itineraire_repasse_par_le_depart.png",
+        content = planner(loopThenTail(), expanded = false),
+    )
+
+    @Test
+    fun itineraire_repasse_par_le_depart_details() = captureRoboImage(
+        "$OUT/itineraire_repasse_par_le_depart_details.png",
+        content = planner(loopThenTail(), expanded = true),
     )
 
     @Test
@@ -733,6 +796,20 @@ class ScreenshotTest {
             next = route.instructions[2], distanceToNextM = 4_000.0, then = null, arrived = false,
         )
         captureRoboImage("$OUT/guidage_hors_itineraire.png", content = guided(RideMode.MAP, guidance(nav, rerouting = true)))
+    }
+
+    /** Choix de l'arrivée : avant même de taper une adresse, « Revenir au départ » fait de l'itinéraire une boucle. */
+    @Test
+    fun recherche_arrivee_boucle() = captureRoboImage("$OUT/recherche_arrivee_boucle.png") {
+        VeloGoTheme(mode = ThemeMode.LIGHT) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                PlaceSearchContent(
+                    title = "Où vas-tu ?", query = "", onQuery = {}, result = SearchResult.Idle,
+                    offerMyPosition = false, onPlace = {}, onMyPosition = {}, onDismiss = {},
+                    offerLoop = true, onLoop = {},
+                )
+            }
+        }
     }
 
     @Test

@@ -91,6 +91,10 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
   L'écran « Rouler » affiche `PlannerPanel` en bas de la carte et `GuidanceBanner` sous la barre du haut.
   Une fois les itinéraires proposés, le panneau est **replié par défaut** (propositions compactes + bouton de
   départ) et la carte se cadre sur le trajet dans la place restante ; « Détails » ou la poignée le déplient.
+  **Boucle** (`PlannerState.loop`) : l'arrivée est le point de départ, les étapes disent par où passer, dans
+  l'ordre de la liste (numérotées sur la carte, réordonnables). `core/nav/RouteShape` reconnaît un itinéraire qui
+  repasse par son départ puis continue ; le panneau l'annonce (`StartReturnNotice`) et propose de l'y arrêter
+  (`NavigationController.stopAtStart`, `Route.truncatedAt`).
 - **Affiche à partager** : `RoutePoster` dessine l'affiche d'un itinéraire (1080 × 1350, `android.graphics`,
   sans passer par l'écran) ; `RouteSnapshot` photographie le fond de carte hors écran (`MapSnapshotter`, même
   client réseau que la carte, donc carte hors ligne comprise) et, s'il n'arrive pas en douze secondes, l'affiche
@@ -165,7 +169,12 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
    vérifie aussi que le modèle de géoïde répond sur les trois (449,4 m à Corte pour 500 m « GPS »). Le temps y
    avance à la main (`shadowOf(gps.looper).idleFor`), les coroutines avec `UnconfinedTestDispatcher`.
 3. `routing` : itinéraires calculés pour de vrai autour de Corte avec `src/test/resources/dalles` (80 Ko de
-   données BRouter réelles) : profils, étapes, évitement des grands axes, consignes, données manquantes.
+   données BRouter réelles) : profils, étapes, évitement des grands axes, consignes, données manquantes, boucle
+   (départ et arrivée confondus), itinéraire qui repasse par son départ puis continue, et sa coupe.
+   Pour reproduire un itinéraire d'une autre région (un écart signalé par l'utilisateur, par exemple) : les dalles
+   `dalle-<carré>-<empreinte>.rd5` se téléchargent depuis la Release `cartes` (noms dans `catalogue.json`), se
+   renomment `dalle-<carré>.rd5`, et un test temporaire du module `routing` les donne à `BRouterPlanner`. C'est
+   ainsi que l'écart « 40 km annoncés, 31 roulés » a été expliqué (22/11/2026).
 4. CI : le job « Essai sur émulateur » installe l'APK `smoke` sur un émulateur Android 15 et déroule
    `outils/essai_emulateur.py` : sortie simulée à Corte (positions envoyées par le fournisseur de test d'Android,
    plus fiable que le GPS simulé de l'émulateur), d'abord **GPS muet** (le fournisseur « fused », simulé lui aussi,
@@ -174,7 +183,8 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
    téléchargement de la carte de Corse, itinéraire vers une adresse (panneau replié puis déplié, enregistrement de
    l'itinéraire, affiche à partager), guidage (flèche au départ, vue de guidage en roulant, « Recentrer » après
    avoir déplacé la carte), onglet « Trajets » (le trajet enregistré s'y retrouve, se renomme, se rouvre sur la
-   carte), puis en mode avion : carte, altitude, itinéraire vers un point de la carte, guidage avec
+   carte), puis en mode avion : carte, altitude, **boucle** (bouton « Boucle », étape placée par un appui long,
+   calcul), itinéraire vers un point de la carte, guidage avec
    enregistrement ; reprise après arrêt forcé ; enfin l'icône de l'appli sur sa fiche des réglages d'Android (le
    logo y est reconnu à ses trois couleurs).
    Après la première sortie : création d'un segment (la sortie doit s'y retrouver), statistiques, liste des segments.
@@ -297,6 +307,27 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
 - **Un trajet enregistré se suit tel quel** : rouvert, il garde ses consignes de virage mais n'est jamais
   recalculé si on s'en écarte (comme une trace GPX importée) : recalculer vers l'arrivée d'une boucle la
   réduirait à rien.
+- **Un itinéraire peut cacher des kilomètres sous son propre tracé** : constat du 22/11/2026, trajet
+  « Entraînement 1 » annoncé 40,1 km (2 h 03) pour une sortie de 31,2 km. Les deux chiffres étaient justes :
+  l'arrivée était restée à Bouffémont (premier point posé) et le retour à la maison avait été ajouté comme
+  étape. L'itinéraire faisait la boucle (29 km), repassait par la maison, puis repartait vers Bouffémont par les
+  routes du début (11 km), invisibles sur la carte sous le premier passage. Refait avec les dalles
+  d'Île-de-France : boucle seule 28 à 31 km, boucle + retour vers Bouffémont 36 à 42 km selon le vélo.
+  D'où trois réponses : le bouton **Boucle** (l'arrivée est le départ ; en boucle, un appui long ajoute une
+  étape, il faut au moins une étape) ; les **étapes numérotées** sur la carte (images dessinées par l'appli,
+  `stepNumberImage` : tous les fonds de carte n'apportent pas de police) et réordonnables ; l'**avertissement**
+  « Repasse par le départ après X, puis continue Y ».
+- **Retour au départ** (`RouteShape.returnToStart`) : l'itinéraire s'éloigne de plus de 500 m, repasse à moins
+  de 200 m de son premier point et continue au moins 1 km. 200 m, parce que « ma position » et une étape
+  « maison » posée au doigt ne s'accrochent pas forcément à la même rue. Jamais pour une boucle (un « huit » a
+  le droit de repasser par son départ : vu sur le calcul réel gare de Corte → Restonica → sud → gare) ; s'il y
+  a plusieurs passages, le dernier compte. « Arrêter au départ » : un itinéraire en préparation devient une
+  boucle avec les étapes atteintes avant ce retour, et se recalcule ; un trajet enregistré est coupé tel quel
+  (`Route.truncatedAt` : durée au prorata de la distance, dénivelé au prorata du profil gardé, répartition par
+  nature de voie abandonnée plutôt qu'inventée) et remplace l'ancien après confirmation
+  (`SavedRouteRepository.replace`, `PlannerState.savedId`).
+- **Fermer un trajet enregistré le range** (`closePlanner`) : sans cela le bouton « Itinéraire » le rouvrait
+  indéfiniment et il n'y avait plus moyen de préparer autre chose depuis la carte.
 - **Météo par Open-Meteo, modèles Météo-France** (`models=meteofrance_seamless` : AROME 1,5 km puis ARPEGE) :
   gratuit, sans clé ni compte, CC BY 4.0. L'API de Météo-France elle-même demande un compte et une clé : écartée.
   La position est envoyée arrondie à deux décimales (environ un kilomètre).

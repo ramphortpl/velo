@@ -22,6 +22,7 @@ import fr.velogo.app.nav.GuidanceState
 import fr.velogo.app.nav.NavigationController
 import fr.velogo.app.ui.nav.RouteShareSheet
 import fr.velogo.core.nav.Route
+import fr.velogo.core.nav.RouteShape
 import fr.velogo.app.ui.nav.GUIDANCE_BANNER_HEIGHT
 import fr.velogo.app.ui.nav.GuidanceBanner
 import fr.velogo.app.ui.nav.PlaceSearchDialog
@@ -198,6 +199,8 @@ fun RideScreen(
     /** L'itinéraire dont on prépare le partage (affiche ou fichier GPX), s'il y en a un. */
     var shareTarget by remember { mutableStateOf<ShareTarget?>(null) }
     var proposeRecording by remember { mutableStateOf(false) }
+    /** On demande confirmation avant de raccourcir un trajet enregistré (il sera remplacé). */
+    var confirmShorten by remember { mutableStateOf(false) }
     var panelHeightPx by remember { mutableIntStateOf(0) }
     /** Propositions d'itinéraire : panneau déplié (le détail) ou replié (la carte en grand). */
     var plannerExpanded by rememberSaveable { mutableStateOf(false) }
@@ -332,7 +335,7 @@ fun RideScreen(
                 current != null -> waypointMarkers(current.route.waypoints, withStart = false)
                 planner.open && planner.isImported && shown != null -> waypointMarkers(shown.waypoints, withStart = true)
                 planner.open -> listOfNotNull(planner.start?.let { PlanMarker(it.position, PlanMarker.Kind.START) }) +
-                    planner.vias.map { PlanMarker(it.position, PlanMarker.Kind.VIA) } +
+                    planner.vias.mapIndexed { index, via -> PlanMarker(via.position, PlanMarker.Kind.VIA, number = index + 1) } +
                     listOfNotNull(planner.end?.let { PlanMarker(it.position, PlanMarker.Kind.END) })
                 else -> emptyList()
             }
@@ -387,10 +390,16 @@ fun RideScreen(
         }
     }
     // Un appui long sur la carte place un point d'itinéraire.
-    DisposableEffect(mapState, planner.open, planner.end == null, planner.options.isEmpty()) {
+    DisposableEffect(mapState, planner.open, planner.end == null, planner.loop, planner.options.isEmpty()) {
         mapState.onLongPress = { point ->
             if (Geo.FRANCE.contains(point.lat, point.lon)) {
-                if (planner.open && planner.options.isEmpty() && planner.end == null) navigation.setEnd(point) else pressedPoint = point
+                val placing = planner.open && planner.options.isEmpty()
+                when {
+                    // En boucle, chaque appui long ajoute une étape, dans l'ordre où on les place.
+                    placing && planner.loop -> navigation.addVia(point)
+                    placing && planner.end == null -> navigation.setEnd(point)
+                    else -> pressedPoint = point
+                }
             }
         }
         onDispose { mapState.onLongPress = null }
@@ -488,9 +497,15 @@ fun RideScreen(
         override fun pick(target: PlanTarget) { searchTarget = target }
         override fun useMyPosition() = navigation.setStart(null)
         override fun removeVia(index: Int) = navigation.removeVia(index)
+        override fun moveViaUp(index: Int) = navigation.moveViaUp(index)
         override fun removeEnd() = navigation.removeEnd()
+        override fun setLoop(enabled: Boolean) = navigation.setLoop(enabled)
         override fun reverse() = navigation.reverse()
         override fun compute() = navigation.compute()
+        override fun stopAtStart() {
+            // Un trajet enregistré sera réenregistré raccourci : on demande d'abord. Sinon, rien n'est perdu.
+            if (planner.savedId != null) confirmShorten = true else navigation.stopAtStart()
+        }
         override fun edit() = navigation.editPoints()
         override fun select(index: Int) = navigation.select(index)
         override fun startGuidance() {
@@ -499,7 +514,7 @@ fun RideScreen(
             if (!snapshot.isActive) proposeRecording = true
         }
         override fun toggleVoice() { vm.setVoiceGuidance(!settings.voiceGuidance) }
-        override fun save() { routeNameDraft = planner.importedName ?: planner.end?.label ?: "Itinéraire" }
+        override fun save() { routeNameDraft = planner.importedName ?: if (planner.loop) "Boucle" else planner.end?.label ?: "Itinéraire" }
         override fun share() {
             val route = planner.selectedOption?.route ?: return
             val destination = planner.end?.label?.takeIf { it != NavigationController.MAP_POINT }
@@ -604,6 +619,11 @@ fun RideScreen(
                 PlanTarget.END -> "Où vas-tu ?"
             },
             offerMyPosition = target == PlanTarget.START,
+            offerLoop = target == PlanTarget.END,
+            onLoop = {
+                navigation.setLoop(true)
+                searchTarget = null
+            },
             search = { text -> runCatching { navigation.search(text, mapState.center()) }.getOrNull() },
             onPlace = { place ->
                 when (target) {
@@ -633,7 +653,7 @@ fun RideScreen(
                         pressedPoint = null
                     }) { Text("Aller ici") }
                     if (planner.open && !planner.isImported) {
-                        if (planner.end != null) {
+                        if (planner.end != null || planner.loop) {
                             TextButton(onClick = {
                                 navigation.addVia(point)
                                 pressedPoint = null
@@ -678,6 +698,43 @@ fun RideScreen(
         RouteShareSheet(target.route, target.title, target.subtitle, onDismiss = { shareTarget = null })
     }
 
+    // Trajet enregistré qui repasse par son départ puis continue : on le raccourcit, après accord, et la version
+    // raccourcie remplace l'ancienne dans les trajets enregistrés.
+    if (confirmShorten) {
+        val route = planner.selectedOption?.route
+        val back = remember(route) { route?.let { RouteShape.returnToStart(it) } }
+        val savedId = planner.savedId
+        if (route == null || back == null || savedId == null) {
+            confirmShorten = false
+        } else {
+            AlertDialog(
+                onDismissRequest = { confirmShorten = false },
+                title = { Text("Arrêter ce trajet au départ ?") },
+                text = {
+                    Text(
+                        "« ${planner.importedName} » fera ${Formats.distanceAuto(back.distanceM)} au lieu de ${Formats.distanceAuto(route.distanceM)} : " +
+                            "il s'arrêtera à son retour au point de départ. Les ${Formats.distanceAuto(back.remainingM)} retirés " +
+                            "sont ceux qui repartaient ensuite vers l'ancienne arrivée. Le trajet enregistré sera remplacé."
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        confirmShorten = false
+                        val shortened = navigation.stopAtStart()
+                        if (shortened != null) {
+                            scope.launch {
+                                container.savedRoutes.replace(savedId, shortened)
+                                fitRequest++
+                                snackbar.showSnackbar("Trajet raccourci : ${Formats.distanceAuto(shortened.distanceM)}.")
+                            }
+                        }
+                    }) { Text("Raccourcir") }
+                },
+                dismissButton = { TextButton(onClick = { confirmShorten = false }) { Text("Annuler") } },
+            )
+        }
+    }
+
     if (showSavedRoutes) {
         val saved by container.savedRoutes.observe().collectAsStateWithLifecycle(initialValue = emptyList())
         ModalBottomSheet(onDismissRequest = { showSavedRoutes = false }) {
@@ -688,7 +745,7 @@ fun RideScreen(
                     scope.launch {
                         val loaded = container.savedRoutes.load(id)
                         if (loaded == null) snackbar.showSnackbar("Cet itinéraire n'est plus lisible.")
-                        else navigation.showSaved(loaded.first.name, loaded.second, BikeType.entries.firstOrNull { it.name == loaded.first.bike } ?: BikeType.HYBRID)
+                        else navigation.showSaved(loaded.first.name, loaded.second, BikeType.entries.firstOrNull { it.name == loaded.first.bike } ?: BikeType.HYBRID, savedId = id)
                     }
                 },
                 onDelete = { id -> scope.launch { container.savedRoutes.delete(id) } },
@@ -847,15 +904,23 @@ fun RideScreen(
 /** Un itinéraire à partager, avec ce que son affiche annonce au départ (l'utilisateur peut le changer). */
 private class ShareTarget(val route: Route, val title: String, val subtitle: String)
 
-/** Repères d'un itinéraire déjà calculé : étapes et arrivée, et le départ si on le demande. */
-private fun waypointMarkers(waypoints: List<LatLon>, withStart: Boolean): List<PlanMarker> =
-    waypoints.mapIndexedNotNull { index, point ->
+/** Deux repères à moins de cette distance (m) l'un de l'autre désignent le même endroit. */
+private const val SAME_PLACE_M = 40.0
+
+/**
+ * Repères d'un itinéraire déjà calculé : étapes numérotées et arrivée, et le départ si on le demande. Une boucle
+ * part et arrive au même endroit : un seul repère y suffit (celui du départ quand il est montré).
+ */
+private fun waypointMarkers(waypoints: List<LatLon>, withStart: Boolean): List<PlanMarker> {
+    val loop = waypoints.size > 2 && Geo.distanceM(waypoints.first(), waypoints.last()) <= SAME_PLACE_M
+    return waypoints.mapIndexedNotNull { index, point ->
         when {
             index == 0 -> if (withStart) PlanMarker(point, PlanMarker.Kind.START) else null
-            index == waypoints.size - 1 -> PlanMarker(point, PlanMarker.Kind.END)
-            else -> PlanMarker(point, PlanMarker.Kind.VIA)
+            index == waypoints.size - 1 -> if (loop && withStart) null else PlanMarker(point, PlanMarker.Kind.END)
+            else -> PlanMarker(point, PlanMarker.Kind.VIA, number = index)
         }
     }
+}
 
 /**
  * Tout ce qui se pose sur la carte : tableau de bord, barre du haut, boutons flottants, commandes.

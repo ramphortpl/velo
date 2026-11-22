@@ -46,6 +46,10 @@ class SavedRouteRepository(db: VeloGoDatabase) {
 
     suspend fun rename(id: Long, name: String) = dao.rename(id, name.trim().ifEmpty { "Itinéraire" })
 
+    /** Remplace le tracé d'un trajet enregistré (un trajet raccourci, par exemple) ; son nom et sa date restent. */
+    suspend fun replace(id: Long, route: Route) =
+        dao.replace(id, RouteCodec.encode(route), route.distanceM, route.ascentM, route.durationS)
+
     suspend fun delete(id: Long) = dao.delete(id)
 
     /**
