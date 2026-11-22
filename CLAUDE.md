@@ -50,10 +50,17 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
   pour l'écran et sauvegarde la trace toutes les 8 s ou 10 points. Les commandes (démarrer, pause, reprendre,
   terminer) passent par une file et sont traitées une par une. Une sortie restée « en cours » en base est
   reprise au redémarrage du service ou proposée à la reprise à l'ouverture de l'appli.
-- **GPS** : `GpsSource` = GPS brut d'Android (`LocationManager`, 1 Hz, sans services Google), partagé ; il
-  s'éteint quand plus personne n'écoute. Altitude convertie au niveau de la mer (`AltitudeConverterCompat`).
-  Chaque position porte le **sens de la marche** (`GpsFix.courseDeg`, calculé par `core/geo/CourseEstimator`) :
-  le cap du GPS quand on roule, sinon celui déduit du déplacement, et à l'arrêt le dernier connu.
+- **Position** : `GpsSource` (le `LocationManager` d'Android, sans bibliothèque Google), partagée ; tout s'éteint
+  quand plus personne n'écoute. Deux flux : `fixes` = le GPS brut, 1 Hz, **seule source de l'enregistrement et du
+  guidage** ; `positions` = les mêmes, plus une **position approchée** (`GpsFix.approximate` : fournisseur
+  « fused » d'Android 12 et suivants, sinon « network ») tant que le GPS n'a pas trouvé ses satellites : c'est ce
+  que montre la carte. `core/geo/PositionArbiter` décide quand s'en servir et quand aider le GPS ; `GpsSource.status`
+  (`GpsStatus` : localisation ou GPS coupés, satellites captés et utilisés, recherche en cours) alimente la
+  pastille du haut de l'écran et la feuille « Signal GPS » (`ui/ride/GpsSignal.kt` : `gpsChip`, `gpsSheet`,
+  fonctions pures). Tout l'état d'une écoute (`GpsSource.Session`) vit sur le fil `velogo-gps`.
+  Altitude convertie au niveau de la mer (`AltitudeConverterCompat`). Chaque position du GPS porte le **sens de
+  la marche** (`GpsFix.courseDeg`, calculé par `core/geo/CourseEstimator`) : le cap du GPS quand on roule, sinon
+  celui déduit du déplacement, et à l'arrêt le dernier connu ; une position approchée n'en a pas.
 - **Carte** : `VeloMap` (MapView dans `AndroidView`, mode SurfaceView) pilotée par `VeloMapState`, qui garde ce
   qui doit être dessiné et le redessine après chaque changement de fond. La trace en direct est découpée en
   morceaux figés + une « queue » de 300 points pour rester fluide après des heures. La position est un point
@@ -61,7 +68,9 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
   guidage, `setNavigation(true)` met la carte en **vue de guidage** : suivi dans le sens de la marche
   (`CameraMode.TRACKING_GPS`), inclinée (50°), rapprochée, position descendue vers le bas de l'écran
   (`setNavigationInsets`). `fit` cadre une emprise vue de dessus ; `onUserMove` et `onRouteTapped` préviennent
-  l'écran quand on déplace la carte ou qu'on touche un itinéraire proposé.
+  l'écran quand on déplace la carte ou qu'on touche un itinéraire proposé. Une position floue (plus de 150 m,
+  donc une position approchée) cadre le suivi plus large, pour que son cercle d'incertitude tienne dans l'écran
+  (`followZoom`) ; la carte se resserre à la première position fine.
 - **Navigation** : l'écran « Rouler » (carte + enregistrement) reste composé en permanence sous les autres ;
   Trajets, Historique et Réglages se posent par-dessus via Navigation 3 (`AppRoot`). La carte n'est jamais
   recréée en changeant d'onglet ; son rendu est coupé dès qu'elle est recouverte.
@@ -124,7 +133,7 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
 - **Écrans testables** : chaque écran a un composable « contenu » sans accès aux données (`RideChrome`,
   `HistoryContent`, `RideDetailBody`, `SettingsContent`, `OfflineMapsContent`, `PlannerPanel`, `PlaceSearchContent`,
   `SavedRoutesList`, `SavedRoutesContent`, `ShareRouteContent`, `WeatherContent`, `StatsContent`,
-  `SegmentsContent`, `SegmentDetailBody`, `SegmentEditor`) rendu en image par `ScreenshotTest`. `RoutePosterTest` dessine l'affiche
+  `SegmentsContent`, `SegmentDetailBody`, `SegmentEditor`, `GpsSheetContent`) rendu en image par `ScreenshotTest`. `RoutePosterTest` dessine l'affiche
   pour de bon et range ses images au même endroit (`affiche*.png`).
   Attention : une animation sans fin (barre de progression indéterminée) bloque la capture.
   `LogoTest` charge l'icône adaptative, l'icône de notification et le logo comme le fait Android, vérifie que
@@ -149,12 +158,19 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
    version de la base). Sur l'ordinateur, ces tests ouvrent la base avec le SQLite d'Android
    simulé par Robolectric (`AndroidSQLiteDriver`) : celui que l'appli embarque (`BundledSQLiteDriver`) n'a pas de
    bibliothèque native hors Android. `UpdateCheckerTest` lit des listes de Releases de la forme exacte de celles
-   de GitHub (relevée sur la première version publiée).
+   de GitHub (relevée sur la première version publiée). `GpsSourceTest` déroule la source de positions contre le
+   `LocationManager` simulé de Robolectric sur **trois versions d'Android** (`@Config(sdk = [26, 30, 35])` : 8.0,
+   la plus ancienne acceptée ; 11, la dernière sans fournisseur « fused » ; 15, celle du téléphone de référence) :
+   les appels à Android diffèrent d'une version à l'autre, et c'est le seul moyen de les dérouler tous. Il
+   vérifie aussi que le modèle de géoïde répond sur les trois (449,4 m à Corte pour 500 m « GPS »). Le temps y
+   avance à la main (`shadowOf(gps.looper).idleFor`), les coroutines avec `UnconfinedTestDispatcher`.
 3. `routing` : itinéraires calculés pour de vrai autour de Corte avec `src/test/resources/dalles` (80 Ko de
    données BRouter réelles) : profils, étapes, évitement des grands axes, consignes, données manquantes.
 4. CI : le job « Essai sur émulateur » installe l'APK `smoke` sur un émulateur Android 15 et déroule
    `outils/essai_emulateur.py` : sortie simulée à Corte (positions envoyées par le fournisseur de test d'Android,
-   plus fiable que le GPS simulé de l'émulateur), distance affichée, pause automatique, historique, fonds de carte,
+   plus fiable que le GPS simulé de l'émulateur), d'abord **GPS muet** (le fournisseur « fused », simulé lui aussi,
+   annonce une position à 40 m près : la feuille « Signal GPS » doit le dire, « Relancer le GPS » ne rien casser),
+   puis distance affichée, pause automatique, historique, fonds de carte,
    téléchargement de la carte de Corse, itinéraire vers une adresse (panneau replié puis déplié, enregistrement de
    l'itinéraire, affiche à partager), guidage (flèche au départ, vue de guidage en roulant, « Recentrer » après
    avoir déplacé la carte), onglet « Trajets » (le trajet enregistré s'y retrouve, se renomme, se rouvre sur la
@@ -169,6 +185,8 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
    La saisie au clavier y est vérifiée (`type_text` relit le champ, complète ou efface) : envoyées pendant que le
    clavier démarre, les touches d'`adb shell input text` se perdent (fabrication n° 16 : « gare d » au lieu de
    « gare de corte », et tout l'essai de l'itinéraire en ligne sauté).
+   La pastille ne dit « GPS ± » que tant que le GPS parle : quand le scénario attend un élément lié au GPS, il
+   continue d'envoyer la position (`Gps.wait_for`).
    Les captures d'écran sont publiées en artefact. La météo n'y est qu'un constat, jamais un échec : Open-Meteo
    limite les demandes par adresse IP, et celles des machines de la CI (comme celle de l'environnement de
    développement) sont partagées, donc souvent refusées (« Daily API request limit exceeded »).
@@ -196,6 +214,35 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
 - **Altitude sans baromètre** : altitude GPS ramenée au niveau de la mer, lissée par filtre de Kalman
   (`core/ride/Altitude.kt`). Deux réglages (`AltitudeSource`) : `GNSS` (très lissé, seuil de dénivelé 8 m) et
   `TERRAIN` (modèle de relief, seuil 2 m). Les paramètres GNSS ont été réglés par balayage sur des sorties simulées.
+- **Position approchée d'appoint, jamais enregistrée** : constat du 21/11/2026 sur un Xiaomi, localisation
+  active : pastille « GPS… », carte restée sur la France entière, alors que la météo avait une position (la
+  dernière connue du téléphone). L'appli n'écoutait que le GPS brut, muet en intérieur ou pendant un démarrage à
+  froid. Règles de `PositionArbiter` : au début d'une écoute, quatre secondes d'avance au GPS (prêt, il répond
+  tout de suite et la position approchée ne s'affiche jamais) ; GPS déjà reçu puis muet : relais après trente
+  secondes, et seulement par une position à 200 m près ou mieux (une position déduite d'une antenne à un
+  kilomètre ferait sauter la carte à chaque passage sous les arbres) ; position grossière acceptée seulement si
+  le GPS n'a jamais répondu ou se tait depuis cinq minutes. Le fournisseur d'appoint n'est écouté que pendant
+  que le GPS se tait. Le calcul d'un itinéraire « depuis ma position » s'en contente si elle est à 200 m près.
+- **Demande de positions par l'appel historique d'Android** (`requestLocationUpdates(fournisseur, intervalle, 0,
+  écouteur, looper)`) : le même sur toutes les versions (pour le GPS il vaut « précision maximale », pour les
+  autres fournisseurs « précision moyenne »), sans l'appel par réflexion de méthodes cachées que fait
+  `LocationManagerCompat` avant Android 12. Les écouteurs sont des `LocationListenerCompat` : avant Android 11,
+  un écouteur sans `onProviderDisabled` plante quand on coupe la localisation.
+- **Aide au GPS** : après vingt secondes de recherche, au plus toutes les dix minutes, `sendExtraCommand` demande
+  au téléphone de redonner au GPS l'heure et la position prévue des satellites (`force_time_injection`,
+  `force_psds_injection`, et `force_xtra_injection` son ancien nom ; celui qui n'est pas connu est ignoré).
+  Autorisation ordinaire `ACCESS_LOCATION_EXTRA_COMMANDS`. `delete_aiding_data` (tout oublier) n'est envoyé que
+  par le bouton « Réinitialiser le GPS », proposé après 90 s de recherche : il coûte une recherche à froid.
+- **Instant des positions** : `Fix.monoMs` est celui qu'annonce Android (`elapsedRealtimeNanos`) s'il est
+  plausible (de dix secondes avant la réception à une seconde après), sinon l'instant de réception. Certaines
+  puces GPS l'annoncent faux, et `RecordingService` écarte les positions vieilles de plus de cinq secondes : sur
+  un tel téléphone, rien ne se serait enregistré.
+- **« GPS ± » seulement tant que le GPS parle** : après six secondes sans position (comme
+  `RideEngine.SIGNAL_TIMEOUT_MS`), la pastille repasse à « Recherche GPS », sortie en cours ou non. Rouge au-delà
+  de 35 m (`RideConfig.maxAccuracyM` : le moteur n'enregistre plus), orange au-delà de 15 m.
+- **GPS coupé, localisation « active »** (modes économes d'avant Android 10) : `GpsSource.isGpsEnabled`. Au
+  démarrage d'une sortie on prévient sans bloquer (« Démarrer quand même ») : une détection fausse sur un
+  téléphone exotique ne doit pas rendre l'appli inutilisable.
 - **Distance** : somme des pas GPS sur l'ellipsoïde WGS84 (`Geo.distanceM`), validée contre GeographicLib.
   La distance ne s'accumule pas à l'arrêt, même si la pause automatique est désactivée.
 - **Musique** : l'appli ne demande jamais le focus audio ; la notification d'enregistrement est silencieuse.
@@ -333,6 +380,9 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   retéléchargé, et son premier appel est passé de 45 s à 12 s).
   La mémoire de l'action `setup-gradle` est coupée (`cache-disabled`) : elle n'écrit que depuis `main`, et sa
   version par défaut est sous licence propriétaire (gratuite pour un dépôt public).
+  Clé « v2 » depuis `GpsSourceTest` (images Android 8 et 11 de Robolectric, téléchargées par les tests) : la
+  mémoire « v1 » sert de point de départ (`restore-keys`). Changer le numéro quand les tests simulent une
+  nouvelle version d'Android : la clé ne suit que les fichiers Gradle.
 - `outils/ci_outils_de_construction.sh` : premier appel à Gradle, trois tentatives (30 s puis 90 s d'attente),
   la dernière avec la cause exacte de l'échec.
 

@@ -3,6 +3,7 @@ package fr.velogo.app
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,8 +31,15 @@ import fr.velogo.app.ui.components.ChartSeries
 import fr.velogo.app.ui.history.HistoryContent
 import fr.velogo.app.ui.history.RideDetailBody
 import fr.velogo.app.ui.history.RideTrackData
+import fr.velogo.app.location.GpsStatus
+import fr.velogo.app.location.LocationAccess
+import fr.velogo.app.ui.ride.GpsChipModel
+import fr.velogo.app.ui.ride.GpsSheetContent
+import fr.velogo.app.ui.ride.GpsTone
 import fr.velogo.app.ui.ride.RideChrome
 import fr.velogo.app.ui.ride.RideMode
+import fr.velogo.app.ui.ride.gpsChip
+import fr.velogo.app.ui.ride.gpsSheet
 import fr.velogo.app.ui.settings.AboutScreen
 import fr.velogo.app.ui.settings.ArchiveState
 import fr.velogo.app.ui.settings.SettingsActions
@@ -140,6 +148,11 @@ class ScreenshotTest {
         lat = 45.9, lon = 6.1,
     )
 
+    /** La pastille du GPS quand tout va bien, et les états que le téléphone peut annoncer quand il cherche. */
+    private val gpsOk = GpsChipModel(GpsTone.GOOD, "GPS ±4 m")
+    private val gpsSearching = GpsStatus(listening = true, satellitesSeen = 3, satellitesUsed = 0, searchingS = 48)
+    private val gpsApproximate = gpsSearching.copy(hasApproximate = true, approximateAccuracyM = 38.0)
+
     private fun chrome(
         snapshot: RideSnapshot,
         mode: RideMode,
@@ -147,13 +160,14 @@ class ScreenshotTest {
         sunlight: Boolean = false,
         permission: Boolean = true,
         weather: WeatherGlance? = null,
+        gps: GpsChipModel = gpsOk,
     ): @Composable () -> Unit = {
         VeloGoTheme(mode = theme) {
             Box(Modifier.fillMaxSize().background(if (theme == ThemeMode.DARK) Color(0xFF1B2630) else Color(0xFFDDE7DD))) {
                 RideChrome(
                     snapshot = snapshot, mode = mode, onMode = {}, themeMode = theme, sunlight = sunlight,
                     attribution = "© OpenStreetMap · OpenFreeMap", following = true, headingUp = false,
-                    hasLocationPermission = permission, accuracyM = snapshot.accuracyM ?: 5.0,
+                    hasLocationPermission = permission, gps = gps,
                     topInset = 28.dp, bottomPadding = 80.dp, snackbar = SnackbarHostState(),
                     onLayers = {}, onRecenter = {}, onToggleHeading = {}, onRequestPermission = {},
                     onStart = {}, onPause = {}, onResume = {}, onStop = {}, onStopHint = {},
@@ -182,7 +196,82 @@ class ScreenshotTest {
     @Test
     fun guidon_sans_gps() = captureRoboImage(
         "$OUT/guidon_sans_gps.png",
-        content = chrome(RideSnapshot(state = RideState.RECORDING, startTimeMs = 1_800_000_000_000), RideMode.DATA),
+        content = chrome(
+            RideSnapshot(state = RideState.RECORDING, startTimeMs = 1_800_000_000_000), RideMode.DATA,
+            gps = gpsChip(LocationAccess.PRECISE, gpsSearching),
+        ),
+    )
+
+    // --- État du GPS : pastille en haut de l'écran, feuille d'explication ------------------------------------
+
+    /** Le GPS cherche encore, la carte montre déjà la position déduite du Wi-Fi et du réseau : pastille orange. */
+    @Test
+    fun carte_position_approchee() = captureRoboImage(
+        "$OUT/carte_position_approchee.png",
+        content = chrome(RideSnapshot(), RideMode.MAP, gps = gpsChip(LocationAccess.PRECISE, gpsApproximate)),
+    )
+
+    /** Écran étroit (360 dp) et texte le plus long de la pastille : la bascule Carte / Données lui cède la place. */
+    @Test
+    @Config(sdk = [35], qualifiers = "w360dp-h740dp-420dpi")
+    fun carte_recherche_gps_ecran_etroit() = captureRoboImage(
+        "$OUT/carte_recherche_gps_ecran_etroit.png",
+        content = chrome(RideSnapshot(), RideMode.MAP, gps = gpsChip(LocationAccess.PRECISE, gpsSearching)),
+    )
+
+    private fun gpsSheetImage(name: String, access: LocationAccess, status: GpsStatus, theme: ThemeMode = ThemeMode.LIGHT) =
+        captureRoboImage("$OUT/$name.png") {
+            VeloGoTheme(mode = theme) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Column(Modifier.padding(top = 28.dp)) {
+                        GpsSheetContent(gpsSheet(access, status), onRemedy = {}, onReset = {})
+                    }
+                }
+            }
+        }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h520dp-420dpi")
+    fun gps_feuille_recherche() = gpsSheetImage("gps_feuille_recherche", LocationAccess.PRECISE, gpsSearching)
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h520dp-420dpi")
+    fun gps_feuille_position_approchee() = gpsSheetImage("gps_feuille_position_approchee", LocationAccess.PRECISE, gpsApproximate)
+
+    /** Recherche qui dure : la réinitialisation du GPS est proposée en plus. */
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h640dp-420dpi")
+    fun gps_feuille_recherche_longue() = gpsSheetImage(
+        "gps_feuille_recherche_longue", LocationAccess.PRECISE,
+        gpsSearching.copy(satellitesSeen = 0, searchingS = 150), theme = ThemeMode.DARK,
+    )
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h520dp-420dpi")
+    fun gps_feuille_bon_signal() = gpsSheetImage(
+        "gps_feuille_bon_signal", LocationAccess.PRECISE,
+        GpsStatus(listening = true, hasFix = true, accuracyM = 4.0, satellitesSeen = 19, satellitesUsed = 12),
+    )
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h520dp-420dpi")
+    fun gps_feuille_signal_faible() = gpsSheetImage(
+        "gps_feuille_signal_faible", LocationAccess.PRECISE,
+        GpsStatus(listening = true, hasFix = true, accuracyM = 48.0, satellitesSeen = 6, satellitesUsed = 4),
+    )
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h520dp-420dpi")
+    fun gps_feuille_gps_coupe() = gpsSheetImage(
+        "gps_feuille_gps_coupe", LocationAccess.PRECISE,
+        GpsStatus(listening = true, gpsEnabled = false, hasApproximate = true, approximateAccuracyM = 25.0),
+    )
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h520dp-420dpi")
+    fun gps_feuille_position_approximative() = gpsSheetImage(
+        "gps_feuille_position_approximative", LocationAccess.APPROXIMATE,
+        GpsStatus(listening = true, hasApproximate = true, approximateAccuracyM = 2_000.0),
     )
 
     @Test
@@ -604,7 +693,7 @@ class ScreenshotTest {
                 RideChrome(
                     snapshot = recording, mode = mode, onMode = {}, themeMode = ThemeMode.LIGHT, sunlight = sunlight,
                     attribution = "© OpenStreetMap · Protomaps · Mapterhorn (IGN)", following = following, headingUp = true,
-                    hasLocationPermission = true, accuracyM = 4.0,
+                    hasLocationPermission = true, gps = gpsOk,
                     topInset = 28.dp, bottomPadding = 80.dp, snackbar = SnackbarHostState(),
                     onLayers = {}, onRecenter = {}, onToggleHeading = {}, onRequestPermission = {},
                     onStart = {}, onPause = {}, onResume = {}, onStop = {}, onStopHint = {},

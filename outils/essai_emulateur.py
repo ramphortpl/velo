@@ -24,6 +24,9 @@ OUT = "essai"
 START_LAT, START_LON = 42.3060, 9.1500
 REGION = "Corse"
 SPEED_MPS = 7.0
+# Sur Android 12 et suivants, l'appli demande la position approchée du téléphone au fournisseur « fused ».
+APPROXIMATE_PROVIDER = "fused"
+APPROXIMATE_ACCURACY_M = 40
 
 failures = []
 step_no = [0]
@@ -305,9 +308,13 @@ class Gps:
         # Le droit « position fictive » est donné au shell d'adb, sous ses différentes identités possibles.
         for cible in ("com.android.shell", "shell", "root"):
             shell(f"appops set {cible} android:mock_location allow")
+        # Le GPS, et le fournisseur « fused » : c'est lui qui donne à l'appli la position approchée du téléphone
+        # (Wi-Fi, réseau) tant que le GPS se tait. Simulé lui aussi, il ne dit que ce que l'essai lui fait dire.
         for commande in (
             "cmd location providers add-test-provider gps --requiresSatellite --supportsSpeed --supportsBearing --supportsAltitude --powerRequirement 1",
             "cmd location providers set-test-provider-enabled gps true",
+            f"cmd location providers add-test-provider {APPROXIMATE_PROVIDER} --requiresNetwork --powerRequirement 1",
+            f"cmd location providers set-test-provider-enabled {APPROXIMATE_PROVIDER} true",
         ):
             retour = shell(commande + " 2>&1").strip()
             if retour:
@@ -315,6 +322,24 @@ class Gps:
 
     def send(self):
         shell(f"cmd location providers set-test-provider-location gps --location {self.lat:.6f},{self.lon:.6f} --accuracy 4")
+
+    def wait_for(self, label, timeout=20, exact=True):
+        """Attend un élément à l'écran en continuant d'envoyer la position : l'appli ne dit que le GPS fonctionne
+        que tant qu'il parle (six secondes de silence, et elle annonce qu'il cherche)."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            self.send()
+            bounds = find(label, exact)
+            if bounds:
+                return bounds
+        return None
+
+    def send_approximate(self):
+        """Une position approchée, comme le téléphone en déduit du Wi-Fi : à 150 m du vrai départ, à 40 m près."""
+        shell(
+            f"cmd location providers set-test-provider-location {APPROXIMATE_PROVIDER} "
+            f"--location {self.lat + 0.00135:.6f},{self.lon:.6f} --accuracy {APPROXIMATE_ACCURACY_M}"
+        )
 
     def ride(self, seconds, bearing_deg=40.0):
         bearing = math.radians(bearing_deg)
@@ -331,6 +356,66 @@ class Gps:
             debut = time.time()
             self.send()
             time.sleep(max(0.0, 1.0 - (time.time() - debut)))
+
+
+def approximate_position(gps):
+    """GPS muet (il cherche ses satellites) : l'appli doit montrer la position approchée du téléphone, le dire
+    clairement, et ne rien casser quand on lui demande de relancer le GPS."""
+    log("GPS muet : position approchée du téléphone")
+    if not wait_for("Recherche GPS", 30):
+        fail("la pastille « Recherche GPS » n'apparaît pas alors que le GPS n'a encore rien donné")
+        shot("gps_pastille_absente")
+        return
+    # L'appli laisse d'abord quatre secondes au GPS ; ensuite la position approchée s'affiche.
+    for _ in range(9):
+        gps.send_approximate()
+        time.sleep(1)
+    shot("carte_position_approchee")
+    if not tap("Recherche GPS"):
+        return
+    texte = None
+    limite = time.time() + 12
+    while time.time() < limite and texte is None:
+        gps.send_approximate()
+        for text, _, _ in nodes():
+            if "position approchée" in text:
+                texte = text
+        time.sleep(1)
+    shot("gps_feuille_position_approchee")
+    if texte is None:
+        fail("GPS muet : la feuille « Signal GPS » n'annonce pas de position approchée")
+    elif str(APPROXIMATE_ACCURACY_M) not in texte:
+        fail(f"position approchée : précision absente du texte (« {texte[:160]} »)")
+    else:
+        log(f"position approchée annoncée : « {texte[:110]}… »")
+    # « Relancer le GPS » refait l'écoute et envoie des ordres au GPS du téléphone : rien ne doit planter.
+    if tap("Relancer le GPS", required=False):
+        time.sleep(3)
+        check_alive("après « Relancer le GPS »")
+        if not find("Le GPS cherche ses satellites"):
+            fail("après « Relancer le GPS », la feuille ne dit plus que le GPS cherche")
+    else:
+        fail("bouton « Relancer le GPS » absent de la feuille")
+    shell("input keyevent KEYCODE_BACK")
+    time.sleep(1.5)
+    if find("Le GPS cherche ses satellites"):
+        fail("la feuille « Signal GPS » ne se referme pas")
+
+
+def gps_sheet_when_fixed(gps):
+    """Le GPS répond : la feuille le dit, sans rien proposer à corriger."""
+    bounds = gps.wait_for("GPS ±", 10, exact=False)
+    if not bounds:
+        fail("la pastille du GPS n'affiche plus sa précision")
+        return
+    shell(f"input tap {(bounds[0] + bounds[2]) // 2} {(bounds[1] + bounds[3]) // 2}")
+    if gps.wait_for("Le GPS fonctionne bien", 12):
+        log("feuille « Signal GPS » : le GPS fonctionne bien")
+    else:
+        fail("la feuille « Signal GPS » ne dit pas que le GPS fonctionne")
+    shot("gps_feuille_bon_signal")
+    shell("input keyevent KEYCODE_BACK")
+    time.sleep(1.5)
 
 
 def app_icon():
@@ -808,9 +893,8 @@ def main():
     log("démarrage de l'appli")
     shell(f"am start -W -n {PACKAGE}/{ACTIVITY}", timeout=120)
     time.sleep(10)
-    gps.stand(4)
-    shot("carte_au_demarrage")
     if not check_alive("après le démarrage"):
+        shot("carte_au_demarrage")
         return
     # Une sortie restée « en cours » (redémarrage imprévu de l'émulateur) : on la termine pour repartir d'un état connu.
     if find("Sortie interrompue"):
@@ -820,8 +904,14 @@ def main():
         tap("Rouler", required=False)
     if not wait_for("Démarrer", 30):
         fail("le bouton « Démarrer » n'apparaît pas")
-    if not wait_for("GPS ±", 25, exact=False):
+    # Le GPS n'a encore rien envoyé : c'est le moment de vérifier ce que l'appli fait en l'attendant.
+    approximate_position(gps)
+    gps.stand(4)
+    shot("carte_au_demarrage")
+    if not gps.wait_for("GPS ±", 25, exact=False):
         fail("aucune position GPS reçue par l'appli")
+    else:
+        gps_sheet_when_fixed(gps)
 
     log("démarrage d'une sortie")
     tap("Démarrer")

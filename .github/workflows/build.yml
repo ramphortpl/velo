@@ -93,12 +93,16 @@ jobs:
 
       # Ce qu'une fabrication précédente a déjà téléchargé. Sans cela tout dépend, à chaque fois, de dépôts de
       # bibliothèques qui refusent parfois de répondre aux machines de GitHub (« Plugin … was not found »).
+      # « v2 » : les tests de la source GPS tournent aussi sur Android 8 et 11 simulés, deux images à télécharger
+      # en plus. La mémoire « v1 », quand elle existe encore, sert de point de départ : il ne manque qu'elles.
       - name: Mémoire des téléchargements
         id: memoire
         uses: actions/cache/restore@v6
         with:
           path: ${{ env.MEMOIRE_CHEMINS }}
-          key: telechargements-v1-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
+          key: telechargements-v2-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
+          restore-keys: |
+            telechargements-v1-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
 
       - name: Outils de construction
         run: bash outils/ci_outils_de_construction.sh
@@ -200,7 +204,9 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ${{ env.MEMOIRE_CHEMINS }}
-          key: telechargements-v1-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
+          key: telechargements-v2-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
+          restore-keys: |
+            telechargements-v1-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
 
       - name: Outils de construction
         run: bash outils/ci_outils_de_construction.sh

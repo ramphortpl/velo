@@ -241,8 +241,22 @@ class NavigationController(
         }
     }
 
-    private suspend fun currentPosition(): LatLon? =
-        withTimeoutOrNull(POSITION_TIMEOUT_MS) { gps.fixes.first() }?.let { LatLon(it.fix.lat, it.fix.lon) }
+    /**
+     * D'où part un itinéraire « depuis ma position » : la position du GPS de préférence. S'il cherche encore ses
+     * satellites (on prépare souvent sa sortie en intérieur), la position approchée du téléphone fait l'affaire
+     * quand elle est assez fine : au départ réel, le guidage se recale de toute façon sur le GPS.
+     */
+    private suspend fun currentPosition(): LatLon? {
+        val known = withTimeoutOrNull(POSITION_TIMEOUT_MS) { gps.positions.first() }
+        val fix = when {
+            known == null -> null
+            !known.approximate -> known
+            // Le GPS n'a pas encore répondu : on lui laisse quelques secondes avant de se contenter de l'approché.
+            else -> withTimeoutOrNull(PRECISE_WAIT_MS) { gps.fixes.first() }
+                ?: gps.last?.takeIf { (it.fix.accuracyM ?: Double.MAX_VALUE) <= START_ACCURACY_M }
+        }
+        return fix?.let { LatLon(it.fix.lat, it.fix.lon) }
+    }
 
     // --- Guidage ----------------------------------------------------------------------------------------------
 
@@ -358,6 +372,9 @@ class NavigationController(
         const val MAP_POINT = "Point sur la carte"
         const val MAX_VIAS = 8
         private const val POSITION_TIMEOUT_MS = 8_000L
+        private const val PRECISE_WAIT_MS = 3_000L
+        /** Une position approchée plus floue que cela ne peut pas servir de point de départ. */
+        private const val START_ACCURACY_M = 200.0
         private const val REROUTE_PERIOD_MS = 20_000L
         private const val ARRIVAL_LINGER_MS = 45_000L
         private const val VIA_PASSED_M = 80.0

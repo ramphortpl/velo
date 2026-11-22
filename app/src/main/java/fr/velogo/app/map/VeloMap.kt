@@ -50,6 +50,7 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.MultiLineString
 import org.maplibre.geojson.Point
+import kotlin.math.ln
 
 /** Couleurs des éléments que VeloGo dessine sur la carte. */
 data class MapColors(
@@ -98,6 +99,8 @@ class VeloMapState {
     private var visible = true
     private var started = false
     private var location: Location? = null
+    /** Le suivi a commencé cadré large, autour d'une position floue : il se resserrera à la première position fine. */
+    private var wideFollow = false
     private var locationShown = false
     private var live: LiveTrack = LiveTrack.EMPTY
     private var appliedChunks = -1
@@ -546,14 +549,34 @@ class VeloMapState {
             component.setMaxAnimationFps(PUCK_FPS)
             locationShown = true
             component.forceLocationUpdate(l)
-            if (isFollowing) startTracking(600L, FOLLOW_ZOOM)
+            if (isFollowing) {
+                val zoom = followZoom(l)
+                wideFollow = zoom < FOLLOW_ZOOM
+                startTracking(600L, zoom)
+            }
         } else {
             component.forceLocationUpdate(l)
+            // La carte s'était cadrée large autour d'une position floue (le GPS cherchait encore ses satellites) :
+            // à la première position fine, elle se rapproche comme d'habitude.
+            if (wideFollow && isFollowing && !navigation && followZoom(l) >= FOLLOW_ZOOM) {
+                wideFollow = false
+                startTracking(600L, FOLLOW_ZOOM)
+            }
         }
         // Sans boussole, le sens de la marche ne vient que du déplacement : une flèche dès qu'il est connu (la
         // position qu'on reçoit le garde à l'arrêt), un simple point tant qu'on n'a pas encore roulé.
         val wanted = if (l.hasBearing()) RenderMode.GPS else RenderMode.NORMAL
         if (component.renderMode != wanted) component.renderMode = wanted
+    }
+
+    /**
+     * Zoom du suivi pour cette position : celui de tous les jours quand elle est fine, plus large quand elle est
+     * floue (position approchée du téléphone), pour que le cercle qui dit son incertitude tienne dans l'écran.
+     */
+    private fun followZoom(l: Location): Double {
+        val accuracyM = if (l.hasAccuracy()) l.accuracy.toDouble() else 0.0
+        if (accuracyM <= WIDE_ACCURACY_M) return FOLLOW_ZOOM
+        return (FOLLOW_ZOOM - ln(accuracyM / WIDE_ACCURACY_M) / ln(2.0)).coerceAtLeast(WIDE_MIN_ZOOM)
     }
 
     private fun trackingMode(): Int = if (navigation || headingUp) CameraMode.TRACKING_GPS else CameraMode.TRACKING
@@ -608,7 +631,9 @@ class VeloMapState {
     /** Recentre la carte sur la position et reprend le suivi. */
     fun follow() {
         isFollowing = true
-        startTracking(500L, FOLLOW_ZOOM)
+        val zoom = location?.let { followZoom(it) } ?: FOLLOW_ZOOM
+        wideFollow = zoom < FOLLOW_ZOOM
+        startTracking(500L, zoom)
     }
 
     /** Carte orientée dans le sens de la marche (vrai) ou nord en haut (faux), hors guidage. */
@@ -727,6 +752,9 @@ class VeloMapState {
         const val MIN_ZOOM = 4.4
         const val MAX_ZOOM = 19.5
         const val FOLLOW_ZOOM = 15.5
+        /** Au zoom du suivi, le cercle d'une position connue à 150 m près occupe les deux tiers de la largeur. */
+        const val WIDE_ACCURACY_M = 150.0
+        const val WIDE_MIN_ZOOM = 10.0
         const val PUCK_FPS = 30
         const val PUCK_SCALE_FAR = 1.0f
         const val PUCK_SCALE_NEAR = 1.5f

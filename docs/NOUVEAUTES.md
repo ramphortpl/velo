@@ -1,5 +1,60 @@
 # Nouveautés de VeloGo
 
+## Version 0.6, mise à jour — Ta position même quand le GPS cherche ses satellites
+
+- **Ta position tout de suite, même en intérieur.** Jusqu'ici VeloGo n'écoutait que le GPS « satellites » : tant
+  qu'il n'avait rien trouvé (en intérieur, ou pendant de longues minutes au démarrage sur certains téléphones), la
+  carte restait sur la France entière et la pastille sur « GPS… ». Désormais, en attendant, la carte montre la
+  **position approchée** que le téléphone déduit du Wi-Fi et du réseau mobile : un point entouré d'un cercle qui
+  dit son incertitude. Dès que le GPS répond, il reprend la main et la position devient précise.
+- **L'enregistrement reste au GPS.** Une sortie ne s'enregistre, et un guidage ne te suit, qu'avec la position
+  précise des satellites : la position approchée ne fausse donc jamais une distance. Elle sert à te situer, à la
+  météo, et à calculer un itinéraire « depuis ma position » (pratique pour préparer sa sortie depuis le canapé).
+- **Une pastille qui dit ce qui se passe**, en haut à droite : « GPS ±4 m » en vert quand tout va bien, en orange
+  quand le signal est moyen, en rouge quand il est trop flou pour enregistrer ; « Recherche GPS » tant qu'il
+  cherche (orange si la carte montre déjà une position approchée, rouge si elle n'a rien) ; « GPS coupé » si le
+  téléphone l'a désactivé.
+- **Un appui sur la pastille ouvre « Signal GPS »** : ce qui se passe, dit simplement, le nombre de satellites
+  captés et utilisés, depuis quand le GPS cherche, et ce qu'on peut y faire (activer la localisation, autoriser la
+  position exacte, « Relancer le GPS »). Si la recherche dure plus d'une minute et demie, « Réinitialiser le GPS »
+  lui fait oublier ce qu'il croit savoir des satellites pour repartir de zéro, ce qui débloque parfois un téléphone.
+- **Coup de pouce automatique** : quand le GPS cherche depuis vingt secondes, VeloGo demande au téléphone de lui
+  redonner l'heure exacte et la position prévue des satellites (il faut du réseau). C'est ce qui manque le plus
+  souvent à un GPS qui met des minutes à démarrer.
+- **GPS coupé alors que la localisation est « active »** : certains téléphones, surtout d'avant Android 10, ont
+  des modes de localisation économes (« Économie de batterie », « Réseau uniquement ») qui se passent du GPS. Rien
+  ne s'enregistrait alors, sans explication. VeloGo le dit maintenant, sur la pastille et au moment de démarrer
+  une sortie, et propose d'ouvrir le bon réglage.
+- **Position « approximative » seulement** (un choix qu'Android 12 et les suivants proposent au moment
+  d'autoriser) : la carte montre quand même à peu près où tu es, et un bouton permet d'accorder la position exacte.
+- Après deux refus, Android ne redemande plus l'autorisation de position : le bouton « Autoriser la position »
+  explique maintenant comment l'accorder dans les réglages, au lieu de sembler ne rien faire.
+- Plus sûr sur les téléphones dont la puce GPS date mal ses positions : elles risquaient d'être écartées de
+  l'enregistrement comme « périmées ».
+
+### À tester sur le téléphone où le GPS ne répondait pas
+
+1. Installe cette version et ouvre l'appli en intérieur, Wi-Fi allumé : en quelques secondes, la carte doit se
+   centrer sur toi (un point dans un cercle) et la pastille afficher « Recherche GPS » en orange.
+2. Touche la pastille : la feuille « Signal GPS » dit combien de satellites sont captés.
+3. Sors, ciel dégagé : en une minute environ, la pastille doit passer à « GPS ±… m » en vert, et « Démarrer »
+   enregistre alors normalement.
+4. Si rien ne vient après deux minutes dehors : « Relancer le GPS », puis si besoin « Réinitialiser le GPS ». Note
+   ce qu'affiche la feuille (titre, satellites captés et utilisés) : c'est ce qui permettra de comprendre ce
+   téléphone.
+
+### Limites connues
+
+- La position approchée dépend du téléphone : il faut que sa localisation par Wi-Fi et réseau soit en service
+  (sur la plupart des téléphones, le réglage « Précision de la localisation Google »). Sans Wi-Fi ni réseau
+  mobile autour de toi, il n'y en a pas.
+- En pleine nature, loin de tout Wi-Fi, elle peut être floue d'un kilomètre ou plus : la carte se cadre alors plus
+  large, et se resserre dès que le GPS répond.
+- En intérieur, le GPS peut ne jamais trouver ses satellites, quel que soit le téléphone : c'est normal, et
+  aucune appli n'y peut rien.
+- Cette mise à jour a été vérifiée sur Android 8, 11 et 15 simulés et sur un émulateur Android 15, pas sur le
+  téléphone où le problème a été vu.
+
 ## Version 0.6 — Carte en grand, affiche à partager, guidage avec flèche, onglet « Trajets »
 
 - **Itinéraire choisi : la carte en grand.** Dès que les itinéraires sont calculés, le panneau du bas se replie

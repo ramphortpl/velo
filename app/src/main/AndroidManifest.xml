@@ -10,6 +10,9 @@
          puis continue grâce au service de premier plan. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Aide au GPS quand il tarde à trouver ses satellites : l'appli demande au téléphone de lui redonner l'heure
+         exacte et la position prévue des satellites. Autorisation ordinaire, accordée sans rien demander. -->
+    <uses-permission android:name="android.permission.ACCESS_LOCATION_EXTRA_COMMANDS" />
 
     <!-- Enregistrement écran éteint : service de premier plan de type « localisation » avec notification. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

@@ -1,8 +1,16 @@
 package fr.velogo.app.ui.ride
 
+import android.content.Intent
 import android.location.Location
 import android.view.WindowManager
 import android.provider.OpenableColumns
+import android.provider.Settings
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.widthIn
+import fr.velogo.app.location.GpsSource
+import fr.velogo.app.location.LocationAccess
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.OutlinedTextField
@@ -160,7 +168,7 @@ fun RideScreen(
     val snackbar = remember { SnackbarHostState() }
     var mode by rememberSaveable { mutableStateOf(RideMode.MAP) }
     var showLayers by remember { mutableStateOf(false) }
-    var lastAccuracy by remember { mutableStateOf<Double?>(null) }
+    var showGps by remember { mutableStateOf(false) }
     /** Sens de la marche, tant qu'on roule : sert à dire si le vent est de face ou de dos. */
     var lastBearing by remember { mutableStateOf<Double?>(null) }
 
@@ -208,16 +216,17 @@ fun RideScreen(
         onStarted = { mode = RideMode.DATA },
     )
 
-    // Position GPS vers la carte, seulement quand l'écran est réellement affiché.
+    // Position vers la carte, seulement quand l'écran est réellement affiché : celle du GPS, ou la position
+    // approchée du téléphone tant qu'il cherche ses satellites (un simple point, sans sens de marche).
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(isForeground, startRide.hasLocationPermission) {
-        if (isForeground && startRide.hasLocationPermission) {
+    val access = startRide.access
+    LaunchedEffect(isForeground, access) {
+        if (isForeground && access != LocationAccess.NONE) {
             lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                container.gps.fixes.collect { gps ->
-                    lastAccuracy = gps.fix.accuracyM
+                container.gps.positions.collect { gps ->
                     lastBearing = if (gps.speedMps >= MOVING_MPS) gps.courseDeg else null
                     var shown = gps.location
-                    if (!shown.hasBearing()) {
+                    if (!shown.hasBearing() && !gps.approximate) {
                         // Guidage lancé à l'arrêt : en attendant de rouler, la flèche montre où part l'itinéraire.
                         container.navigation.guidance.value?.let { current ->
                             shown = Location(shown).apply { bearing = current.route.bearingAt(current.nav.progressM).toFloat() }
@@ -228,6 +237,8 @@ fun RideScreen(
             }
         }
     }
+    val gpsChip by remember(access) { container.gps.status.map { gpsChip(access, it) }.distinctUntilChanged() }
+        .collectAsStateWithLifecycle(initialValue = remember(access) { currentGpsChip(container.gps, access) })
     LaunchedEffect(Unit) { vm.track.collect { mapState.setLiveTrack(it) } }
     LaunchedEffect(settings.headingUp) { mapState.setHeadingUp(settings.headingUp) }
 
@@ -251,7 +262,7 @@ fun RideScreen(
         if (snapshot.isActive && lat != null && lon != null) LatLon(lat, lon) else container.gps.lastKnown()
     }
     // Tant que l'écran est affiché, la météo est rafraîchie quand elle a vieilli (au plus toutes les dix minutes).
-    LaunchedEffect(isForeground, settings.weatherEnabled, startRide.hasLocationPermission) {
+    LaunchedEffect(isForeground, settings.weatherEnabled, access) {
         if (isForeground && settings.weatherEnabled) {
             lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (true) {
@@ -519,8 +530,9 @@ fun RideScreen(
             attribution = layer.attribution,
             following = mapState.isFollowing,
             headingUp = settings.headingUp,
-            hasLocationPermission = startRide.hasLocationPermission,
-            accuracyM = if (snapshot.isActive) snapshot.accuracyM else lastAccuracy,
+            hasLocationPermission = access != LocationAccess.NONE,
+            gps = gpsChip,
+            onGps = { showGps = true },
             topInset = topInset,
             bottomPadding = bottomPadding,
             snackbar = snackbar,
@@ -746,6 +758,27 @@ fun RideScreen(
         }
     }
 
+    if (showGps) {
+        ModalBottomSheet(onDismissRequest = { showGps = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            // L'état est lu ici, dans la feuille : pendant une recherche il change à chaque seconde.
+            val status by container.gps.status.collectAsStateWithLifecycle()
+            GpsSheetContent(
+                model = gpsSheet(access, status),
+                onRemedy = { remedy ->
+                    when (remedy) {
+                        GpsRemedy.LOCATION_SETTINGS -> runCatching { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
+                        GpsRemedy.ALLOW_PRECISE -> {
+                            showGps = false
+                            startRide.requestLocationPermission()
+                        }
+                        GpsRemedy.RESTART -> container.gps.kick()
+                    }
+                },
+                onReset = { container.gps.kick(reset = true) },
+            )
+        }
+    }
+
     if (showLayers) {
         ModalBottomSheet(onDismissRequest = { showLayers = false }) {
             Text("Fond de carte", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
@@ -838,8 +871,10 @@ fun RideChrome(
     attribution: String,
     following: Boolean,
     headingUp: Boolean,
+    /** L'appli a le droit de connaître la position, au moins approximativement. */
     hasLocationPermission: Boolean,
-    accuracyM: Double?,
+    /** L'état du GPS, affiché en haut à droite ; un appui ([onGps]) ouvre la feuille qui l'explique. */
+    gps: GpsChipModel,
     topInset: Dp,
     bottomPadding: Dp,
     snackbar: SnackbarHostState,
@@ -866,6 +901,7 @@ fun RideChrome(
     /** La météo du moment, si elle est connue : pastille sur la carte, ligne sous les chiffres. */
     weather: WeatherGlance? = null,
     onWeather: () -> Unit = {},
+    onGps: () -> Unit = {},
 ) {
     VeloGoTheme(mode = themeMode, sunlight = sunlight) {
         Box(modifier.fillMaxSize()) {
@@ -919,9 +955,8 @@ fun RideChrome(
             TopBar(
                 mode = mode,
                 onMode = onMode,
-                snapshot = snapshot,
-                accuracyM = accuracyM,
-                hasLocationPermission = hasLocationPermission,
+                gps = gps.takeIf { hasLocationPermission },
+                onGps = onGps,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = topInset + 6.dp).padding(horizontal = 12.dp),
             )
 
@@ -987,14 +1022,17 @@ private const val MOVING_MPS = 2.0
 private fun TopBar(
     mode: RideMode,
     onMode: (RideMode) -> Unit,
-    snapshot: RideSnapshot,
-    accuracyM: Double?,
-    hasLocationPermission: Boolean,
+    /** La pastille du GPS, ou null tant que la position n'est pas autorisée. */
+    gps: GpsChipModel?,
+    onGps: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier.fillMaxWidth().height(TOP_BAR_HEIGHT), verticalAlignment = Alignment.CenterVertically) {
+    BoxWithConstraints(modifier.fillMaxWidth().height(TOP_BAR_HEIGHT)) {
+        // Sur un écran étroit, la bascule Carte / Données cède un peu de place à la pastille du GPS.
+        val switchWidth = (maxWidth - GPS_CHIP_ROOM).coerceIn(SWITCH_MIN_WIDTH, SWITCH_WIDTH)
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
         Surface(shape = RoundedCornerShape(50), shadowElevation = 3.dp, color = MaterialTheme.colorScheme.surface) {
-            SingleChoiceSegmentedButtonRow(Modifier.padding(4.dp).width(212.dp)) {
+            SingleChoiceSegmentedButtonRow(Modifier.padding(4.dp).width(switchWidth)) {
                 SegmentedButton(
                     selected = mode == RideMode.MAP,
                     onClick = { onMode(RideMode.MAP) },
@@ -1011,10 +1049,19 @@ private fun TopBar(
                 ) { Text("Données") }
             }
         }
-        Spacer(Modifier.weight(1f))
-        if (hasLocationPermission) GpsChip(snapshot, accuracyM)
+        Spacer(Modifier.weight(1f).widthIn(min = 8.dp))
+        if (gps != null) GpsChip(gps, onGps)
+        }
     }
 }
+
+/** La pastille du GPS telle qu'elle doit s'afficher à l'instant, avant la première mise à jour reçue. */
+private fun currentGpsChip(gps: GpsSource, access: LocationAccess): GpsChipModel = gpsChip(access, gps.status.value)
+
+private val SWITCH_WIDTH = 212.dp
+private val SWITCH_MIN_WIDTH = 168.dp
+/** Place gardée à droite de la bascule pour la pastille du GPS (« Recherche GPS » est son texte le plus long). */
+private val GPS_CHIP_ROOM = 158.dp
 
 /** Boutons segmentés aux couleurs de VeloGo (émeraude) plutôt qu'au bleu par défaut. */
 @Composable
@@ -1023,30 +1070,6 @@ fun brandSegmentColors() = SegmentedButtonDefaults.colors(
     activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
     inactiveContainerColor = MaterialTheme.colorScheme.surface,
 )
-
-/** État du signal GPS : précision en mètres, ou recherche en cours. */
-@Composable
-private fun GpsChip(snapshot: RideSnapshot, accuracyM: Double?) {
-    val searching = accuracyM == null || (snapshot.isActive && !snapshot.hasSignal)
-    val weak = accuracyM != null && !searching && accuracyM > 15.0
-    val color = when {
-        searching -> MaterialTheme.colorScheme.error
-        weak -> LocalRideColors.current.paused
-        else -> MaterialTheme.colorScheme.primary
-    }
-    Surface(shape = RoundedCornerShape(50), shadowElevation = 3.dp, color = MaterialTheme.colorScheme.surface) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(10.dp).clip(CircleShape).background(color))
-            Spacer(Modifier.width(8.dp))
-            Text(
-                if (searching) "GPS…" else "GPS ±${Formats.meters(accuracyM)} m",
-                style = LabelCapsStyle.copy(fontSize = 14.sp),
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-            )
-        }
-    }
-}
 
 @Composable
 private fun MapOverlays(

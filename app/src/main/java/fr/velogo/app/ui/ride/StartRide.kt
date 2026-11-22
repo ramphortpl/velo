@@ -21,28 +21,32 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import fr.velogo.app.location.LocationAccess
 import fr.velogo.app.recording.RecordingService
 import fr.velogo.app.ui.LocalContainer
+import fr.velogo.app.ui.findActivity
 
 /** Ce que l'écran peut demander au « parcours de démarrage ». */
 class StartRide(
-    /** Vrai si l'appli peut lire la position précise. */
-    val hasLocationPermission: Boolean,
-    /** Demande seulement l'autorisation de position (pour afficher la carte). */
+    /** Ce que l'appli a le droit de savoir de la position : rien, à peu près, ou exactement. */
+    val access: LocationAccess,
+    /** Demande seulement l'autorisation de position exacte (pour afficher la carte). */
     val requestLocationPermission: () -> Unit,
     /** Lance une sortie, en demandant au passage ce qui manque. */
     val start: () -> Unit,
 )
 
-private enum class StartDialog { LOCATION_DENIED, LOCATION_OFF, BATTERY }
+private enum class StartDialog { LOCATION_DENIED, LOCATION_OFF, GPS_OFF, BATTERY }
 
 /**
  * Enchaîne tout ce qu'il faut avant de démarrer une sortie, sans jamais bloquer inutilement :
- * 1. autorisation de position (obligatoire) ; 2. localisation activée (obligatoire) ;
- * 3. autorisation de notification (conseillée) ; 4. dispense d'économie de batterie (conseillée, une seule fois).
+ * 1. autorisation de position exacte (obligatoire) ; 2. localisation activée (obligatoire) ; 3. GPS en service
+ * (on prévient, sans bloquer) ; 4. autorisation de notification (conseillée) ; 5. dispense d'économie de batterie
+ * (conseillée, une seule fois).
  */
 @Composable
 fun rememberStartRide(
@@ -53,22 +57,38 @@ fun rememberStartRide(
     val context = LocalContext.current
     val gps = LocalContainer.current.gps
 
-    var hasPermission by remember { mutableStateOf(gps.hasPermission()) }
+    val activity = remember(context) { context.findActivity() }
+    var access by remember { mutableStateOf(gps.access()) }
     var dialog by remember { mutableStateOf<StartDialog?>(null) }
     var wantsStart by remember { mutableStateOf(false) }
     var notificationAsked by rememberSaveable { mutableStateOf(false) }
     var batteryAsked by rememberSaveable { mutableStateOf(false) }
+    /** On a déjà prévenu, pour cette sortie, que le GPS du téléphone est coupé. */
+    var gpsWarned by remember { mutableStateOf(false) }
     val proceed = remember { mutableStateOf({ }) }
 
+    /** L'autorisation a pu changer (fenêtre d'Android, retour des réglages) : l'écoute de la position suit. */
+    fun refreshAccess(): LocationAccess {
+        val now = gps.access()
+        if (now != access) {
+            access = now
+            gps.onPermissionChanged()
+        }
+        return now
+    }
+
     val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        val granted = gps.hasPermission()
-        if (granted && !hasPermission) gps.onPermissionChanged()
-        hasPermission = granted
-        if (wantsStart) {
-            if (granted) proceed.value() else {
+        val granted = refreshAccess() == LocationAccess.PRECISE
+        when {
+            granted -> if (wantsStart) proceed.value()
+            wantsStart -> {
                 wantsStart = false
                 dialog = StartDialog.LOCATION_DENIED
             }
+            // Après deux refus, Android ne montre plus sa fenêtre : sans cette explication, le bouton
+            // « Autoriser » semblerait ne rien faire. Seuls les réglages de l'appli permettent alors d'autoriser.
+            activity != null && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.ACCESS_FINE_LOCATION) ->
+                dialog = StartDialog.LOCATION_DENIED
         }
     }
     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -88,6 +108,12 @@ fun rememberStartRide(
                 dialog = StartDialog.LOCATION_OFF
             }
 
+            // Localisation « active » mais GPS coupé (mode économe de certains téléphones) : rien ne s'enregistrerait.
+            !gpsWarned && !gps.isGpsEnabled() -> {
+                wantsStart = false
+                dialog = StartDialog.GPS_OFF
+            }
+
             Build.VERSION.SDK_INT >= 33 && !notificationAsked &&
                 ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED -> {
                 notificationAsked = true
@@ -101,6 +127,7 @@ fun rememberStartRide(
 
             else -> {
                 wantsStart = false
+                gpsWarned = false
                 RecordingService.start(context)
                 onStarted()
             }
@@ -109,9 +136,7 @@ fun rememberStartRide(
 
     // Au retour des réglages du téléphone, l'autorisation a pu changer.
     LifecycleResumeEffect(Unit) {
-        val granted = gps.hasPermission()
-        if (granted && !hasPermission) gps.onPermissionChanged()
-        hasPermission = granted
+        refreshAccess()
         onPauseOrDispose { }
     }
 
@@ -142,6 +167,36 @@ fun rememberStartRide(
             dismissButton = { TextButton(onClick = { dialog = null }) { Text("Annuler") } },
         )
 
+        StartDialog.GPS_OFF -> {
+            val present = remember { gps.isGpsPresent() }
+            AlertDialog(
+                onDismissRequest = { dialog = null },
+                title = { Text(if (present) "GPS coupé" else "Pas de GPS") },
+                text = {
+                    Text(
+                        if (present) "La localisation du téléphone est active, mais sans le GPS : il est réglé sur un mode économe (« Économie de batterie » ou « Réseau uniquement », par exemple). Sans le GPS, la sortie ne s'enregistre pas. Dans les réglages de localisation, choisis le mode « Haute précision »."
+                        else "Cet appareil n'a pas de GPS : la sortie ne pourra pas s'enregistrer."
+                    )
+                },
+                confirmButton = {
+                    if (present) {
+                        TextButton(onClick = {
+                            dialog = null
+                            runCatching { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
+                        }) { Text("Ouvrir les réglages") }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        dialog = null
+                        gpsWarned = true
+                        wantsStart = true
+                        proceed.value()
+                    }) { Text("Démarrer quand même") }
+                },
+            )
+        }
+
         StartDialog.BATTERY -> AlertDialog(
             onDismissRequest = { },
             title = { Text("Enregistrer écran éteint") },
@@ -169,7 +224,7 @@ fun rememberStartRide(
     }
 
     return StartRide(
-        hasLocationPermission = hasPermission,
+        access = access,
         requestLocationPermission = {
             wantsStart = false
             locationLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
