@@ -435,6 +435,11 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
 6. Itinéraire en grand, affiche à partager, guidage avec flèche de direction, onglet « Trajets » *(fait ; déroulé
    en entier sur l'émulateur par la fabrication n° 18 du 21/11/2026, première version publiée : `v0.6.18`)*
 
+Mise à jour du 22/11/2026 (`v0.6.23`, fabrication n° 23) : position approchée en attendant le GPS, pastille à
+états et feuille « Signal GPS ». Le scénario « GPS muet » a tourné sur l'émulateur Android 15 ; rien n'a pu être
+vérifié sur le Xiaomi où le problème a été vu. Si le GPS n'y répond toujours pas dehors, demander ce qu'affiche
+la feuille « Signal GPS » (titre, satellites captés et utilisés) : c'est le seul diagnostic disponible.
+
 ## Sources de données et attributions
 
 OpenStreetMap (ODbL) · OpenFreeMap / OpenMapTiles · CyclOSM (serveurs OSM France : en ligne uniquement,
