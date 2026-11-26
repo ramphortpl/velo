@@ -547,7 +547,7 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   partir de l'artefact `essai-emulateur` d'une fabrication réussie : ce sont de vrais écrans, pas des maquettes.
   La capture de la météo manque dans bien des essais (quota d'Open-Meteo sur les machines de GitHub) : on donne
   alors un second dossier de captures, plus ancien, où elle existe. L'image actuelle vient de la fabrication
-  n° 25 (version 0.7, la première au nouveau design).
+  n° 27 (`v0.7.27`, la première version publiée au nouveau design).
 - Les captures de la fiche Google Play (`docs/play/ecrans/`, huit écrans en JPEG) se refont de la même façon :
   `python3 outils/captures_play.py <captures>`.
 
@@ -591,7 +591,11 @@ AAB publiés portent le certificat `CN=VeloGo` habituel. Restent à confirmer pa
 fluidité sur le Galaxy A05s, et tout ce qui se passe dans la Play Console (aucun compte n'existe encore). Le
 dossier des captures de la fiche s'appelle `docs/play/ecrans/` parce que `captures/` est ignoré par Git.
 La fabrication n° 28 (explication sur la position rendue compacte pour les petits écrans) n'a pas été publiée :
-son essai a buté sur le service d'adresses de l'IGN, muet à ce moment-là.
+son essai a buté sur le service d'adresses de l'IGN, muet à ce moment-là. La n° 29 (`v0.7.29` : la même, plus la
+seconde tentative de recherche d'adresse et le bouton « Réessayer ») a tout réussi et a été publiée ; contrôlé sur
+les fichiers téléchargés : certificat habituel pour l'APK et l'AAB, pages de 16 Ko, trois architectures dans
+l'AAB, pas de `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` dans la version Play. Les images du dépôt (aperçu du README,
+captures de la fiche Google Play) sont restées celles de la n° 27 : aucun des écrans qu'elles montrent n'a changé.
 
 Mise à jour du 22/11/2026 (`v0.6.23`, fabrication n° 23) : position approchée en attendant le GPS, pastille à
 états et feuille « Signal GPS ». Le scénario « GPS muet » a tourné sur l'émulateur Android 15 ; rien n'a pu être
