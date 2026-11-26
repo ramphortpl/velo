@@ -897,6 +897,18 @@ def network_or_give_up():
     return False
 
 
+def waiting_announcement():
+    """Ce que l'écran dit d'un téléchargement qu'Android retient : « wifi » (il attend le Wi-Fi), « reseau » (il
+    attend un réseau), « muet » (l'ancien défaut : « va démarrer… », sans explication), ou None s'il est parti."""
+    if find("En attente du Wi-Fi", exact=False):
+        return "wifi"
+    if find("En attente du réseau", exact=False):
+        return "reseau"
+    if find("Le téléchargement va démarrer…"):
+        return "muet"
+    return None
+
+
 def allow_mobile_data():
     """Désactive « Wi-Fi uniquement », tout en bas de l'écran des cartes hors ligne, puis remonte en haut de page."""
     row = None
@@ -949,11 +961,16 @@ def offline_maps(gps):
     shell("svc wifi disable")
     time.sleep(5)
     tap(f"Télécharger {REGION}")
-    waiting = wait_for("En attente du Wi-Fi", 30, exact=False)
+    wait_for("En attente du", 30, exact=False)
     shot("cartes_hors_ligne_attente_du_wifi")
-    if waiting:
-        log("sans Wi-Fi : l'appli annonce qu'elle l'attend")
-    elif find("Le téléchargement va démarrer…"):
+    said = waiting_announcement()
+    if said == "wifi":
+        log("sans Wi-Fi : l'appli annonce qu'elle attend le Wi-Fi")
+    elif said == "reseau":
+        # Le réseau mobile de l'émulateur ne donne pas toujours accès à Internet (fabrication n° 32) : sans
+        # Wi-Fi, le téléphone n'a alors plus de réseau du tout, et c'est ce que l'appli doit dire.
+        log("sans Wi-Fi, et sans Internet par le réseau mobile : l'appli annonce qu'elle attend le réseau")
+    elif said == "muet":
         fail("sans Wi-Fi, l'appli reste sur « Le téléchargement va démarrer… » sans dire ce qu'elle attend")
     else:
         # Android n'a pas compté le réseau mobile de l'émulateur comme un forfait : il n'y avait rien à attendre.
