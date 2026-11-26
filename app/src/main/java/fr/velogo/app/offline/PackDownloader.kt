@@ -4,7 +4,10 @@ import android.app.DownloadManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.Build
 import androidx.core.net.toUri
 import fr.velogo.app.AppContainer
 import fr.velogo.app.BuildConfig
@@ -37,6 +40,34 @@ data class DownloadProgress(
     enum class Status { QUEUED, RUNNING, WAITING, VERIFYING, FAILED }
 }
 
+/** Le réseau du téléphone, réduit à ce qui décide si Android lance un téléchargement. */
+internal data class NetworkState(val connected: Boolean, val metered: Boolean = false, val roaming: Boolean = false) {
+    companion object {
+        /** Quand on ne sait pas : on ne prétend rien, le téléchargement « va démarrer ». */
+        val UNKNOWN = NetworkState(connected = true)
+    }
+}
+
+/**
+ * Pourquoi un téléchargement demandé ne démarre pas, d'après le réseau du téléphone ; null quand rien ne le
+ * retient (il va démarrer).
+ *
+ * Android ne le dit pas lui-même : tant que la condition demandée (Wi-Fi, pas d'itinérance) n'est pas remplie, il
+ * annonce simplement le téléchargement « en attente », et l'écran restait indéfiniment sur « Le téléchargement
+ * va démarrer… » (vu sur l'émulateur un jour où il n'avait que le réseau mobile, fabrication n° 30).
+ */
+internal fun pendingReason(wifiOnly: Boolean, network: NetworkState): String? = when {
+    !network.connected -> WAITING_FOR_NETWORK
+    wifiOnly && network.metered -> WAITING_FOR_WIFI
+    network.roaming -> WAITING_ROAMING
+    else -> null
+}
+
+internal const val WAITING_FOR_NETWORK = "En attente du réseau"
+internal const val WAITING_FOR_WIFI =
+    "En attente du Wi-Fi. Pour télécharger avec ton forfait, désactive « Wi-Fi uniquement » en bas de la page."
+internal const val WAITING_ROAMING = "En attente : rien n'est téléchargé à l'étranger (itinérance)."
+
 /**
  * Télécharge les fichiers de cartes avec le gestionnaire de téléchargements d'Android.
  *
@@ -46,9 +77,11 @@ data class DownloadProgress(
  */
 class PackDownloader(private val context: Context, private val store: OfflineStore) {
 
-    private class Tracked(val id: Long, val file: PackFile, val directory: String)
+    /** [wifiOnly] et [title] : ce qui a été demandé à Android, pour pouvoir le redemander autrement. */
+    private class Tracked(val id: Long, val file: PackFile, val directory: String, val wifiOnly: Boolean, val title: String)
 
     private val manager: DownloadManager? = context.getSystemService(DownloadManager::class.java)
+    private val connectivity: ConnectivityManager? = context.getSystemService(ConnectivityManager::class.java)
     private val ledger = File(context.filesDir, "telechargements.json")
     private val mutex = Mutex()
     private var tracked: MutableList<Tracked>? = null
@@ -68,28 +101,53 @@ class PackDownloader(private val context: Context, private val store: OfflineSto
                 for (file in files) {
                     if (list.any { it.file.name == file.name }) continue
                     failures.remove(file.name)
-                    val target = File(directory, file.name + OfflineStore.PARTIAL)
-                    target.delete()
-                    val request = DownloadManager.Request(url(file).toUri())
-                        .setTitle(title(file))
-                        .setDescription("Carte hors ligne VeloGo")
-                        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-                        .setAllowedOverMetered(!wifiOnly)
-                        .setAllowedOverRoaming(false)
-                        .addRequestHeader("User-Agent", AppContainer.USER_AGENT)
-                        .setDestinationUri(Uri.fromFile(target))
-                    val id = runCatching { dm.enqueue(request) }.getOrNull()
+                    val label = title(file)
+                    val id = request(dm, file, directory.absolutePath, wifiOnly, label)
                     if (id == null) {
-                        failures[file.name] = "Android a refusé le téléchargement."
+                        failures[file.name] = REFUSED
                         continue
                     }
-                    list.add(Tracked(id, file, directory.absolutePath))
+                    list.add(Tracked(id, file, directory.absolutePath, wifiOnly, label))
                 }
                 save(list)
                 publish(list, query(dm, list))
                 true
             }
         }
+
+    /**
+     * Le réglage « Wi-Fi uniquement » vient de changer. Android ne permet pas de modifier un téléchargement déjà
+     * demandé : ceux qui n'ont encore rien reçu sont donc redemandés avec la nouvelle règle (sans cela, celui qui
+     * attend le Wi-Fi l'attendrait toujours après qu'on a autorisé le forfait). Ceux qui ont commencé gardent la
+     * leur : les redemander ferait perdre ce qui est déjà arrivé.
+     */
+    suspend fun applyWifiOnly(wifiOnly: Boolean) = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            val dm = manager ?: return@withContext
+            val list = load()
+            val rows = query(dm, list)
+            var changed = false
+            for (index in list.indices.reversed()) {
+                val t = list[index]
+                val row = rows[t.id] ?: continue
+                if (t.wifiOnly == wifiOnly || !row.notStarted) continue
+                // L'ancien d'abord : en le retirant, Android efface aussi son fichier, qui porte le même nom.
+                runCatching { dm.remove(t.id) }
+                val id = request(dm, t.file, t.directory, wifiOnly, t.title)
+                if (id == null) {
+                    failures[t.file.name] = REFUSED
+                    list.removeAt(index)
+                } else {
+                    list[index] = Tracked(id, t.file, t.directory, wifiOnly, t.title)
+                }
+                changed = true
+            }
+            if (changed) {
+                save(list)
+                publish(list, query(dm, list))
+            }
+        }
+    }
 
     /** Annule les téléchargements des fichiers nommés (et oublie leurs échecs). */
     suspend fun cancel(names: Collection<String>) = mutex.withLock {
@@ -166,7 +224,38 @@ class PackDownloader(private val context: Context, private val store: OfflineSto
 
     // --- Dialogue avec le gestionnaire de téléchargements d'Android -------------------------------------------
 
-    private class Row(val status: Int, val reason: Int, val downloaded: Long, val total: Long, val localFile: File?)
+    /** Demande un fichier à Android. Renvoie le numéro du téléchargement, ou null si Android le refuse. */
+    private fun request(dm: DownloadManager, file: PackFile, directory: String, wifiOnly: Boolean, title: String): Long? {
+        val target = File(directory, file.name + OfflineStore.PARTIAL)
+        target.delete()
+        val request = DownloadManager.Request(url(file).toUri())
+            .setTitle(title)
+            .setDescription("Carte hors ligne VeloGo")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+            .setAllowedOverMetered(!wifiOnly)
+            .setAllowedOverRoaming(false)
+            .addRequestHeader("User-Agent", AppContainer.USER_AGENT)
+            .setDestinationUri(Uri.fromFile(target))
+        return runCatching { dm.enqueue(request) }.getOrNull()
+    }
+
+    private class Row(val status: Int, val reason: Int, val downloaded: Long, val total: Long, val localFile: File?) {
+        /** Demandé à Android, mais rien n'est encore arrivé. */
+        val notStarted: Boolean
+            get() = downloaded <= 0 && (status == DownloadManager.STATUS_PENDING || status == DownloadManager.STATUS_PAUSED)
+    }
+
+    /** Le réseau du moment, pour dire pourquoi un téléchargement demandé ne démarre pas. */
+    private fun networkState(): NetworkState {
+        val cm = connectivity ?: return NetworkState.UNKNOWN
+        return runCatching {
+            val active = cm.activeNetwork ?: return NetworkState(connected = false)
+            // Avant Android 9, rien ne dit proprement qu'un réseau est en itinérance : on ne l'annonce pas.
+            val roaming = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+                cm.getNetworkCapabilities(active)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING) == false
+            NetworkState(connected = true, metered = cm.isActiveNetworkMetered, roaming = roaming)
+        }.getOrDefault(NetworkState.UNKNOWN)
+    }
 
     private fun query(dm: DownloadManager, list: List<Tracked>): Map<Long, Row> {
         if (list.isEmpty()) return emptyMap()
@@ -190,6 +279,7 @@ class PackDownloader(private val context: Context, private val store: OfflineSto
 
     private fun publish(list: List<Tracked>, rows: Map<Long, Row>) {
         val out = LinkedHashMap<String, DownloadProgress>()
+        val network = if (list.isEmpty()) NetworkState.UNKNOWN else networkState()
         for (t in list) {
             val row = rows[t.id]
             val total = t.file.size
@@ -198,14 +288,20 @@ class PackDownloader(private val context: Context, private val store: OfflineSto
                 DownloadManager.STATUS_PAUSED -> DownloadProgress(
                     t.file.name, DownloadProgress.Status.WAITING, row.downloaded.coerceIn(0, total), total,
                     when (row.reason) {
-                        DownloadManager.PAUSED_QUEUED_FOR_WIFI -> "En attente du Wi-Fi"
-                        DownloadManager.PAUSED_WAITING_FOR_NETWORK -> "En attente du réseau"
+                        // Rien n'est encore arrivé : désactiver « Wi-Fi uniquement » relancera ce téléchargement.
+                        DownloadManager.PAUSED_QUEUED_FOR_WIFI -> if (row.notStarted) WAITING_FOR_WIFI else "En attente du Wi-Fi"
+                        DownloadManager.PAUSED_WAITING_FOR_NETWORK -> WAITING_FOR_NETWORK
                         DownloadManager.PAUSED_WAITING_TO_RETRY -> "Nouvelle tentative dans un instant"
                         else -> "En pause"
                     },
                 )
                 DownloadManager.STATUS_SUCCESSFUL -> DownloadProgress(t.file.name, DownloadProgress.Status.VERIFYING, total, total)
-                else -> DownloadProgress(t.file.name, DownloadProgress.Status.QUEUED, 0, total)
+                else -> {
+                    // « En attente » pour Android : s'il y a une raison que le réseau explique, on la dit.
+                    val reason = pendingReason(t.wifiOnly, network)
+                    if (reason == null) DownloadProgress(t.file.name, DownloadProgress.Status.QUEUED, 0, total)
+                    else DownloadProgress(t.file.name, DownloadProgress.Status.WAITING, 0, total, reason)
+                }
             }
         }
         for ((name, message) in failures) {
@@ -238,6 +334,9 @@ class PackDownloader(private val context: Context, private val store: OfflineSto
                             o.getLong("id"),
                             PackFile(o.getString("type"), o.getString("nom"), o.getString("fichier"), o.getLong("taille"), o.getString("sha256")),
                             o.getString("dossier"),
+                            // Absents des téléchargements lancés par une version précédente de l'appli.
+                            o.optBoolean("wifi", true),
+                            o.optString("titre", o.getString("nom")),
                         )
                     )
                 }
@@ -254,6 +353,7 @@ class PackDownloader(private val context: Context, private val store: OfflineSto
                 array.put(
                     JSONObject().put("id", t.id).put("type", t.file.type).put("nom", t.file.name).put("fichier", t.file.remoteName)
                         .put("taille", t.file.size).put("sha256", t.file.sha256).put("dossier", t.directory)
+                        .put("wifi", t.wifiOnly).put("titre", t.title)
                 )
             }
             val temporary = File(ledger.parentFile, ledger.name + ".tmp")
@@ -279,6 +379,7 @@ class PackDownloader(private val context: Context, private val store: OfflineSto
     companion object {
         /** Étiquette de la Release GitHub qui contient les cartes. */
         const val RELEASE_TAG = "cartes"
+        private const val REFUSED = "Android a refusé le téléchargement."
     }
 }
 

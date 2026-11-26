@@ -251,6 +251,11 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
    de l'émulateur met parfois si longtemps à démarrer qu'Android affiche « Pixel Launcher isn't responding »
    devant l'appli, et tout le début de l'essai échouait sans que l'appli y soit pour rien (fabrication n° 21).
    Si c'est VeloGo qui ne répond plus, c'est un échec.
+   Le Wi-Fi de l'émulateur n'est pas garanti : celui de la fabrication n° 30 n'avait que le réseau mobile
+   (« 3G » dans la barre d'état), la carte de Corse n'est jamais partie et tout ce qui en dépend a été sauté. Le
+   scénario coupe donc lui-même le Wi-Fi avant de demander la carte (l'appli doit annoncer « En attente du
+   Wi-Fi »), le rallume, et s'il n'est pas revenu au bout de 75 secondes, désactive « Wi-Fi uniquement » dans
+   l'appli, qui doit relancer le téléchargement par le réseau mobile (`allow_mobile_data`).
    La saisie au clavier y est vérifiée (`type_text` relit le champ, complète ou efface) : envoyées pendant que le
    clavier démarre, les touches d'`adb shell input text` se perdent (fabrication n° 16 : « gare d » au lieu de
    « gare de corte », et tout l'essai de l'itinéraire en ligne sauté).
@@ -413,6 +418,14 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   itinéraires enregistrés.
 - **Téléchargements confiés au `DownloadManager` d'Android** plutôt qu'à WorkManager : reprise après coupure,
   attente du Wi-Fi et notification sont gérées par le système, sans service ni autorisation supplémentaires.
+- **Un téléchargement « en attente » ne dit pas pourquoi** : tant que la condition demandée n'est pas remplie
+  (Wi-Fi, pas d'itinérance), le `DownloadManager` des Android récents annonce `STATUS_PENDING`, pas
+  `PAUSED_QUEUED_FOR_WIFI` ; l'écran restait sur « Le téléchargement va démarrer… » sans fin (vu sur l'émulateur
+  de la fabrication n° 30, qui n'avait que le réseau mobile). `PackDownloader` regarde donc lui-même le réseau
+  (`pendingReason` : pas de réseau, réseau compté comme un forfait avec « Wi-Fi uniquement », itinérance) et le
+  dit. La règle d'un téléchargement déjà demandé ne se change pas : quand « Wi-Fi uniquement » change,
+  `applyWifiOnly` redemande ceux qui n'ont encore rien reçu (l'ancien est retiré d'abord, car Android efface son
+  fichier, qui porte le même nom) ; ceux qui ont commencé gardent leur règle, pour ne pas perdre ce qui est arrivé.
 - **Portrait sur téléphone, tout sens sur grand écran** : `screenOrientation="portrait"` reste déclaré, mais à
   partir d'Android 16 visé, Android n'en tient plus compte quand l'écran fait au moins 600 dp de large (tablettes,
   pliables), sans dérogation possible en visant Android 17. L'appli s'y adapte donc : l'écran guidon a sa

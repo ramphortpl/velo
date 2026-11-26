@@ -849,8 +849,36 @@ def route_poster():
     check_alive("après la préparation de l'affiche")
 
 
+def allow_mobile_data():
+    """Désactive « Wi-Fi uniquement », tout en bas de l'écran des cartes hors ligne, puis remonte en haut de page."""
+    row = None
+    for _ in range(10):
+        row = find("épargner ton forfait", exact=False)
+        # Assez haut dans l'écran pour être touché franchement (pas sous la barre du bas).
+        if row and (row[1] + row[3]) // 2 < 2000:
+            break
+        shell("input swipe 540 1800 540 800 300")
+        time.sleep(0.7)
+    if not row or not tap("épargner ton forfait", timeout=5, exact=False, required=False):
+        fail("le réglage « Wi-Fi uniquement » est introuvable sur l'écran des cartes hors ligne")
+    for _ in range(8):
+        shell("input swipe 540 700 540 2000 250")
+        time.sleep(0.5)
+
+
+def wait_gone(label, timeout=20):
+    """Attend qu'un texte ait disparu de l'écran."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not find(label, exact=False):
+            return True
+        time.sleep(1)
+    return False
+
+
 def offline_maps(gps):
-    """Télécharge la carte d'une région, l'affiche, puis vérifie que tout marche en mode avion."""
+    """Télécharge la carte d'une région (d'abord sans Wi-Fi : elle doit dire qu'elle l'attend), l'affiche, puis
+    vérifie que tout marche en mode avion."""
     log("cartes hors ligne : téléchargement d'une région")
     tap("Réglages")
     time.sleep(1)
@@ -868,17 +896,44 @@ def offline_maps(gps):
         shell("input keyevent KEYCODE_BACK")
         return
     shot("cartes_hors_ligne_liste")
+    # D'abord sans Wi-Fi. Le réglage « Wi-Fi uniquement » est actif : Android garde le téléchargement en attente,
+    # et l'appli doit le dire, au lieu de rester sur « Le téléchargement va démarrer… ».
+    shell("svc wifi disable")
+    time.sleep(5)
     tap(f"Télécharger {REGION}")
+    waiting = wait_for("En attente du Wi-Fi", 30, exact=False)
+    shot("cartes_hors_ligne_attente_du_wifi")
+    if waiting:
+        log("sans Wi-Fi : l'appli annonce qu'elle l'attend")
+    elif find("Le téléchargement va démarrer…"):
+        fail("sans Wi-Fi, l'appli reste sur « Le téléchargement va démarrer… » sans dire ce qu'elle attend")
+    else:
+        # Android n'a pas compté le réseau mobile de l'émulateur comme un forfait : il n'y avait rien à attendre.
+        log("constat : sans Wi-Fi, le téléchargement est parti quand même (attente du Wi-Fi non vérifiée)")
+    # Le Wi-Fi revient : le téléchargement doit partir tout seul.
+    shell("svc wifi enable")
+    wifi_back = time.time()
     time.sleep(5)
     shot("cartes_hors_ligne_telechargement")
     installed = False
-    deadline = time.time() + 420
+    forced = False
+    deadline = time.time() + 480
     while time.time() < deadline:
         if find(f"Supprimer {REGION}"):
             installed = True
             break
         if find("Réessayer"):
             break
+        if not forced and time.time() - wifi_back > 75 and find("En attente du Wi-Fi", exact=False):
+            # Le Wi-Fi de l'émulateur ne revient pas toujours (fabrication n° 30 : il n'en a jamais eu, et la
+            # carte ne s'est pas téléchargée). On autorise alors le forfait dans l'appli, qui doit relancer
+            # d'elle-même ce qui attendait.
+            forced = True
+            log("le Wi-Fi de l'émulateur ne revient pas : « Wi-Fi uniquement » désactivé dans l'appli")
+            allow_mobile_data()
+            if not wait_gone("En attente du Wi-Fi", 40):
+                shot("cartes_hors_ligne_forfait_sans_effet")
+                fail("« Wi-Fi uniquement » désactivé, le téléchargement attend toujours le Wi-Fi")
         time.sleep(4)
     shot("cartes_hors_ligne_installee")
     if not installed:
@@ -1248,9 +1303,12 @@ def play_route(gps):
 
     On repart de l'endroit d'où le calcul sans réseau a déjà réussi, vers le même point touché sur la carte : la
     seule chose qui change est l'APK."""
+    if not gps.route_start:
+        # Pas de carte hors ligne (son téléchargement a échoué plus haut, et c'est déjà compté) : rien à calculer.
+        log("version Google Play : itinéraire non essayé, faute de carte hors ligne")
+        return
     log("version Google Play : itinéraire vers un point touché sur la carte")
-    if gps.route_start:
-        gps.lat, gps.lon = gps.route_start
+    gps.lat, gps.lon = gps.route_start
     gps.stand(12)
     if not tap("Itinéraire", timeout=10, required=False):
         shot("play_itineraire_bouton_absent")

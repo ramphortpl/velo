@@ -51,6 +51,9 @@ ombre) : quelques rectangles arrondis que le téléphone trace sans effort.
   toute seule ; si elle échoue encore, un bouton « Réessayer » évite de retaper l'adresse.
 - Sur l'écran de recherche, l'heure et les icônes du haut de l'écran sont de nouveau lisibles (elles restaient
   blanches sur fond clair).
+- **Cartes hors ligne sans Wi-Fi** : avec « Wi-Fi uniquement », une carte demandée en données mobiles restait
+  indéfiniment sur « Le téléchargement va démarrer… ». L'appli dit maintenant ce qu'elle attend (le Wi-Fi, ou le
+  réseau), et si tu désactives « Wi-Fi uniquement », ce qui attendait part tout de suite avec ton forfait.
 
 ### Ce qu'il reste à faire de ton côté pour publier
 
@@ -70,7 +73,8 @@ Rien n'est obligatoire tant que tu ne veux pas publier, et rien n'a été créé
 - Le nouveau design a été vérifié en images sur ordinateur et sur l'émulateur Android 15, pas sur ton téléphone :
   la lisibilité au soleil et la fluidité réelle sur le Galaxy A05s restent à confirmer par toi.
 - Rien de ce qui se passe dans la Play Console n'a pu être essayé (il faut un compte), en particulier l'envoi de la
-  clé de signature (étape 3 du guide).
+  clé de signature (étape 3 du guide). Ce qui a pu l'être : à chaque fabrication, l'outil de Google qui sert au
+  Play Store tire un APK d'un fichier AAB d'essai, et cet APK tourne sur l'émulateur.
 - Les tailles de tablette n'ont été regardées qu'en images, pas sur une vraie tablette.
 
 ## Version 0.6, mise à jour — Des boucles, et des trajets qui disent ce qu'ils contiennent

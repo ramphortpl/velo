@@ -186,6 +186,11 @@ médicale. La description de la fiche précise déjà que VeloGo n'est pas un di
 - **Vérification des développeurs.** Google impose peu à peu que tout développeur soit identifié, y compris pour
   les applis installées hors du magasin (calendrier mondial à partir de janvier 2027, sans date pour la France).
   Le compte Play Console en tient lieu : une fois créé, il couvre aussi les APK des Releases GitHub.
+- **Nom et identifiant.** Le 26 novembre 2026, aucune appli publiée sur Google Play ne portait l'identifiant
+  `fr.velogo.app`, et la recherche « velogo » du magasin français ne montrait aucune appli de ce nom (la plus
+  proche s'appelle « Velogos »). Les marques déposées, elles, n'ont pas été vérifiées : avant d'ouvrir l'appli à
+  tous, un coup d'œil à la base gratuite de l'INPI (data.inpi.fr) évite une mauvaise surprise, car Google retire
+  une appli dont le nom est contesté par le propriétaire d'une marque.
 - **Type de compte.** Les applis médicales exigent un compte « organisation ». Les applis d'activité physique ne
   sont pas citées : rien n'indique qu'un compte personnel pose problème, rien ne le garantit non plus.
 - **Ce qui n'a pas pu être vérifié ici** : le workflow « Clé pour Google Play », et tout ce qui se passe dans la

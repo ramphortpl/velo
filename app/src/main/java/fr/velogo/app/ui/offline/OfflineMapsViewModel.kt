@@ -114,7 +114,12 @@ class OfflineMapsViewModel(private val container: AppContainer) : ViewModel(), O
     }
 
     override fun setWifiOnly(value: Boolean) {
-        viewModelScope.launch { container.settings.setOfflineWifiOnly(value) }
+        viewModelScope.launch {
+            container.settings.setOfflineWifiOnly(value)
+            // Les téléchargements qui n'ont pas commencé suivent le nouveau réglage : celui qui attendait le Wi-Fi
+            // part tout de suite quand on autorise le forfait.
+            runCatching { offline.downloader.applyWifiOnly(value) }
+        }
     }
 
     override fun setStorage(index: Int) {

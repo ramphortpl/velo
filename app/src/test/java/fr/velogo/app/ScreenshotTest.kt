@@ -108,6 +108,7 @@ import fr.velogo.core.nav.RoutePreference
 import fr.velogo.core.nav.WayMix
 import fr.velogo.app.offline.StorageChoice
 import fr.velogo.app.ui.offline.OfflineMapsActions
+import fr.velogo.app.offline.WAITING_FOR_WIFI
 import fr.velogo.app.ui.offline.OfflineMapsContent
 import fr.velogo.app.ui.offline.OfflineMapsUiState
 import fr.velogo.app.ui.offline.RegionRow
@@ -626,6 +627,8 @@ class ScreenshotTest {
                             region("Bourgogne-Franche-Comté", 710_000_000, RegionStatus.DOWNLOADING, done = 312_000_000),
                             // (Pas d'état « vérification » ici : sa barre animée sans fin bloquerait la capture.)
                             region("Bretagne", 540_000_000, RegionStatus.WAITING, done = 96_000_000, message = "En attente du Wi-Fi"),
+                            // Demandé en données mobiles avec « Wi-Fi uniquement » : rien n'est encore arrivé.
+                            region("Centre-Val de Loire", 597_000_000, RegionStatus.WAITING, message = WAITING_FOR_WIFI),
                             region("Corse", 81_000_000, RegionStatus.UPDATE_AVAILABLE, update = 47_000_000),
                             region("Grand Est", 890_000_000, RegionStatus.AVAILABLE),
                             region("Occitanie", 1_100_000_000, RegionStatus.FAILED, message = "Plus assez de place sur le téléphone."),
