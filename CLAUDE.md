@@ -614,6 +614,19 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
    pour Google Play (fichier AAB, politique de confidentialité, explication avant la demande de position, grands
    écrans) *(fait le 26/11/2026)*
 
+Mise à jour du 26/11/2026 au soir (`v0.7.32`, fabrication n° 32) : la « version Play » de l'essai sur émulateur
+est désormais l'APK que l'outil de Google tire du fichier AAB, et elle y calcule un itinéraire (vérifié deux
+fois : n° 32 et n° 33). Sur Google Play, aucune appli publiée ne porte l'identifiant `fr.velogo.app` ni le nom
+« VeloGo » (relevé sur le magasin français ; les marques déposées n'ont pas été vérifiées). Correction de
+l'attente du Wi-Fi des cartes hors ligne, trouvée grâce à un émulateur sans Wi-Fi. Ce qui a été vu sur
+l'émulateur : « En attente du réseau » (Wi-Fi coupé, son réseau mobile ne donnait pas Internet), puis le
+téléchargement qui part seul au retour du Wi-Fi. Ce qui ne l'a pas été : l'annonce « En attente du Wi-Fi » elle-même
+(il faudrait un réseau mobile qui marche, comme à la n° 30) et le secours `allow_mobile_data` ; les deux ne sont
+couverts que par `PackDownloaderTest` et par l'image `cartes_hors_ligne.png`. La fabrication n° 33
+(`[sans publication]`, la première à s'en servir) a tout déroulé sans rien publier.
+`bundletool` n'a pas pu être lancé à part dans l'environnement de développement (téléchargement de ses
+bibliothèques refusé) : la tâche d'AGP `:app:packagePlaySmokeUniversalApk` fait le même travail, hors ligne.
+
 Mise à jour du 26/11/2026 (`v0.7.27`, fabrication n° 27, première version du jalon 7) : le scénario complet a
 tourné sur l'émulateur Android 15 avec le nouveau design, sans qu'aucun de ses repères (textes, descriptions) ait
 dû changer, ainsi que la première ouverture et la version Play installée par-dessus l'autre. L'APK et le fichier
