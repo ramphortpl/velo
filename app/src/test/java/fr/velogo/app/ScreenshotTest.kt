@@ -208,7 +208,7 @@ class ScreenshotTest {
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
                 Box(Modifier.fillMaxSize()) {
                     content()
-                    BottomFade(102.dp, Modifier.align(Alignment.BottomCenter))
+                    BottomFade(80.dp, Modifier.align(Alignment.BottomCenter))
                     FloatingTabBar(tab, badge = badge, onSelect = {}, modifier = Modifier.align(Alignment.BottomCenter))
                 }
             }
@@ -331,7 +331,7 @@ class ScreenshotTest {
         content = tabScreen(Tab.HISTORY) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                 Box(Modifier.widthIn(max = READING_WIDTH)) {
-                    HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 80.dp), today = sampleToday)
+                    HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 112.dp), today = sampleToday)
                 }
             }
         },
@@ -352,19 +352,19 @@ class ScreenshotTest {
     @Test
     fun historique() = captureRoboImage(
         "$OUT/historique.png",
-        content = tabScreen(Tab.HISTORY) { HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 80.dp), today = sampleToday) },
+        content = tabScreen(Tab.HISTORY) { HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 112.dp), today = sampleToday) },
     )
 
     @Test
     fun historique_sombre() = captureRoboImage(
         "$OUT/historique_sombre.png",
-        content = tabScreen(Tab.HISTORY, ThemeMode.DARK) { HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 80.dp), today = sampleToday) },
+        content = tabScreen(Tab.HISTORY, ThemeMode.DARK) { HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 112.dp), today = sampleToday) },
     )
 
     @Test
     fun historique_vide() = captureRoboImage("$OUT/historique_vide.png") {
         VeloGoTheme(mode = ThemeMode.LIGHT) {
-            Surface(Modifier.fillMaxSize()) { HistoryContent(emptyList(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 80.dp)) }
+            Surface(Modifier.fillMaxSize()) { HistoryContent(emptyList(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 112.dp)) }
         }
     }
 
@@ -514,7 +514,7 @@ class ScreenshotTest {
                 actions = NoActions,
                 onOpenAbout = {},
                 onOpenOfflineMaps = {},
-                contentPadding = PaddingValues(bottom = 80.dp),
+                contentPadding = PaddingValues(bottom = 112.dp),
             )
         },
     )
@@ -538,7 +538,7 @@ class ScreenshotTest {
                     actions = NoActions,
                     onOpenAbout = {},
                     onOpenOfflineMaps = {},
-                    contentPadding = PaddingValues(bottom = 80.dp),
+                    contentPadding = PaddingValues(bottom = 112.dp),
                     selfUpdate = false,
                     directBatteryExemption = false,
                 )
@@ -574,7 +574,7 @@ class ScreenshotTest {
                     actions = NoActions,
                     onOpenAbout = {},
                     onOpenOfflineMaps = {},
-                    contentPadding = PaddingValues(bottom = 80.dp),
+                    contentPadding = PaddingValues(bottom = 112.dp),
                     archive = ArchiveState.Done("12 sorties sauvegardées."),
                 )
             }
@@ -949,7 +949,7 @@ class ScreenshotTest {
                 // La troisième vignette n'est pas encore prête : la ligne doit rester en place.
                 rows = routes?.let { savedRouteRows(it, previews - 3L, today = sampleToday) },
                 onOpen = {}, onRename = { _, _ -> }, onShare = {}, onDelete = {}, onNew = {},
-                contentPadding = PaddingValues(bottom = 80.dp),
+                contentPadding = PaddingValues(bottom = 112.dp),
             )
         }()
     }

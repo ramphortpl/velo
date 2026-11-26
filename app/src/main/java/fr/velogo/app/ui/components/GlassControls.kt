@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -101,7 +102,9 @@ fun GlassPill(
     verticalPadding: Dp = 9.dp,
     content: @Composable RowScope.() -> Unit,
 ) {
-    GlassBox(modifier, style = style, reach = reach, onClick = onClick, onClickLabel = onClickLabel, role = if (onClick != null) Role.Button else null) {
+    // Une pilule qui se touche garde autour d'elle la place d'un doigt (48 dp), même si elle est plus fine à l'œil.
+    val outer = if (onClick != null) modifier.minimumInteractiveComponentSize() else modifier
+    GlassBox(outer, style = style, reach = reach, onClick = onClick, onClickLabel = onClickLabel, role = if (onClick != null) Role.Button else null) {
         Row(Modifier.padding(horizontal = horizontalPadding, vertical = verticalPadding), verticalAlignment = Alignment.CenterVertically, content = content)
     }
 }

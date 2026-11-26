@@ -67,7 +67,7 @@ object RoutePoster {
     private const val INK_SOFT = 0xFF4A5A53.toInt()
     private const val INK_FAINT = 0xFF66756E.toInt()
     private const val PAPER = 0xFFFFFFFF.toInt()
-    private const val BRAND = 0xFF006B54.toInt()
+    private const val BRAND = 0xFF014A38.toInt()
     /** Hauteur du logo sur sa plaque, en points de l'affiche. */
     private const val BRAND_LOGO_HEIGHT = 100
     private const val ROUTE = 0xFF1565C0.toInt()
@@ -106,7 +106,7 @@ object RoutePoster {
                 shader = LinearGradient(0f, 0f, 0f, MAP_HEIGHT.toFloat(), 0xFFEAF4EE.toInt(), 0xFFD9EAE1.toInt(), Shader.TileMode.CLAMP)
             }
             canvas.drawRect(zone, background)
-            val grid = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x14006B54; strokeWidth = 2f }
+            val grid = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x14014A38; strokeWidth = 2f }
             var x = 60f
             while (x < MAP_WIDTH) { canvas.drawLine(x, 0f, x, MAP_HEIGHT.toFloat(), grid); x += 120f }
             var y = 40f
@@ -339,7 +339,7 @@ object RoutePoster {
         area.lineTo(box.right, bottom)
         area.close()
         canvas.drawPath(area, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = LinearGradient(0f, top, 0f, bottom, 0x66006B54, 0x0A006B54, Shader.TileMode.CLAMP)
+            shader = LinearGradient(0f, top, 0f, bottom, 0x6601CD95, 0x0A01CD95, Shader.TileMode.CLAMP)
         })
         canvas.drawPath(line, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE; strokeWidth = 5f; color = BRAND; strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.ROUND

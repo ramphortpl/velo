@@ -62,7 +62,8 @@ fun <T> Segmented(
                 val cell = (size.width - 2 * gap) / options.size
                 drawGlassBody(
                     style = glass.accent,
-                    topLeft = Offset(gap + cell * position.value, gap),
+                    // Le ressort dépasse un peu sa cible : la pastille ne sort pas pour autant de la rainure.
+                    topLeft = Offset(gap + cell * position.value.coerceIn(0f, (options.size - 1).toFloat()), gap),
                     size = Size(cell, size.height - 2 * gap),
                     radius = (size.height - 2 * gap) / 2f,
                 )

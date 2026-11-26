@@ -27,8 +27,9 @@ fun VeloSwitch(checked: Boolean, modifier: Modifier = Modifier) {
     val off = MaterialTheme.colorScheme.surfaceContainerHighest
     Spacer(
         modifier.size(width = 52.dp, height = 32.dp).drawBehind {
-            val at = position.value
-            drawRoundRect(lerp(off, ON, at.coerceIn(0f, 1f)), cornerRadius = CornerRadius(size.height / 2f))
+            // Le ressort dépasse un peu sa cible : le bouton ne sort pas pour autant de la rainure.
+            val at = position.value.coerceIn(0f, 1f)
+            drawRoundRect(lerp(off, ON, at), cornerRadius = CornerRadius(size.height / 2f))
             val gap = 2.5.dp.toPx()
             val diameter = size.height - 2 * gap
             val center = Offset(gap + diameter / 2f + (size.width - 2 * gap - diameter) * at, size.height / 2f)

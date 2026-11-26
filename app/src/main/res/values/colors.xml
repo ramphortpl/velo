@@ -3,7 +3,7 @@
     <!-- Le vert vif du logo (les roues du vélo, le repère de carte) : couleur d'accent des notifications. -->
     <color name="velogo_emerald">#01CD95</color>
     <!-- Fond de l'écran de démarrage, sous le logo : le fond clair de l'appli. -->
-    <color name="splash_background">#F7FBF8</color>
-    <color name="window_background_light">#F7FBF8</color>
-    <color name="window_background_dark">#0B131A</color>
+    <color name="splash_background">#EEF3F0</color>
+    <color name="window_background_light">#EEF3F0</color>
+    <color name="window_background_dark">#06100D</color>
 </resources>

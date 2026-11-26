@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -191,6 +192,9 @@ fun AppRoot(container: AppContainer, settings: Settings) {
                         },
                     )
 
+                    // Les listes des onglets s'arrêtent au-dessus du dégradé qui précède la barre d'onglets : leur
+                    // dernière ligne n'y reste pas à moitié effacée.
+                    val listPadding = PaddingValues(bottom = padding.calculateBottomPadding() + LIST_END_ROOM)
                     AnimatedVisibility(visible = tab != Tab.RIDE, enter = fadeIn(), exit = fadeOut()) {
                         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
                           Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -205,14 +209,14 @@ fun AppRoot(container: AppContainer, settings: Settings) {
                                 ),
                                 entryProvider = entryProvider {
                                     entry<SavedRoutesKey> {
-                                        SavedRoutesScreen(onShowMap = { tab = Tab.RIDE }, contentPadding = padding)
+                                        SavedRoutesScreen(onShowMap = { tab = Tab.RIDE }, contentPadding = listPadding)
                                     }
                                     entry<HistoryKey> {
                                         HistoryScreen(
                                             onOpenRide = { backStack.add(RideDetailKey(it)) },
                                             onOpenStats = { backStack.add(StatsKey) },
                                             onOpenSegments = { backStack.add(SegmentsKey) },
-                                            contentPadding = padding,
+                                            contentPadding = listPadding,
                                         )
                                     }
                                     entry<RideDetailKey> { key ->
@@ -240,7 +244,7 @@ fun AppRoot(container: AppContainer, settings: Settings) {
                                             onOpenAbout = { backStack.add(AboutKey) },
                                             onOpenOfflineMaps = { backStack.add(OfflineMapsKey) },
                                             onOpenPrivacy = { backStack.add(PrivacyKey) },
-                                            contentPadding = padding,
+                                            contentPadding = listPadding,
                                         )
                                     }
                                     entry<PrivacyKey> {
@@ -256,7 +260,7 @@ fun AppRoot(container: AppContainer, settings: Settings) {
                             )
                             // Sous la barre d'onglets, les listes s'estompent dans le fond : sans flou possible, des
                             // lignes de texte qui passeraient derrière le verre se mêleraient aux noms des onglets.
-                            if (barVisible) BottomFade(padding.calculateBottomPadding() + 22.dp, Modifier.align(Alignment.BottomCenter))
+                            if (barVisible) BottomFade(padding.calculateBottomPadding(), Modifier.align(Alignment.BottomCenter))
                           }
                         }
                     }
@@ -318,7 +322,7 @@ private fun TabBar(selected: Tab, badge: Tab?, onSelect: (Tab) -> Unit, modifier
                 val cell = (size.width - 2 * gap) / tabs.size
                 drawRoundRect(
                     color = marker,
-                    topLeft = Offset(gap + cell * position.value, gap),
+                    topLeft = Offset(gap + cell * position.value.coerceIn(0f, (tabs.size - 1).toFloat()), gap),
                     size = Size(cell, size.height - 2 * gap),
                     cornerRadius = CornerRadius((size.height - 2 * gap) / 2f),
                 )
@@ -350,14 +354,23 @@ private fun TabBar(selected: Tab, badge: Tab?, onSelect: (Tab) -> Unit, modifier
 }
 
 private val TAB_GAP = 5.dp
+/** Hauteur du dégradé qui éteint les listes au-dessus de la barre d'onglets, et place qu'elles gardent pour lui. */
+private val LIST_FADE = 40.dp
+private val LIST_END_ROOM = 32.dp
 
-/** Dégradé du transparent vers le fond de l'écran, posé au bas d'une liste. */
+/**
+ * Posé au bas d'une liste : sur la hauteur [solid] (celle de la barre d'onglets) le fond de l'écran, presque plein,
+ * et juste au-dessus un dégradé vers le transparent. Les lignes de la liste s'éteignent ainsi avant de passer
+ * derrière le verre de la barre, où elles se mêleraient aux noms des onglets.
+ */
 @Composable
-fun BottomFade(height: Dp, modifier: Modifier = Modifier) {
+fun BottomFade(solid: Dp, modifier: Modifier = Modifier, fade: Dp = LIST_FADE) {
     val background = MaterialTheme.colorScheme.surface
+    val total = solid + fade
+    val edge = if (total.value > 0f) fade.value / total.value else 1f
     Box(
-        modifier.fillMaxWidth().height(height).background(
-            Brush.verticalGradient(0f to background.copy(alpha = 0f), 0.42f to background.copy(alpha = 0.86f), 1f to background)
+        modifier.fillMaxWidth().height(total).background(
+            Brush.verticalGradient(0f to background.copy(alpha = 0f), edge to background.copy(alpha = 0.96f), 1f to background)
         )
     )
 }

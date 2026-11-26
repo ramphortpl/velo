@@ -140,10 +140,12 @@ def pixels():
     savoir lire une image PNG."""
     raw = run(["adb", "exec-out", "screencap"], timeout=60).stdout
     if len(raw) < 16:
+        log(f"lecture de l'écran : {len(raw)} octets reçus")
         return None
     width, height = struct.unpack("<II", raw[:8])
     header = len(raw) - width * height * 4
     if width <= 0 or height <= 0 or header not in (12, 16):
+        log(f"lecture de l'écran : {len(raw)} octets pour {width} × {height} points, format inattendu")
         return None
     return width, height, raw[header:]
 
@@ -469,6 +471,10 @@ def app_icon():
     time.sleep(2)
     shot("icone_de_l_appli")
     colours = logo_colours(0.0, 0.6)
+    if colours is None:
+        # La lecture de l'écran échoue parfois sur l'émulateur : une seconde tentative, après un instant.
+        time.sleep(3)
+        colours = logo_colours(0.0, 0.6)
     if colours is None:
         log("écran illisible : icône non vérifiée")
     else:
@@ -1141,6 +1147,10 @@ def first_opening():
     demander, et donne accès à sa politique de confidentialité. On retire donc l'autorisation (Android arrête
     alors l'appli), on rouvre, on regarde, puis on la rend."""
     log("explication avant la demande de position")
+    # Arrêt complet d'abord : retirer une autorisation à une appli ouverte la fait redémarrer là où elle en était
+    # (ici, sur le détail de la dernière sortie), alors qu'une première ouverture commence sur la carte.
+    shell(f"am force-stop {PACKAGE}")
+    time.sleep(1)
     for permission in ("ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"):
         shell(f"pm revoke {PACKAGE} android.permission.{permission}")
     time.sleep(2)

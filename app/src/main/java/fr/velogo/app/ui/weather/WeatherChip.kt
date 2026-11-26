@@ -57,7 +57,8 @@ fun WeatherChip(glance: WeatherGlance, onClick: () -> Unit, modifier: Modifier =
     val glass = LocalGlass.current.regular
     val rideColors = LocalRideColors.current
     val muted = glass.content.copy(alpha = 0.66f)
-    Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Chaque pilule réserve déjà la place d'un doigt : pas d'écart en plus entre les deux.
+    Column(modifier, horizontalAlignment = Alignment.End) {
         GlassPill(
             modifier = Modifier.semantics { contentDescription = glanceDescription(glance) },
             onClick = onClick,
