@@ -3,7 +3,6 @@ package fr.velogo.app.ui.components
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,11 +11,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -35,6 +36,8 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import fr.velogo.app.ui.theme.LocalGlass
+import fr.velogo.app.ui.theme.glass
 import kotlinx.coroutines.launch
 
 /**
@@ -57,14 +60,18 @@ fun HoldButton(
     val haptics = LocalHapticFeedback.current
     val confirm = rememberUpdatedState(onConfirmed)
     val shortTap = rememberUpdatedState(onShortTap)
-    val shape = RoundedCornerShape(22.dp)
+    val glass = LocalGlass.current.regular
+    // La couleur du texte ne change qu'au passage de la moitié : inutile de recomposer à chaque image du remplissage.
+    val filled by remember { derivedStateOf { progress.value > 0.5f } }
 
     Box(
         modifier
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surface)
-            .background(container.copy(alpha = 0.16f))
-            .drawBehind { drawRect(container, size = Size(size.width * progress.value, size.height)) }
+            .glass(glass)
+            .clip(CircleShape)
+            .drawBehind {
+                drawRect(container.copy(alpha = 0.10f))
+                drawRect(container, size = Size(size.width * progress.value, size.height))
+            }
             .semantics(mergeDescendants = true) {
                 role = Role.Button
                 onClick(label = label) { confirm.value(); true }
@@ -87,7 +94,7 @@ fun HoldButton(
             },
         contentAlignment = Alignment.Center,
     ) {
-        val foreground = if (progress.value > 0.5f) content else container
+        val foreground = if (filled) content else container
         Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             Icon(icon, contentDescription = null, tint = foreground, modifier = Modifier.size(30.dp))
             Spacer(Modifier.width(8.dp))

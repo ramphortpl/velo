@@ -1,5 +1,9 @@
 package fr.velogo.app.ui.ride
 
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import fr.velogo.app.BuildConfig
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
@@ -40,7 +44,19 @@ class StartRide(
     val start: () -> Unit,
 )
 
-private enum class StartDialog { LOCATION_DENIED, LOCATION_OFF, GPS_OFF, BATTERY }
+private enum class StartDialog { LOCATION_DISCLOSURE, LOCATION_DENIED, LOCATION_OFF, GPS_OFF, BATTERY }
+
+/**
+ * Ce que l'appli fait de la position, dit en clair juste avant de la demander : à quoi elle sert, quand elle est
+ * lue, et ce qui en sort du téléphone. Affiché sur la carte tant que l'autorisation manque, et dans une fenêtre
+ * quand on démarre une sortie sans l'avoir donnée. Le détail est dans Réglages > Confidentialité.
+ */
+val LOCATION_DISCLOSURE = listOf(
+    "VeloGo utilise ta position pour te situer sur la carte, enregistrer tes sorties et te guider. Pendant une sortie que tu " +
+        "as démarrée, elle est lue même écran éteint ou quand tu utilises une autre appli.",
+    "Tes sorties restent sur ton téléphone. Pour la météo et pour corriger l'altitude, une position arrondie et les points de " +
+        "tes sorties sont envoyés aux services d'Open-Meteo et de l'IGN, sans ton nom ni aucun identifiant.",
+)
 
 /**
  * Enchaîne tout ce qu'il faut avant de démarrer une sortie, sans jamais bloquer inutilement :
@@ -100,8 +116,11 @@ fun rememberStartRide(
 
     proceed.value = {
         when {
-            !gps.hasPermission() ->
-                locationLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            // On explique d'abord ce que l'appli fait de la position ; la fenêtre d'Android ne vient qu'ensuite.
+            !gps.hasPermission() -> {
+                wantsStart = false
+                dialog = StartDialog.LOCATION_DISCLOSURE
+            }
 
             !gps.isLocationEnabled() -> {
                 wantsStart = false
@@ -141,6 +160,24 @@ fun rememberStartRide(
     }
 
     when (dialog) {
+        StartDialog.LOCATION_DISCLOSURE -> AlertDialog(
+            onDismissRequest = { dialog = null },
+            title = { Text("Ta position") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    for (paragraph in LOCATION_DISCLOSURE) Text(paragraph)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    dialog = null
+                    wantsStart = true
+                    locationLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                }) { Text("Continuer") }
+            },
+            dismissButton = { TextButton(onClick = { dialog = null }) { Text("Plus tard") } },
+        )
+
         StartDialog.LOCATION_DENIED -> AlertDialog(
             onDismissRequest = { dialog = null },
             title = { Text("Position nécessaire") },
@@ -200,7 +237,7 @@ fun rememberStartRide(
         StartDialog.BATTERY -> AlertDialog(
             onDismissRequest = { },
             title = { Text("Enregistrer écran éteint") },
-            text = { Text("Pour que l'enregistrement ne s'arrête pas quand l'écran est éteint, autorise VeloGo à ne pas être mis en veille par l'économie de batterie. L'appli ne consomme que pendant une sortie.") },
+            text = { Text(batteryHintText(BuildConfig.DIRECT_BATTERY_EXEMPTION)) },
             confirmButton = {
                 TextButton(onClick = {
                     dialog = null
@@ -208,7 +245,7 @@ fun rememberStartRide(
                     wantsStart = true
                     val launched = runCatching { batteryLauncher.launch(batteryExemptionIntent(context)) }.isSuccess
                     if (!launched) proceed.value()
-                }) { Text("Autoriser") }
+                }) { Text(batteryActionLabel(BuildConfig.DIRECT_BATTERY_EXEMPTION)) }
             },
             dismissButton = {
                 TextButton(onClick = {
@@ -239,7 +276,27 @@ fun rememberStartRide(
 fun isIgnoringBatteryOptimizations(context: Context): Boolean =
     context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(context.packageName) ?: true
 
-/** Fenêtre système « Autoriser l'appli à toujours s'exécuter en arrière-plan ? ». */
+/**
+ * Là où l'on règle l'économie de batterie pour VeloGo.
+ *
+ * Version GitHub : la fenêtre d'Android « Autoriser l'appli à toujours s'exécuter en arrière-plan ? », qui se
+ * règle d'un appui. Version Google Play : la fiche de l'appli dans les réglages du téléphone, où l'on choisit
+ * Batterie > « Non restreinte » ; le magasin n'admet la demande directe que pour quelques familles d'applis.
+ */
 @SuppressLint("BatteryLife")
-fun batteryExemptionIntent(context: Context): Intent =
-    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:${context.packageName}".toUri())
+fun batteryExemptionIntent(context: Context, direct: Boolean = BuildConfig.DIRECT_BATTERY_EXEMPTION): Intent =
+    if (direct) Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:${context.packageName}".toUri())
+    else Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+
+/** Ce que dit la fenêtre proposée avant la première sortie, selon la façon dont le réglage se fait. */
+fun batteryHintText(direct: Boolean): String =
+    if (direct) {
+        "Pour que l'enregistrement ne s'arrête pas quand l'écran est éteint, autorise VeloGo à ne pas être mis en veille par " +
+            "l'économie de batterie. L'appli ne consomme que pendant une sortie."
+    } else {
+        "Pour que l'enregistrement ne s'arrête pas quand l'écran est éteint, évite que l'économie de batterie mette VeloGo en " +
+            "veille : sur la fiche de l'appli qui va s'ouvrir, touche « Batterie », puis choisis « Non restreinte ». " +
+            "L'appli ne consomme que pendant une sortie."
+    }
+
+fun batteryActionLabel(direct: Boolean): String = if (direct) "Autoriser" else "Ouvrir les réglages"

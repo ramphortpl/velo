@@ -6,16 +6,43 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import fr.velogo.app.ui.theme.Brand
+import fr.velogo.app.ui.theme.LocalGlass
+import fr.velogo.app.ui.theme.glass
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -52,6 +79,7 @@ import fr.velogo.app.ui.segments.SegmentDetailScreen
 import fr.velogo.app.ui.segments.SegmentsScreen
 import fr.velogo.app.ui.stats.StatsScreen
 import fr.velogo.app.ui.settings.AboutScreen
+import fr.velogo.app.ui.settings.PrivacyScreen
 import fr.velogo.app.ui.settings.SettingsScreen
 import fr.velogo.app.ui.theme.LocalIsDark
 import fr.velogo.app.ui.theme.VeloGoTheme
@@ -74,6 +102,9 @@ data object AboutKey : NavKey
 
 @Serializable
 data object OfflineMapsKey : NavKey
+
+@Serializable
+data object PrivacyKey : NavKey
 
 @Serializable
 data object StatsKey : NavKey
@@ -115,34 +146,21 @@ fun AppRoot(container: AppContainer, settings: Settings) {
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 bottomBar = {
+                    // Glissement seul, sans fondu : pendant un fondu, l'ombre de la barre, qui en dépasse, serait rognée.
                     AnimatedVisibility(barVisible, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
-                        NavigationBar {
-                            for (item in Tab.entries) {
-                                NavigationBarItem(
-                                    selected = tab == item,
-                                    onClick = {
-                                        when (item) {
-                                            Tab.RIDE -> Unit
-                                            Tab.ROUTES -> backStack.resetTo(SavedRoutesKey)
-                                            Tab.HISTORY -> backStack.resetTo(HistoryKey)
-                                            Tab.SETTINGS -> backStack.resetTo(SettingsKey)
-                                        }
-                                        tab = item
-                                    },
-                                    icon = {
-                                        BadgedBox(badge = { if (item == Tab.SETTINGS && update != null) Badge() }) {
-                                            Icon(painterResource(if (tab == item) item.selectedIcon else item.icon), contentDescription = null)
-                                        }
-                                    },
-                                    label = { Text(item.label) },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                        selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                                    ),
-                                )
-                            }
-                        }
+                        FloatingTabBar(
+                            selected = tab,
+                            badge = Tab.SETTINGS.takeIf { update != null },
+                            onSelect = { item ->
+                                when (item) {
+                                    Tab.RIDE -> Unit
+                                    Tab.ROUTES -> backStack.resetTo(SavedRoutesKey)
+                                    Tab.HISTORY -> backStack.resetTo(HistoryKey)
+                                    Tab.SETTINGS -> backStack.resetTo(SettingsKey)
+                                }
+                                tab = item
+                            },
+                        )
                     }
                 },
             ) { padding ->
@@ -164,12 +182,22 @@ fun AppRoot(container: AppContainer, settings: Settings) {
                             }
                             tab = Tab.SETTINGS
                         },
+                        onOpenPrivacy = {
+                            Snapshot.withMutableSnapshot {
+                                backStack.resetTo(SettingsKey)
+                                backStack.add(PrivacyKey)
+                            }
+                            tab = Tab.SETTINGS
+                        },
                     )
 
                     AnimatedVisibility(visible = tab != Tab.RIDE, enter = fadeIn(), exit = fadeOut()) {
                         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                          Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                             NavDisplay(
                                 backStack = backStack,
+                                // Sur un grand écran, les listes et les fiches gardent une largeur lisible, au milieu.
+                                modifier = Modifier.widthIn(max = READING_WIDTH),
                                 onBack = { if (backStack.size > 1) backStack.removeLastOrNull() else tab = Tab.RIDE },
                                 entryDecorators = listOf(
                                     rememberSaveableStateHolderNavEntryDecorator(),
@@ -211,8 +239,12 @@ fun AppRoot(container: AppContainer, settings: Settings) {
                                         SettingsScreen(
                                             onOpenAbout = { backStack.add(AboutKey) },
                                             onOpenOfflineMaps = { backStack.add(OfflineMapsKey) },
+                                            onOpenPrivacy = { backStack.add(PrivacyKey) },
                                             contentPadding = padding,
                                         )
+                                    }
+                                    entry<PrivacyKey> {
+                                        PrivacyScreen(onBack = { backStack.removeLastOrNull() })
                                     }
                                     entry<OfflineMapsKey> {
                                         OfflineMapsScreen(onBack = { backStack.removeLastOrNull() })
@@ -222,6 +254,10 @@ fun AppRoot(container: AppContainer, settings: Settings) {
                                     }
                                 },
                             )
+                            // Sous la barre d'onglets, les listes s'estompent dans le fond : sans flou possible, des
+                            // lignes de texte qui passeraient derrière le verre se mêleraient aux noms des onglets.
+                            if (barVisible) BottomFade(padding.calculateBottomPadding() + 22.dp, Modifier.align(Alignment.BottomCenter))
+                          }
                         }
                     }
                 }
@@ -231,6 +267,99 @@ fun AppRoot(container: AppContainer, settings: Settings) {
             BackHandler(enabled = tab != Tab.RIDE && backStack.size <= 1) { tab = Tab.RIDE }
         }
     }
+}
+
+/** Largeur que gardent, sur un grand écran, les éléments pensés pour un téléphone (barre d'onglets, boutons). */
+val COMPACT_WIDTH = 520.dp
+/** Largeur que gardent, sur un grand écran, les listes et les fiches. */
+val READING_WIDTH = 720.dp
+
+/** Hauteur de la barre d'onglets, et marge qui la sépare des bords de l'écran. */
+val TAB_BAR_HEIGHT = 64.dp
+private val TAB_BAR_MARGIN = 14.dp
+
+/**
+ * La barre d'onglets et les marges qui la font flotter au-dessus du bord de l'écran, sans fond : la carte et les
+ * listes passent dessous. Elle occupe 80 dp, plus la barre de navigation du téléphone.
+ */
+@Composable
+fun FloatingTabBar(selected: Tab, badge: Tab?, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(start = TAB_BAR_MARGIN, end = TAB_BAR_MARGIN, top = 8.dp, bottom = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        // Sur une tablette ou un téléphone déplié, la barre garde une largeur de téléphone, au milieu.
+        TabBar(selected, badge, onSelect, Modifier.widthIn(max = COMPACT_WIDTH))
+    }
+}
+
+/**
+ * La barre d'onglets : une pilule de verre qui flotte au bas de l'écran. Une pastille verte glisse sous l'onglet
+ * choisi ; pendant qu'elle glisse, elle seule est redessinée.
+ */
+@Composable
+private fun TabBar(selected: Tab, badge: Tab?, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier) {
+    val glass = LocalGlass.current
+    val tabs = Tab.entries
+    val position = animateFloatAsState(selected.ordinal.toFloat(), spring(dampingRatio = 0.78f, stiffness = 500f), label = "onglet")
+    val marker = Brand.Fresh.copy(alpha = if (LocalIsDark.current) 0.20f else 0.24f)
+    val chosenColor = MaterialTheme.colorScheme.primary
+    val idleColor = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(TAB_BAR_HEIGHT)
+            .glass(glass.regular)
+            .drawBehind {
+                val gap = TAB_GAP.toPx()
+                val cell = (size.width - 2 * gap) / tabs.size
+                drawRoundRect(
+                    color = marker,
+                    topLeft = Offset(gap + cell * position.value, gap),
+                    size = Size(cell, size.height - 2 * gap),
+                    cornerRadius = CornerRadius((size.height - 2 * gap) / 2f),
+                )
+            }
+            .padding(TAB_GAP)
+            .selectableGroup(),
+    ) {
+        for (item in tabs) {
+            val chosen = item == selected
+            val tint = if (chosen) chosenColor else idleColor
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(CircleShape)
+                    .selectable(selected = chosen, role = Role.Tab, onClick = { onSelect(item) }),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Box {
+                    Icon(painterResource(if (chosen) item.selectedIcon else item.icon), contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+                    // Une mise à jour attend : un point rose sur l'onglet des réglages.
+                    if (item == badge) Box(Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-2).dp).size(9.dp).background(Brand.Pink, CircleShape))
+                }
+                Text(item.label, style = MaterialTheme.typography.labelMedium, color = tint, maxLines = 1)
+            }
+        }
+    }
+}
+
+private val TAB_GAP = 5.dp
+
+/** Dégradé du transparent vers le fond de l'écran, posé au bas d'une liste. */
+@Composable
+fun BottomFade(height: Dp, modifier: Modifier = Modifier) {
+    val background = MaterialTheme.colorScheme.surface
+    Box(
+        modifier.fillMaxWidth().height(height).background(
+            Brush.verticalGradient(0f to background.copy(alpha = 0f), 0.42f to background.copy(alpha = 0.86f), 1f to background)
+        )
+    )
 }
 
 /** Remplace toute la pile par un seul écran, sans jamais la laisser vide. */

@@ -1,7 +1,7 @@
 name: APK VeloGo
 
-# À chaque push : tests, APK signé (toujours avec la même clé), essai de bout en bout sur un émulateur Android,
-# puis, si tout a réussi, publication de l'APK dans les Releases.
+# À chaque push : tests, APK signé et fichier pour Google Play (toujours avec la même clé), essai de bout en bout
+# sur un émulateur Android, puis, si tout a réussi, publication des deux dans les Releases.
 on:
   push:
     branches: ["main", "claude/**"]
@@ -94,21 +94,27 @@ jobs:
       # Ce qu'une fabrication précédente a déjà téléchargé. Sans cela tout dépend, à chaque fois, de dépôts de
       # bibliothèques qui refusent parfois de répondre aux machines de GitHub (« Plugin … was not found »).
       # « v2 » : les tests de la source GPS tournent aussi sur Android 8 et 11 simulés, deux images à télécharger
-      # en plus. La mémoire « v1 », quand elle existe encore, sert de point de départ : il ne manque qu'elles.
+      # en plus.
       - name: Mémoire des téléchargements
         id: memoire
         uses: actions/cache/restore@v6
         with:
           path: ${{ env.MEMOIRE_CHEMINS }}
           key: telechargements-v2-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
+          # À défaut de la mémoire exacte, la plus récente sert de point de départ : seules les bibliothèques
+          # nouvelles restent à télécharger.
           restore-keys: |
-            telechargements-v1-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
+            telechargements-v2-
 
       - name: Outils de construction
         run: bash outils/ci_outils_de_construction.sh
 
+      # Les vérifications Android portent sur les deux versions : celle des Releases GitHub et celle de Google Play.
       - name: Tests et vérifications
-        run: ./gradlew test lintDebug --console=plain
+        run: |
+          ./gradlew test :app:lintGithubDebug :app:lintPlayRelease --console=plain
+          # Les textes de la fiche Google Play ne doivent pas dépasser les longueurs du magasin.
+          python3 outils/fiche_play.py
 
       - name: Numéro de version
         id: version
@@ -123,7 +129,7 @@ jobs:
       - name: Version publiable non signée (pour compléter la mémoire)
         if: steps.memoire.outputs.cache-hit != 'true'
         run: |
-          ./gradlew :app:assembleRelease --console=plain \
+          ./gradlew :app:assembleGithubRelease :app:bundlePlayRelease --console=plain \
             -Pvelogo.buildNumber=${{ github.run_number }} \
             -Pvelogo.githubRepo=${{ github.repository }}
 
@@ -153,25 +159,41 @@ jobs:
           echo "::error::Les tests sont passés, mais le secret VELOGO_KEYSTORE_PASSWORD n'ouvre pas la clé de signature : aucun APK publié. La marche à suivre est dans le résumé de cette exécution."
           exit 1
 
-      - name: APK signé
+      # Deux fichiers, signés de la même clé : l'APK des Releases GitHub, et le fichier « AAB » que demande
+      # Google Play (même appli, sans la mise à jour par GitHub).
+      - name: APK signé et fichier pour Google Play
         if: steps.cle.outputs.presente == 'oui'
         env:
           VELOGO_KEYSTORE_PASSWORD: ${{ secrets.VELOGO_KEYSTORE_PASSWORD }}
         run: |
-          ./gradlew :app:assembleRelease --console=plain \
+          ./gradlew :app:assembleGithubRelease :app:bundlePlayRelease --console=plain \
             -Pvelogo.buildNumber=${{ github.run_number }} \
             -Pvelogo.githubRepo=${{ github.repository }}
-          APK=app/build/outputs/apk/release/app-release.apk
+          VERSION="${{ steps.version.outputs.name }}"
+          APK=app/build/outputs/apk/github/release/app-github-release.apk
+          AAB=app/build/outputs/bundle/playRelease/app-play-release.aab
           test -f "$APK" || { echo "::error::APK signé introuvable (mot de passe de la clé incorrect ?)"; ls -R app/build/outputs/apk; exit 1; }
+          test -f "$AAB" || { echo "::error::Fichier pour Google Play introuvable"; ls -R app/build/outputs/bundle; exit 1; }
           BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
           "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | grep -i "SHA-256"
-          cp "$APK" "VeloGo-${{ steps.version.outputs.name }}.apk"
+          # Les bibliothèques natives doivent accepter les pages mémoire de 16 Ko (exigence de Google Play).
+          "$BUILD_TOOLS/zipalign" -c -P 16 4 "$APK"
+          # Le fichier pour Google Play doit porter la même signature que l'APK.
+          jarsigner -verify "$AAB" | grep -q "jar verified" || { echo "::error::Le fichier pour Google Play n'est pas signé"; exit 1; }
+          EMPREINTE_APK="$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | grep -i 'SHA-256' | head -n 1 | sed 's/.*: //' | tr -d ':' | tr 'A-F' 'a-f')"
+          EMPREINTE_AAB="$(keytool -printcert -jarfile "$AAB" | grep 'SHA256:' | head -n 1 | sed 's/.*SHA256: //' | tr -d ':' | tr 'A-F' 'a-f')"
+          echo "Empreinte de l'APK : $EMPREINTE_APK"
+          echo "Empreinte du fichier pour Google Play : $EMPREINTE_AAB"
+          test -n "$EMPREINTE_APK" && test "$EMPREINTE_APK" = "$EMPREINTE_AAB" || { echo "::error::L'APK et le fichier pour Google Play n'ont pas la même signature"; exit 1; }
+          mkdir -p publication
+          cp "$APK" "publication/VeloGo-$VERSION.apk"
+          cp "$AAB" "publication/VeloGo-$VERSION-play.aab"
 
       - uses: actions/upload-artifact@v7
         if: steps.cle.outputs.presente == 'oui'
         with:
           name: VeloGo-${{ steps.version.outputs.name }}
-          path: VeloGo-${{ steps.version.outputs.name }}.apk
+          path: publication/
 
   essai:
     name: Essai sur émulateur Android 15
@@ -205,14 +227,16 @@ jobs:
         with:
           path: ${{ env.MEMOIRE_CHEMINS }}
           key: telechargements-v2-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
+          # À défaut de la mémoire exacte, la plus récente sert de point de départ : seules les bibliothèques
+          # nouvelles restent à télécharger.
           restore-keys: |
-            telechargements-v1-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
+            telechargements-v2-
 
       - name: Outils de construction
         run: bash outils/ci_outils_de_construction.sh
 
-      - name: APK d'essai (même code minifié que la version publiée)
-        run: ./gradlew :app:assembleSmoke --console=plain -Pvelogo.buildNumber=${{ github.run_number }}
+      - name: APK d'essai des deux versions (même code minifié que les versions publiées)
+        run: ./gradlew :app:assembleGithubSmoke :app:assemblePlaySmoke --console=plain -Pvelogo.buildNumber=${{ github.run_number }}
 
       - name: Accélération matérielle pour l'émulateur
         run: |
@@ -231,7 +255,7 @@ jobs:
           # Moteur graphique ANGLE (« swangle ») : avec le rendu logiciel par défaut (« swiftshader »), l'émulateur
           # n'affiche ni les textes ni le repère de position des cartes MapLibre, alors que l'appli est correcte.
           emulator-options: -no-snapshot-save -no-window -gpu swangle_indirect -noaudio -no-boot-anim -camera-back none
-          script: python3 outils/essai_emulateur.py app/build/outputs/apk/smoke/app-smoke.apk
+          script: python3 outils/essai_emulateur.py app/build/outputs/apk/github/smoke/app-github-smoke.apk app/build/outputs/apk/play/smoke/app-play-smoke.apk
 
       - uses: actions/upload-artifact@v7
         if: always()
@@ -268,8 +292,10 @@ jobs:
             echo "**Installation** : télécharge \`VeloGo-$VERSION.apk\` ci-dessous sur ton téléphone et ouvre-le. Il se met à jour par-dessus la version déjà installée, sans rien effacer."
             echo
             echo "Si un Samsung refuse l'installation : paramètres du téléphone > Sécurité et confidentialité > Bloqueur automatique, à désactiver le temps d'installer."
+            echo
+            echo "Le fichier \`VeloGo-$VERSION-play.aab\` ne s'installe pas sur un téléphone : c'est la même version, au format que demande la Google Play Console (voir \`docs/PLAY_STORE.md\`)."
           } > notes.md
-          gh release create "v$VERSION" "VeloGo-$VERSION.apk" \
+          gh release create "v$VERSION" "VeloGo-$VERSION.apk" "VeloGo-$VERSION-play.aab" \
             --title "VeloGo $VERSION" --notes-file notes.md --target "$GITHUB_SHA" --latest
           echo "### VeloGo $VERSION publié" >> "$GITHUB_STEP_SUMMARY"
           echo "https://github.com/${{ github.repository }}/releases/tag/v$VERSION" >> "$GITHUB_STEP_SUMMARY"

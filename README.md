@@ -87,7 +87,7 @@ Si le téléphone refuse l'installation :
   sans lui, elle montre le tracé seul.
 - La sauvegarde (une archive ZIP de fichiers GPX) contient les sorties, pas les segments ni les trajets
   enregistrés.
-- L'appli s'utilise en portrait.
+- Sur un téléphone, l'appli s'utilise en portrait ; sur une tablette ou un téléphone déplié, elle suit l'écran.
 
 ## Tes données
 
@@ -106,14 +106,28 @@ quelques services publics, sans compte ni identifiant :
 Avec les cartes hors ligne de ta région, la carte, les itinéraires, le guidage et l'altitude fonctionnent sans
 aucun réseau ; seule la recherche d'adresses en a besoin (un appui long sur la carte la remplace).
 
+Le détail est dans la [politique de confidentialité](docs/CONFIDENTIALITE.md), que l'appli affiche aussi
+(Réglages > Confidentialité).
+
+## Google Play
+
+Chaque version publiée contient aussi un fichier `VeloGo-x.y.z-play.aab` : la même appli, signée de la même clé,
+au format que demande le Play Store. Elle se distingue de l'APK sur deux points imposés par les règles du
+magasin : elle ne cherche pas ses mises à jour sur GitHub, et elle ne demande pas directement à Android de ne pas
+la mettre en veille (elle ouvre la fiche de l'appli dans les réglages du téléphone).
+
+Le [guide de publication](docs/PLAY_STORE.md) dit ce qu'il reste à faire côté Google (compte développeur à 25 $,
+test fermé, formulaires) et donne les réponses toutes prêtes ; les textes et les images de la fiche sont dans
+[docs/play](docs/play).
+
 ## Fabrication et publication
 
 Tout est automatique et gratuit, sur GitHub :
 
-- À chaque modification du code, le workflow **APK VeloGo** lance les tests, fabrique l'APK signé, puis déroule un
-  essai complet sur un émulateur Android 15 (sortie simulée, cartes hors ligne, itinéraire, guidage, mode avion…).
-  La version n'est publiée dans les [Releases](https://github.com/ramphortpl/velo/releases) que si tout a réussi,
-  une vingtaine de minutes plus tard.
+- À chaque modification du code, le workflow **APK VeloGo** lance les tests, fabrique l'APK signé et le fichier
+  pour Google Play, puis déroule un essai complet sur un émulateur Android 15 (sortie simulée, cartes hors ligne,
+  itinéraire, guidage, mode avion, version Play installée par-dessus…). La version n'est publiée dans les
+  [Releases](https://github.com/ramphortpl/velo/releases) que si tout a réussi, une vingtaine de minutes plus tard.
 - La signature a besoin du secret `VELOGO_KEYSTORE_PASSWORD` (**Settings > Secrets and variables > Actions**) : le
   mot de passe de la clé de signature, qui n'est écrit nulle part dans le dépôt. Tant qu'il manque, les tests
   tournent mais aucun APK n'est publié ; s'il est faux, le workflow le dit dès ses premières secondes (le bon mot
@@ -128,8 +142,8 @@ les calculs, `brouter`, `routing`, `app`). L'architecture, les décisions et les
 [CLAUDE.md](CLAUDE.md).
 
 ```bash
-./gradlew test                 # tous les tests
-./gradlew :app:assembleDebug   # APK de test
+./gradlew test                       # tous les tests
+./gradlew :app:assembleGithubDebug   # APK de test
 ```
 
 L'image d'aperçu de cette page se refait à partir des captures de l'essai sur émulateur :

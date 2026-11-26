@@ -5,86 +5,96 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
-// Identité VeloGo : vert émeraude sur bleu nuit. (Pas d'orange : on ne ressemble à aucune appli existante.)
-val Emerald = Color(0xFF1FD39A)
-val Night = Color(0xFF0B2239)
+/**
+ * Les trois couleurs du logo (`docs/logo`) : toute l'appli en découle.
+ * Vert foncé pour le texte fort et les boutons, vert vif pour ce qui est choisi ou en marche, rose pour la trace
+ * et pour arrêter.
+ */
+object Brand {
+    val Deep = Color(0xFF014A38)
+    val Fresh = Color(0xFF01CD95)
+    val Pink = Color(0xFFE70180)
+}
 
-/** Thème clair. */
+/**
+ * Thème clair, à la manière des listes groupées d'iOS : un fond gris très légèrement vert, et dessus des cartes
+ * blanches. `surface` est le fond des écrans, `surfaceContainerLow` celui des cartes et des feuilles.
+ */
 val LightColors: ColorScheme = lightColorScheme(
-    primary = Color(0xFF006B54),
+    primary = Brand.Deep,
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFF7FF8D2),
-    onPrimaryContainer = Color(0xFF002118),
-    secondary = Color(0xFF2B5F8A),
+    primaryContainer = Color(0xFFC6F6E5),
+    onPrimaryContainer = Color(0xFF013527),
+    secondary = Color(0xFF00795C),
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFCFE5FF),
-    onSecondaryContainer = Color(0xFF001D33),
-    tertiary = Color(0xFF7C5800),
+    secondaryContainer = Color(0xFFDDF3EA),
+    onSecondaryContainer = Color(0xFF01382B),
+    tertiary = Color(0xFFC8006E),
     onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFFFDEA6),
-    onTertiaryContainer = Color(0xFF271900),
+    tertiaryContainer = Color(0xFFFFD9E7),
+    onTertiaryContainer = Color(0xFF3E0020),
     error = Color(0xFFBA1A1A),
     onError = Color(0xFFFFFFFF),
     errorContainer = Color(0xFFFFDAD6),
     onErrorContainer = Color(0xFF410002),
-    background = Color(0xFFF7FBF8),
-    onBackground = Color(0xFF151D1A),
-    surface = Color(0xFFF7FBF8),
-    onSurface = Color(0xFF151D1A),
-    surfaceVariant = Color(0xFFDAE5DF),
-    onSurfaceVariant = Color(0xFF3F4945),
-    outline = Color(0xFF6F7975),
-    outlineVariant = Color(0xFFBEC9C3),
-    inverseSurface = Color(0xFF2A322F),
-    inverseOnSurface = Color(0xFFECF2EE),
-    inversePrimary = Color(0xFF60DBB7),
-    surfaceTint = Color(0xFF006B54),
-    surfaceDim = Color(0xFFD7DBD8),
-    surfaceBright = Color(0xFFF7FBF8),
+    background = Color(0xFFEEF3F0),
+    onBackground = Color(0xFF0E1A16),
+    surface = Color(0xFFEEF3F0),
+    onSurface = Color(0xFF0E1A16),
+    surfaceVariant = Color(0xFFDCE7E1),
+    onSurfaceVariant = Color(0xFF45534D),
+    outline = Color(0xFF72807A),
+    outlineVariant = Color(0xFFD3DDD8),
+    inverseSurface = Color(0xFF1F2B27),
+    inverseOnSurface = Color(0xFFEAF2EE),
+    inversePrimary = Color(0xFF4FE0B6),
+    surfaceTint = Brand.Deep,
+    surfaceDim = Color(0xFFD5DDD9),
+    surfaceBright = Color(0xFFFFFFFF),
     surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFF1F5F2),
-    surfaceContainer = Color(0xFFEBEFEC),
-    surfaceContainerHigh = Color(0xFFE5EAE6),
-    surfaceContainerHighest = Color(0xFFDFE4E1),
+    surfaceContainerLow = Color(0xFFFFFFFF),
+    surfaceContainer = Color(0xFFFAFCFB),
+    surfaceContainerHigh = Color(0xFFF7FAF8),
+    surfaceContainerHighest = Color(0xFFE5EDE9),
 )
 
-/** Thème sombre : surfaces bleu nuit. */
+/** Thème sombre : un noir à peine vert, des cartes un ton au-dessus, et le vert vif du logo pour ce qui compte. */
 val DarkColors: ColorScheme = darkColorScheme(
-    primary = Color(0xFF4FDDB3),
-    onPrimary = Color(0xFF00382B),
-    primaryContainer = Color(0xFF00513F),
-    onPrimaryContainer = Color(0xFF7FF8D2),
-    secondary = Color(0xFF9CCBFB),
-    onSecondary = Color(0xFF003353),
-    secondaryContainer = Color(0xFF0E4A72),
-    onSecondaryContainer = Color(0xFFCFE5FF),
-    tertiary = Color(0xFFF5BF48),
-    onTertiary = Color(0xFF412D00),
-    tertiaryContainer = Color(0xFF5E4200),
-    onTertiaryContainer = Color(0xFFFFDEA6),
+    primary = Brand.Fresh,
+    onPrimary = Color(0xFF00382A),
+    primaryContainer = Brand.Deep,
+    onPrimaryContainer = Color(0xFFA6F5DB),
+    secondary = Color(0xFF8FD6BD),
+    onSecondary = Color(0xFF00382A),
+    secondaryContainer = Color(0xFF173A2F),
+    onSecondaryContainer = Color(0xFFC4EFDF),
+    tertiary = Color(0xFFFF6CB5),
+    onTertiary = Color(0xFF5E0034),
+    tertiaryContainer = Color(0xFF7A0045),
+    onTertiaryContainer = Color(0xFFFFD9E7),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
     errorContainer = Color(0xFF93000A),
     onErrorContainer = Color(0xFFFFDAD6),
-    background = Color(0xFF0B131A),
-    onBackground = Color(0xFFDEE3E8),
-    surface = Color(0xFF0B131A),
-    onSurface = Color(0xFFDEE3E8),
-    surfaceVariant = Color(0xFF3C4750),
-    onSurfaceVariant = Color(0xFFBBC7D1),
-    outline = Color(0xFF86919B),
-    outlineVariant = Color(0xFF3C4750),
-    inverseSurface = Color(0xFFDEE3E8),
-    inverseOnSurface = Color(0xFF283038),
-    inversePrimary = Color(0xFF006B54),
-    surfaceTint = Color(0xFF4FDDB3),
-    surfaceDim = Color(0xFF0B131A),
-    surfaceBright = Color(0xFF313A44),
-    surfaceContainerLowest = Color(0xFF060D13),
-    surfaceContainerLow = Color(0xFF131C24),
-    surfaceContainer = Color(0xFF17212A),
-    surfaceContainerHigh = Color(0xFF212B35),
-    surfaceContainerHighest = Color(0xFF2C3640),
+    background = Color(0xFF06100D),
+    onBackground = Color(0xFFE1EBE6),
+    surface = Color(0xFF06100D),
+    onSurface = Color(0xFFE1EBE6),
+    surfaceVariant = Color(0xFF2F3D37),
+    onSurfaceVariant = Color(0xFFB4C4BC),
+    outline = Color(0xFF7F8F87),
+    outlineVariant = Color(0xFF2A3731),
+    inverseSurface = Color(0xFFE1EBE6),
+    inverseOnSurface = Color(0xFF1F2B27),
+    inversePrimary = Brand.Deep,
+    surfaceTint = Brand.Fresh,
+    surfaceDim = Color(0xFF06100D),
+    surfaceBright = Color(0xFF2A3833),
+    surfaceContainerLowest = Color(0xFF020806),
+    surfaceContainerLow = Color(0xFF101C18),
+    surfaceContainer = Color(0xFF14211C),
+    surfaceContainerHigh = Color(0xFF1B2A24),
+    surfaceContainerHighest = Color(0xFF24342E),
 )
 
 /**
@@ -111,35 +121,53 @@ val SunlightColors: ColorScheme = LightColors.copy(
 
 /** Couleurs propres au vélo, en plus de celles de Material. */
 data class RideColors(
-    /** La trace enregistrée sur la carte. */
+    /** La trace enregistrée sur la carte : le rose du logo. */
     val track: Color,
-    /** L'itinéraire à suivre. */
+    /** L'itinéraire à suivre : bleu, la seule couleur qui tranche sur tous les fonds de carte. */
     val route: Color,
     val climb: Color,
     val descent: Color,
     /** Bouton d'arrêt. */
     val stop: Color,
     val onStop: Color,
-    /** Pause en cours. */
+    /** Pause en cours, signal moyen : ce qui demande un peu d'attention. */
     val paused: Color,
+    /** La pluie, et le fond des messages qui l'annoncent. */
+    val rain: Color,
+    val rainContainer: Color,
+    val onRainContainer: Color,
+    /** Le soleil. */
+    val sun: Color,
+    /** Ce qui est en marche (carte qui suit la position, bon signal) : le vert vif du logo, lisible sur fond clair. */
+    val active: Color,
 )
 
 val LightRideColors = RideColors(
-    track = Color(0xFFE5006D),
+    track = Brand.Pink,
     route = Color(0xFF1565C0),
-    climb = Color(0xFFC62828),
-    descent = Color(0xFF1565C0),
-    stop = Color(0xFFB3261E),
+    climb = Color(0xFFD1006F),
+    descent = Color(0xFF00795C),
+    stop = Brand.Pink,
     onStop = Color(0xFFFFFFFF),
     paused = Color(0xFF8A5A00),
+    rain = Color(0xFF1A66C9),
+    rainContainer = Color(0xFFD9E8FF),
+    onRainContainer = Color(0xFF062B5C),
+    sun = Color(0xFFC27A00),
+    active = Color(0xFF00A57B),
 )
 
 val DarkRideColors = RideColors(
-    track = Color(0xFFFF5CA8),
+    track = Color(0xFFFF4FA3),
     route = Color(0xFF64B5F6),
-    climb = Color(0xFFFF8A80),
-    descent = Color(0xFF82B1FF),
-    stop = Color(0xFFFFB4AB),
-    onStop = Color(0xFF690005),
+    climb = Color(0xFFFF6CB5),
+    descent = Color(0xFF4FE0B6),
+    stop = Color(0xFFFF4FA3),
+    onStop = Color(0xFF3E0020),
     paused = Color(0xFFF5BF48),
+    rain = Color(0xFF8CBBFF),
+    rainContainer = Color(0xFF123A6B),
+    onRainContainer = Color(0xFFD9E8FF),
+    sun = Color(0xFFF5BF48),
+    active = Brand.Fresh,
 )

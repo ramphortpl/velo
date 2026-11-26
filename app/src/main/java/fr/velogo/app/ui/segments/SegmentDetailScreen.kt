@@ -1,5 +1,6 @@
 package fr.velogo.app.ui.segments
 
+import fr.velogo.app.ui.components.VeloCard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -210,7 +211,7 @@ fun SegmentDetailBody(
 @Composable
 private fun Summary(efforts: List<EffortRow>) {
     val best = efforts.firstOrNull()
-    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    VeloCard {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
             Column(Modifier.weight(1f)) {
                 Text("RECORD", style = LabelCapsStyle.copy(fontSize = 12.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -242,7 +243,7 @@ private fun EffortList(efforts: List<EffortRow>, searching: Boolean, onOpenRide:
         )
         return
     }
-    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    VeloCard {
         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
             efforts.forEachIndexed { index, effort ->
                 if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)

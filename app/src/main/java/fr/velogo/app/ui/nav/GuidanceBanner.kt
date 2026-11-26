@@ -8,11 +8,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -28,6 +26,9 @@ import androidx.compose.ui.unit.sp
 import fr.velogo.app.R
 import fr.velogo.app.nav.GuidanceState
 import fr.velogo.app.nav.RouteOption
+import fr.velogo.app.ui.theme.GlassBox
+import fr.velogo.app.ui.theme.GlassStyle
+import fr.velogo.app.ui.theme.LocalGlass
 import fr.velogo.app.ui.theme.NumberStyle
 import fr.velogo.core.format.Formats
 import fr.velogo.core.nav.GuidancePhrases
@@ -37,7 +38,15 @@ import fr.velogo.core.nav.RoutePreference
 /** Hauteur du bandeau de guidage : les autres éléments de l'écran se décalent d'autant. */
 val GUIDANCE_BANNER_HEIGHT: Dp = 78.dp
 
-private val OFF_ROUTE_COLOR = Color(0xFFFFB300)
+private val OFF_ROUTE_GLASS = GlassStyle(
+    fillTop = Color(0xFFFFC738),
+    fillBottom = Color(0xFFFFB300),
+    rimTop = Color.White.copy(alpha = 0.65f),
+    rimBottom = Color.White.copy(alpha = 0.10f),
+    edge = Color.Black.copy(alpha = 0.18f),
+    shadow = Color.Black.copy(alpha = 0.28f),
+    content = Color.Black,
+)
 
 /** Icône d'une manœuvre. */
 fun maneuverIcon(maneuver: Maneuver): Int = when (maneuver) {
@@ -86,13 +95,9 @@ fun maneuverDistance(meters: Double): String = when {
 fun GuidanceBanner(guidance: GuidanceState, onStop: () -> Unit, modifier: Modifier = Modifier) {
     val nav = guidance.nav
     val offRoute = nav.isOffRoute
-    val container: Color
-    val content: Color
-    when {
-        // Ambre vif et texte noir : l'alerte doit sauter aux yeux, en plein soleil comme de nuit.
-        offRoute -> { container = OFF_ROUTE_COLOR; content = Color.Black }
-        else -> { container = MaterialTheme.colorScheme.primary; content = MaterialTheme.colorScheme.onPrimary }
-    }
+    // Vert foncé du logo ; ambre vif et texte noir hors itinéraire : l'alerte doit sauter aux yeux, en plein
+    // soleil comme de nuit.
+    val style = if (offRoute) OFF_ROUTE_GLASS else LocalGlass.current.deep
     val next = nav.next
     val icon: Int
     val headline: String
@@ -127,12 +132,10 @@ fun GuidanceBanner(guidance: GuidanceState, onStop: () -> Unit, modifier: Modifi
     }
     val remaining = "${Formats.distanceAuto(nav.remainingM)} · ${Formats.durationWords((nav.remainingS * 1000).toLong())}"
 
-    Surface(
+    GlassBox(
         modifier = modifier.fillMaxWidth().height(GUIDANCE_BANNER_HEIGHT).semantics { contentDescription = "Guidage : $headline, $detail" },
-        shape = RoundedCornerShape(22.dp),
-        color = container,
-        contentColor = content,
-        shadowElevation = 4.dp,
+        style = style,
+        corner = 28.dp,
     ) {
         Row(Modifier.padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(46.dp))

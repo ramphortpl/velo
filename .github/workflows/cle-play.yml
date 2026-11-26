@@ -1,0 +1,86 @@
+name: Clé pour Google Play
+
+# À lancer à la main, une seule fois, et seulement si tu choisis d'utiliser sur Google Play la même clé de
+# signature que pour les APK des Releases (voir docs/PLAY_STORE.md, étape « Signature »).
+#
+# La Play Console demande alors une copie de la clé, chiffrée avec une clé publique qu'elle fournit : ainsi seul
+# Google peut la relire. Ce workflow fabrique cette copie avec l'outil officiel de Google (PEPK) et la met à
+# disposition pendant un jour dans les « Artifacts » de l'exécution. Le mot de passe de la clé reste dans le
+# secret VELOGO_KEYSTORE_PASSWORD ; rien n'est écrit dans le dépôt.
+#
+# Avant de le lancer : dépose dans signing/ le fichier « encryption_public_key.pem » téléchargé depuis la Play
+# Console, sous le nom play_encryption_public_key.pem. N'y mets que ce fichier-là : la copie de ta clé serait
+# lisible par quiconque posséderait la clé privée correspondante.
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Écris EXPORTER pour confirmer"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  cle:
+    name: Copie chiffrée de la clé de signature
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Vérifications
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          VELOGO_KEYSTORE_PASSWORD: ${{ secrets.VELOGO_KEYSTORE_PASSWORD }}
+        run: |
+          test "$CONFIRMATION" = "EXPORTER" || { echo "::error::Confirmation absente : rien n'a été fait."; exit 1; }
+          test -f signing/play_encryption_public_key.pem || { echo "::error::Dépose d'abord dans signing/ le fichier encryption_public_key.pem téléchargé depuis la Play Console, sous le nom play_encryption_public_key.pem."; exit 1; }
+          grep -q "BEGIN PUBLIC KEY" signing/play_encryption_public_key.pem || { echo "::error::signing/play_encryption_public_key.pem n'est pas une clé publique (fichier PEM)."; exit 1; }
+          P="$(printf '%s' "$VELOGO_KEYSTORE_PASSWORD" | tr -d '[:space:]')"
+          test -n "$P" || { echo "::error::Le secret VELOGO_KEYSTORE_PASSWORD est absent."; exit 1; }
+          keytool -list -keystore signing/velogo-release.p12 -storetype PKCS12 -storepass "$P" -alias velogo > /dev/null \
+            || { echo "::error::Le secret VELOGO_KEYSTORE_PASSWORD n'ouvre pas la clé de signature."; exit 1; }
+
+      # L'outil est celui que la Play Console propose au téléchargement. Son empreinte est celle du fichier relevé
+      # le 26/11/2026 : si Google le remplace, on s'arrête plutôt que d'exécuter un fichier que personne n'a regardé.
+      - name: Outil de Google (PEPK)
+        run: |
+          curl -fsSL --retry 3 -o pepk.jar https://www.gstatic.com/play-apps-publisher-rapid/signing-tool/prod/pepk.jar
+          echo "aaccc0774b240aa5304bdad2a49865e92f229ca73209ecb6eaafe75dc858e24e  pepk.jar" | sha256sum -c - \
+            || { echo "::error::L'outil PEPK de Google a changé depuis le 26/11/2026. Télécharge-le depuis la Play Console et suis ses instructions, ou demande la mise à jour de l'empreinte dans ce workflow."; exit 1; }
+
+      - name: Copie chiffrée de la clé
+        env:
+          VELOGO_KEYSTORE_PASSWORD: ${{ secrets.VELOGO_KEYSTORE_PASSWORD }}
+        run: |
+          P="$(printf '%s' "$VELOGO_KEYSTORE_PASSWORD" | tr -d '[:space:]')"
+          java -jar pepk.jar \
+            --keystore=signing/velogo-release.p12 \
+            --alias=velogo \
+            --output=cle-pour-google-play.zip \
+            --include-cert \
+            --rsa-aes-encryption \
+            --encryption-key-path=signing/play_encryption_public_key.pem \
+            --keystore-pass="$P" \
+            --key-pass="$P"
+          test -s cle-pour-google-play.zip || { echo "::error::L'outil n'a rien produit."; exit 1; }
+          {
+            echo "### Copie chiffrée de la clé prête"
+            echo
+            echo "Télécharge « cle-pour-google-play » plus bas (rubrique Artifacts), dézippe-le une fois, puis dépose le fichier \`cle-pour-google-play.zip\` qu'il contient dans la Play Console."
+            echo
+            echo "Le fichier disparaît d'ici dans un jour."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cle-pour-google-play
+          path: cle-pour-google-play.zip
+          retention-days: 1

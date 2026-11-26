@@ -1,5 +1,8 @@
 package fr.velogo.app.ui.history
 
+import fr.velogo.app.ui.components.LargeTitleBar
+import fr.velogo.app.ui.theme.Corners
+import fr.velogo.app.ui.components.VeloCard
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,7 +29,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -92,11 +94,11 @@ fun HistoryContent(
     /** Le jour d'aujourd'hui : il fixe la semaine résumée en tête de liste. */
     today: LocalDate = LocalDate.now(),
 ) {
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = { TopAppBar(title = { Text("Mes sorties") }, scrollBehavior = scrollBehavior) },
+        topBar = { LargeTitleBar("Mes sorties", scrollBehavior) },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { inner ->
         val list = rides
@@ -129,7 +131,7 @@ fun HistoryContent(
 /** La semaine en cours en un coup d'œil, et l'accès aux statistiques et aux segments. */
 @Composable
 private fun WeekCard(week: PeriodTotals, onOpenStats: () -> Unit, onOpenSegments: () -> Unit) {
-    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
+    VeloCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Text("CETTE SEMAINE", style = LabelCapsStyle.copy(fontSize = 13.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(verticalAlignment = Alignment.Bottom) {
@@ -178,16 +180,12 @@ private fun MonthHeader(rides: List<RideEntity>) {
 
 @Composable
 private fun RideCard(ride: RideEntity, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-    ) {
+    VeloCard(modifier = modifier.fillMaxWidth(), onClick = onClick) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             TrackThumbnail(
                 encodedPreview = ride.preview,
                 color = LocalRideColors.current.track,
-                modifier = Modifier.size(76.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                modifier = Modifier.size(76.dp).clip(RoundedCornerShape(Corners.Thumbnail)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
                 startColor = MaterialTheme.colorScheme.primary,
             )
             Spacer(Modifier.width(14.dp))

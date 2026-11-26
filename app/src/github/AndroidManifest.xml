@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Version distribuée par les Releases GitHub seulement : permet d'afficher la fenêtre d'Android « Autoriser
+         l'appli à toujours s'exécuter en arrière-plan ? ». Google Play ne l'admet que pour quelques familles
+         d'applis, dont les compteurs de vélo ne font pas partie : la version Play ouvre à la place la fiche de
+         l'appli dans les réglages du téléphone. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+</manifest>

@@ -29,6 +29,15 @@ val VeloGoTypography = Typography(
     titleLarge = base.titleLarge.copy(fontFamily = BarlowCondensed, fontWeight = FontWeight.SemiBold, fontSize = 24.sp),
 )
 
+/** Le grand titre d'un onglet (« Mes sorties », « Réglages »…), quand la liste est en haut. */
+val ScreenTitleStyle = TextStyle(
+    fontFamily = BarlowCondensed,
+    fontWeight = FontWeight.Bold,
+    fontSize = 36.sp,
+    lineHeight = 40.sp,
+    letterSpacing = 0.sp,
+)
+
 /**
  * Style des chiffres : chiffres « tabulaires » (tous de même largeur) pour que l'affichage ne tremble pas
  * quand la vitesse change, et interligne serré pour occuper toute la hauteur disponible.

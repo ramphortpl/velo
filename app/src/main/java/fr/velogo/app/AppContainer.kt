@@ -130,18 +130,22 @@ class AppContainer(private val app: Application) {
                 runCatching { analysis.analyzePending() }
             }
         }
-        // Vérification discrète des mises à jour, au plus deux fois par jour.
-        appScope.launch {
-            val current = settings.settings.first()
-            val now = System.currentTimeMillis()
-            if (!BuildConfig.DEBUG && current.checkUpdates && now - current.lastUpdateCheckMs > UPDATE_CHECK_PERIOD_MS) {
-                checkForUpdate()
+        // Vérification discrète des mises à jour, au plus deux fois par jour. La version distribuée par Google Play
+        // ne s'en occupe pas : c'est le magasin qui la met à jour, et lui seul en a le droit.
+        if (BuildConfig.SELF_UPDATE) {
+            appScope.launch {
+                val current = settings.settings.first()
+                val now = System.currentTimeMillis()
+                if (!BuildConfig.DEBUG && current.checkUpdates && now - current.lastUpdateCheckMs > UPDATE_CHECK_PERIOD_MS) {
+                    checkForUpdate()
+                }
             }
         }
     }
 
     /** Interroge les Releases du dépôt. Renvoie la version trouvée (même si elle n'est pas plus récente), ou null en cas d'échec. */
     suspend fun checkForUpdate(): UpdateInfo? {
+        if (!BuildConfig.SELF_UPDATE) return null
         val found = runCatching { updateChecker.latest() }.getOrNull()
         if (found != null) {
             settings.setLastUpdateCheck(System.currentTimeMillis())

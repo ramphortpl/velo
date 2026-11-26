@@ -1,5 +1,71 @@
 # Nouveautés de VeloGo
 
+## Version 0.7 — Un nouveau visage, et une version pour le Play Store
+
+### Nouveau design
+
+- **Les couleurs du logo partout** : le vert foncé pour le texte fort et les boutons, le vert vif pour ce qui est
+  choisi ou en marche (« Démarrer », l'onglet actif, les interrupteurs), le rose pour ta trace et pour « Terminer ».
+  Le bleu ne reste que là où il sert à lire : l'itinéraire à suivre sur la carte, et la pluie.
+- **Du verre sur la carte** : la barre d'onglets, les boutons, les pastilles (GPS, météo) et le rappel des données
+  sont des pilules translucides, avec un reflet sur le bord et une ombre douce. On devine la carte au travers.
+- **Une barre d'onglets flottante**, détachée du bas de l'écran ; une pastille verte glisse d'un onglet à l'autre.
+- **Les boutons de la carte réunis** dans une seule pilule (fond de carte, orientation, recentrage), sous le bouton
+  d'itinéraire, en vert.
+- **Écran guidon en tuiles** : chaque donnée a sa tuile aux coins arrondis. En « plein soleil », elles sont blanches
+  et cernées de noir.
+- **Des arrondis à la manière d'iOS** sur les cartes des listes : la courbe se raccorde aux côtés sans à-coup.
+- **De grands titres** en haut des onglets (« Mes sorties », « Mes trajets », « Réglages »), qui se rangent en petit
+  dès que la liste défile ; des interrupteurs verts ; un sélecteur dont la pastille glisse (Carte / Données, type
+  de vélo, thème…).
+- Le panneau d'itinéraire ne touche plus les bords de l'écran : c'est un panneau flottant, comme le reste.
+
+### Toujours aussi fluide
+
+Un vrai « Liquid Glass » floute en direct ce qu'il y a derrière lui. Sur la carte, ce n'est pas possible sans
+saccades : elle est dessinée à part, l'interface ne peut ni la lire ni la flouter, et le téléphone n'a pas la
+puissance de flouter 90 images par seconde. Le verre de VeloGo est donc **dessiné** (fond translucide, reflet,
+ombre) : quelques rectangles arrondis que le téléphone trace sans effort.
+
+- Faire glisser la carte ne redessine rien de l'interface, exactement comme avant.
+- Les animations (pastille des onglets, sélecteurs, interrupteurs, rebond des boutons) ne redessinent que
+  l'élément qui bouge.
+- Quand un autre onglet recouvre la carte, son habillage n'est plus dessiné du tout : c'est un peu de travail en
+  moins qu'avant à chaque image d'une liste qu'on fait défiler.
+
+### Prête pour le Play Store
+
+- Chaque version publiée contient maintenant, à côté de l'APK, un fichier **`VeloGo-x.y.z-play.aab`** : la même
+  appli au format qu'exige Google Play, signée de la même clé. Elle ne cherche pas ses mises à jour sur GitHub
+  (c'est le magasin qui s'en charge) et règle l'économie de batterie par la fiche de l'appli.
+- **Avant de demander ta position**, l'appli dit ce qu'elle en fait et ce qui sort du téléphone.
+- **Réglages > Confidentialité** : la politique de confidentialité, lisible sans réseau.
+- L'appli s'adapte aux **tablettes et aux téléphones pliables** : écran guidon en paysage, listes et boutons qui
+  gardent une largeur lisible.
+- **Le guide pas à pas** est dans `docs/PLAY_STORE.md`, avec les réponses toutes prêtes aux formulaires de Google ;
+  les textes et les images de la fiche sont dans `docs/play/`.
+
+### Ce qu'il reste à faire de ton côté pour publier
+
+Rien n'est obligatoire tant que tu ne veux pas publier, et rien n'a été créé à ta place.
+
+1. Un compte développeur Google Play : **25 $ une seule fois**, avec vérification de ton identité. Google affiche
+   publiquement ton nom légal, ton pays et une adresse e-mail.
+2. Un **test fermé avec 12 testeurs pendant 14 jours**, exigé des comptes personnels avant l'ouverture à tous.
+3. Une adresse publique pour la politique de confidentialité : le plus simple est de fusionner la branche de
+   travail dans `main` (dis-le-moi).
+4. Une courte vidéo montrant l'enregistrement d'une sortie, demandée par Google.
+
+### Limites connues
+
+- Le verre ne floute pas la carte : les panneaux qui portent beaucoup de texte (itinéraire) sont presque opaques
+  pour rester lisibles.
+- Le nouveau design a été vérifié en images sur ordinateur et sur l'émulateur Android 15, pas sur ton téléphone :
+  la lisibilité au soleil et la fluidité réelle sur le Galaxy A05s restent à confirmer par toi.
+- Rien de ce qui se passe dans la Play Console n'a pu être essayé (il faut un compte), en particulier l'envoi de la
+  clé de signature (étape 3 du guide).
+- Les tailles de tablette n'ont été regardées qu'en images, pas sur une vraie tablette.
+
 ## Version 0.6, mise à jour — Des boucles, et des trajets qui disent ce qu'ils contiennent
 
 - **Pourquoi un trajet annoncé 40 km n'en faisait que 31.** Quand l'arrivée d'un itinéraire reste posée quelque

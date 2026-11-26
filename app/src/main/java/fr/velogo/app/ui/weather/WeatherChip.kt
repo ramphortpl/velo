@@ -1,6 +1,5 @@
 package fr.velogo.app.ui.weather
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -24,13 +23,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import fr.velogo.app.R
+import fr.velogo.app.ui.components.GlassPill
+import fr.velogo.app.ui.components.VeloCard
 import fr.velogo.app.ui.theme.LabelCapsStyle
+import fr.velogo.app.ui.theme.LocalGlass
+import fr.velogo.app.ui.theme.LocalRideColors
+import fr.velogo.app.ui.theme.LocalSunlight
 import fr.velogo.app.ui.theme.NumberStyle
 import fr.velogo.core.format.Formats
 import fr.velogo.core.weather.RainForecast
@@ -39,8 +42,8 @@ import kotlin.math.roundToInt
 /** Couleur d'une icône météo : ambre pour le soleil, bleu pour ce qui mouille, neutre sinon. */
 @Composable
 fun weatherTint(code: Int?): Color = when {
-    isWetKind(code) -> MaterialTheme.colorScheme.secondary
-    code == 0 || code == 1 || code == 2 -> MaterialTheme.colorScheme.tertiary
+    isWetKind(code) -> LocalRideColors.current.rain
+    code == 0 || code == 1 || code == 2 -> LocalRideColors.current.sun
     else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
@@ -51,48 +54,44 @@ fun weatherTint(code: Int?): Color = when {
 @Composable
 fun WeatherChip(glance: WeatherGlance, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val now = glance.now
-    Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Surface(
-            onClick = onClick,
-            shape = RoundedCornerShape(50),
-            shadowElevation = 3.dp,
-            color = MaterialTheme.colorScheme.surface,
+    val glass = LocalGlass.current.regular
+    val rideColors = LocalRideColors.current
+    val muted = glass.content.copy(alpha = 0.66f)
+    Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        GlassPill(
             modifier = Modifier.semantics { contentDescription = glanceDescription(glance) },
+            onClick = onClick,
+            horizontalPadding = 13.dp,
+            verticalPadding = 7.dp,
         ) {
             // Les lecteurs d'écran lisent la phrase ci-dessus, pas les morceaux un par un.
-            Row(Modifier.clearAndSetSemantics { }.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.clearAndSetSemantics { }, verticalAlignment = Alignment.CenterVertically) {
                 Icon(painterResource(weatherIcon(now.code, now.isDay)), contentDescription = null, tint = weatherTint(now.code), modifier = Modifier.size(24.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(Formats.temperature(now.temperatureC), style = NumberStyle.copy(fontSize = 24.sp), color = MaterialTheme.colorScheme.onSurface)
+                Text(Formats.temperature(now.temperatureC), style = NumberStyle.copy(fontSize = 24.sp))
                 val wind = now.windKmh
                 if (wind != null) {
                     Spacer(Modifier.width(10.dp))
-                    Icon(painterResource(R.drawable.ic_air), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    Icon(painterResource(R.drawable.ic_air), contentDescription = null, tint = muted, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(3.dp))
-                    Text("${wind.roundToInt()}", style = NumberStyle.copy(fontSize = 20.sp), color = MaterialTheme.colorScheme.onSurface)
+                    Text("${wind.roundToInt()}", style = NumberStyle.copy(fontSize = 20.sp))
                     Spacer(Modifier.width(3.dp))
-                    Text("KM/H", style = LabelCapsStyle.copy(fontSize = 11.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("KM/H", style = LabelCapsStyle.copy(fontSize = 11.sp), color = muted)
                 }
             }
         }
         glance.rain?.let { rain ->
-            Surface(
-                onClick = onClick,
-                shape = RoundedCornerShape(50),
-                shadowElevation = 3.dp,
-                color = MaterialTheme.colorScheme.secondaryContainer,
+            // La pluie qui approche : une pilule bleue, pleine, qui ne se confond avec rien d'autre sur la carte.
+            GlassPill(
                 modifier = Modifier.clearAndSetSemantics { },
+                style = glass.copy(fillTop = rideColors.rainContainer, fillBottom = rideColors.rainContainer, content = rideColors.onRainContainer),
+                onClick = onClick,
+                horizontalPadding = 13.dp,
+                verticalPadding = 7.dp,
             ) {
-                Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(painterResource(R.drawable.ic_umbrella), contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        RainForecast.describe(rain),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        maxLines = 1,
-                    )
-                }
+                Icon(painterResource(R.drawable.ic_umbrella), contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(RainForecast.describe(rain), style = MaterialTheme.typography.labelLarge, maxLines = 1)
             }
         }
     }
@@ -104,16 +103,16 @@ fun WeatherChip(glance: WeatherGlance, onClick: () -> Unit, modifier: Modifier =
  */
 @Composable
 fun WeatherStrip(glance: WeatherGlance, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .height(STRIP_HEIGHT)
-            .clickable(onClickLabel = "Voir la météo", role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = glanceDescription(glance) }
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    VeloCard(
+        modifier = modifier.fillMaxWidth().height(STRIP_HEIGHT).semantics { contentDescription = glanceDescription(glance) },
+        onClick = onClick,
+        onClickLabel = "Voir la météo",
+        corner = 20.dp,
+        border = if (LocalSunlight.current) Color.Black else Color.Unspecified,
     ) {
-        StripContent(glance)
+        Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            StripContent(glance)
+        }
     }
 }
 
@@ -129,14 +128,14 @@ private fun RowScope.StripContent(glance: WeatherGlance) {
         val rain = glance.rain
         if (rain != null) {
             Box(Modifier.weight(1f)) {
-                Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
-                    Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(painterResource(R.drawable.ic_umbrella), contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(18.dp))
+                val rideColors = LocalRideColors.current
+                Surface(shape = CircleShape, color = rideColors.rainContainer, contentColor = rideColors.onRainContainer) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(painterResource(R.drawable.ic_umbrella), contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(
                             RainForecast.describe(rain).uppercase(),
                             style = LabelCapsStyle.copy(fontSize = 17.sp),
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -157,4 +156,4 @@ private fun RowScope.StripContent(glance: WeatherGlance) {
     }
 }
 
-val STRIP_HEIGHT = 46.dp
+val STRIP_HEIGHT = 50.dp

@@ -1,5 +1,10 @@
 package fr.velogo.app.ui.settings
 
+import androidx.compose.foundation.selection.toggleable
+import fr.velogo.app.ui.components.VeloSwitch
+import fr.velogo.app.ui.components.LargeTitleBar
+import fr.velogo.app.ui.components.VeloCard
+import fr.velogo.app.ui.components.Segmented
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -29,13 +34,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -64,7 +64,6 @@ import fr.velogo.app.data.ImportResult
 import fr.velogo.app.data.RideArchive
 import fr.velogo.app.data.Settings
 import fr.velogo.app.ui.ride.batteryExemptionIntent
-import fr.velogo.app.ui.ride.brandSegmentColors
 import fr.velogo.app.ui.ride.isIgnoringBatteryOptimizations
 import fr.velogo.app.ui.theme.ThemeMode
 import fr.velogo.app.update.UpdateInfo
@@ -189,7 +188,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel(), Sett
 }
 
 @Composable
-fun SettingsScreen(onOpenAbout: () -> Unit, onOpenOfflineMaps: () -> Unit, contentPadding: PaddingValues) {
+fun SettingsScreen(onOpenAbout: () -> Unit, onOpenOfflineMaps: () -> Unit, onOpenPrivacy: () -> Unit, contentPadding: PaddingValues) {
     val vm = veloViewModel { SettingsViewModel(it) }
     val settings by vm.settings.collectAsStateWithLifecycle()
     val update by vm.update.collectAsStateWithLifecycle()
@@ -223,6 +222,7 @@ fun SettingsScreen(onOpenAbout: () -> Unit, onOpenOfflineMaps: () -> Unit, conte
         actions = vm,
         onOpenAbout = onOpenAbout,
         onOpenOfflineMaps = onOpenOfflineMaps,
+        onOpenPrivacy = onOpenPrivacy,
         contentPadding = contentPadding,
         archive = archive,
         onExportRides = { runCatching { exportLauncher.launch(RideArchive.fileName()) } },
@@ -247,14 +247,19 @@ fun SettingsContent(
     archive: ArchiveState = ArchiveState.Idle,
     onExportRides: () -> Unit = {},
     onImportRides: () -> Unit = {},
+    onOpenPrivacy: () -> Unit = {},
+    /** L'appli cherche elle-même ses mises à jour (version GitHub) ; sinon c'est Google Play qui s'en charge. */
+    selfUpdate: Boolean = BuildConfig.SELF_UPDATE,
+    /** L'économie de batterie se règle par la fenêtre d'Android (version GitHub) ou par la fiche de l'appli (Play). */
+    directBatteryExemption: Boolean = BuildConfig.DIRECT_BATTERY_EXEMPTION,
 ) {
     val context = LocalContext.current
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val vm = actions
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = { TopAppBar(title = { Text("Réglages") }, scrollBehavior = scrollBehavior) },
+        topBar = { LargeTitleBar("Réglages", scrollBehavior) },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { inner ->
         Column(
@@ -265,8 +270,8 @@ fun SettingsContent(
                 .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = contentPadding.calculateBottomPadding() + 24.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            update?.let { info ->
-                Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+            update?.takeIf { selfUpdate }?.let { info ->
+                VeloCard(color = MaterialTheme.colorScheme.primaryContainer) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("VeloGo ${info.versionName} est disponible", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
                         Text(
@@ -318,19 +323,14 @@ fun SettingsContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    val paces = listOf(100 to "Tranquille", 140 to "Normale", 190 to "Sportive")
+                val paces = listOf(100 to "Tranquille", 140 to "Normale", 190 to "Sportive")
+                Segmented(
+                    options = paces,
                     // Une valeur intermédiaire (ancien réglage) est rattachée au choix le plus proche.
-                    val current = paces.minBy { kotlin.math.abs(it.first - settings.riderPowerW) }.first
-                    paces.forEachIndexed { index, (watts, label) ->
-                        SegmentedButton(
-                            selected = current == watts,
-                            onClick = { vm.setRiderPower(watts) },
-                            shape = SegmentedButtonDefaults.itemShape(index, paces.size),
-                            colors = brandSegmentColors(),
-                        ) { Text(label) }
-                    }
-                }
+                    selected = paces.minBy { kotlin.math.abs(it.first - settings.riderPowerW) }.first,
+                    onSelect = { vm.setRiderPower(it) },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                )
             }
 
             Section("Météo") {
@@ -352,17 +352,12 @@ fun SettingsContent(
 
             Section("Affichage") {
                 Text("Thème", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    val options = listOf(ThemeMode.SYSTEM to "Automatique", ThemeMode.LIGHT to "Clair", ThemeMode.DARK to "Sombre")
-                    options.forEachIndexed { index, (mode, label) ->
-                        SegmentedButton(
-                            selected = settings.themeMode == mode,
-                            onClick = { vm.setTheme(mode) },
-                            shape = SegmentedButtonDefaults.itemShape(index, options.size),
-                            colors = brandSegmentColors(),
-                        ) { Text(label) }
-                    }
-                }
+                Segmented(
+                    options = listOf(ThemeMode.SYSTEM to "Automatique", ThemeMode.LIGHT to "Clair", ThemeMode.DARK to "Sombre"),
+                    selected = settings.themeMode,
+                    onSelect = { vm.setTheme(it) },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                )
             }
 
             Section("Altitude et dénivelé") {
@@ -408,9 +403,10 @@ fun SettingsContent(
                     title = "Économie de batterie",
                     ok = batteryOk,
                     okText = "VeloGo n'est pas restreinte : l'enregistrement continue écran éteint.",
-                    koText = "Android peut endormir VeloGo écran éteint et couper l'enregistrement.",
-                    action = "Autoriser",
-                    onAction = { runCatching { context.startActivity(batteryExemptionIntent(context)) } },
+                    koText = if (directBatteryExemption) "Android peut endormir VeloGo écran éteint et couper l'enregistrement."
+                    else "Android peut endormir VeloGo écran éteint et couper l'enregistrement. Sur la fiche de l'appli : Batterie, puis « Non restreinte ».",
+                    action = if (directBatteryExemption) "Autoriser" else "Ouvrir",
+                    onAction = { runCatching { context.startActivity(batteryExemptionIntent(context, directBatteryExemption)) } },
                 )
                 if (isSamsung) {
                     ActionRow(
@@ -433,23 +429,35 @@ fun SettingsContent(
             }
 
             Section("VeloGo") {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
+                if (selfUpdate) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                when (check) {
+                                    UpdateCheck.CHECKING -> "Recherche d'une mise à jour…"
+                                    UpdateCheck.UP_TO_DATE -> "Tu as la dernière version."
+                                    UpdateCheck.FAILED -> "Impossible de vérifier (pas de réseau ?)."
+                                    UpdateCheck.IDLE -> if (update != null) "Une version plus récente est disponible." else "Les mises à jour sont publiées sur GitHub."
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        OutlinedButton(onClick = { vm.checkNow() }, enabled = check != UpdateCheck.CHECKING) { Text("Vérifier") }
+                    }
+                    SwitchRow("Vérifier automatiquement", "Au lancement, au plus deux fois par jour.", settings.checkUpdates, vm::setCheckUpdates)
+                } else {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                         Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            when (check) {
-                                UpdateCheck.CHECKING -> "Recherche d'une mise à jour…"
-                                UpdateCheck.UP_TO_DATE -> "Tu as la dernière version."
-                                UpdateCheck.FAILED -> "Impossible de vérifier (pas de réseau ?)."
-                                UpdateCheck.IDLE -> if (update != null) "Une version plus récente est disponible." else "Les mises à jour sont publiées sur GitHub."
-                            },
+                            "Les mises à jour arrivent par Google Play.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    OutlinedButton(onClick = { vm.checkNow() }, enabled = check != UpdateCheck.CHECKING) { Text("Vérifier") }
                 }
-                SwitchRow("Vérifier automatiquement", "Au lancement, au plus deux fois par jour.", settings.checkUpdates, vm::setCheckUpdates)
+                ActionRow("Confidentialité", "Ce que l'appli fait de ta position et de tes données, et ce qui sort du téléphone.", "Lire", onOpenPrivacy)
                 ActionRow("Sources et licences", "Cartes, données et logiciels utilisés par VeloGo.", "Voir", onOpenAbout)
             }
         }
@@ -460,7 +468,7 @@ fun SettingsContent(
 private fun Section(title: String, content: @Composable () -> Unit) {
     Column {
         Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
-        Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        VeloCard {
             Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) { content() }
         }
     }
@@ -471,7 +479,7 @@ private fun SwitchRow(title: String, description: String, checked: Boolean, onCh
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(role = Role.Switch) { onChange(!checked) }
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -480,7 +488,7 @@ private fun SwitchRow(title: String, description: String, checked: Boolean, onCh
             Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(12.dp))
-        Switch(checked = checked, onCheckedChange = null)
+        VeloSwitch(checked)
     }
 }
 

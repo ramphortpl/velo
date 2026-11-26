@@ -19,7 +19,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- La demande directe « ne pas mettre en veille » (REQUEST_IGNORE_BATTERY_OPTIMIZATIONS) n'est déclarée que
+         par la version GitHub : voir src/github/AndroidManifest.xml. -->
 
     <!-- Guidage : vibration à chaque consigne. -->
     <uses-permission android:name="android.permission.VIBRATE" />

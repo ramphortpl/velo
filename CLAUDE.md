@@ -1,6 +1,7 @@
 # VeloGo — notes d'architecture
 
-Appli Android native de vélo, usage personnel, **France uniquement**, 100 % gratuite, sans compte.
+Appli Android native de vélo, usage personnel, **France uniquement**, 100 % gratuite, sans compte. Depuis la
+version 0.7, elle est aussi préparée pour une publication sur Google Play (`docs/PLAY_STORE.md`).
 Interface en français, unités métriques. Téléphone cible : Samsung Galaxy A05s (Android 15, arm64,
 **ni baromètre, ni boussole, ni gyroscope**, écran LCD 90 Hz peu lumineux).
 
@@ -9,18 +10,23 @@ Ce fichier résume l'architecture et les décisions. Il est tenu à jour à chaq
 ## Commandes
 
 ```bash
-./gradlew test                 # tous les tests (core + app)
+./gradlew test                 # tous les tests (core, routing, app en version « githubDebug »)
 ./gradlew :core:test           # calculs seuls : rapide, sans Android
 ./gradlew :routing:test        # itinéraires : vrais calculs BRouter sur un petit fichier de données réelles
-./gradlew lintDebug            # vérifications Android (bloquant en CI)
-./gradlew :app:assembleDebug   # APK de test
-./gradlew :app:assembleRelease # APK release (signé seulement si VELOGO_KEYSTORE_PASSWORD est défini)
-./gradlew :app:recordRoborazziDebug  # captures d'écran des écrans (PNG dans app/build/outputs/roborazzi/)
-./gradlew :app:assembleSmoke   # APK d'essai pour émulateur (code minifié de la release, clé de test, x86_64)
+./gradlew :app:lintGithubDebug :app:lintPlayRelease   # vérifications Android des deux versions (bloquant en CI)
+./gradlew :app:assembleGithubDebug    # APK de test
+./gradlew :app:assembleGithubRelease  # APK des Releases GitHub (signé seulement si VELOGO_KEYSTORE_PASSWORD est défini)
+./gradlew :app:bundlePlayRelease      # fichier AAB pour Google Play (même clé, même condition)
+./gradlew :app:recordRoborazziGithubDebug  # captures d'écran des écrans (PNG dans app/build/outputs/roborazzi/)
+./gradlew :app:assembleGithubSmoke :app:assemblePlaySmoke  # APK d'essai pour émulateur (code minifié, clé de test, x86_64)
+python3 outils/fiche_play.py   # longueurs des textes de la fiche Google Play (docs/play/fiche.md)
 cd cartes/style && npm install && npm run generer   # régénère le style de la carte hors ligne (assets/hors-ligne)
 ```
 
 SDK requis : plateforme `android-37.1`, build-tools 37, JDK 21.
+
+Ne pas lancer `./gradlew :app:tasks --all` : il configure une tâche d'aperçu Compose d'AGP qui échoue sur les
+variantes sans tests unitaires (toutes sauf `githubDebug`). Les tâches utiles sont celles ci-dessus.
 
 ## Modules
 
@@ -31,7 +37,8 @@ SDK requis : plateforme `android-37.1`, build-tools 37, JDK 21.
 | `routing` | Kotlin pur : habillage de BRouter (`BRouterPlanner`), choix des profils selon le vélo et la préférence (`RoutingProfiles`), classement des voies. Profils et `lookups.dat` en ressources. |
 | `app` | Android : Compose, service d'enregistrement, carte MapLibre, base Room, réglages, itinéraires et guidage. |
 
-Paquets de `app` (`fr.velogo.app`) : `ui/` (écrans Compose, thème), `recording/` (service de premier plan,
+Paquets de `app` (`fr.velogo.app`) : `ui/` (écrans Compose ; `ui/theme` : couleurs, verre, formes ; `ui/components` :
+cartes, sélecteur, interrupteur, boutons de verre, barres à grand titre), `recording/` (service de premier plan,
 enregistreur), `data/` (Room, DataStore, export GPX, analyse des sorties, sauvegarde), `map/` (MapLibre), `location/` (GPS), `elevation/`
 (recalage d'altitude IGN, relief hors ligne), `offline/` (cartes hors ligne : catalogue, téléchargements, serveur
 de tuiles local), `nav/` (itinéraires : calcul, guidage, voix, itinéraires enregistrés), `search/` (recherche
@@ -39,7 +46,10 @@ d'adresses IGN), `weather/` (météo Open-Meteo : client, mémoire, alerte pluie
 Releases GitHub).
 
 Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetiler, contours des régions, style),
-`outils/` (essai sur émulateur, logo, image d'aperçu et page d'accueil du dépôt), `.github/workflows/` (`build.yml` pour l'APK, `cartes.yml` pour les cartes).
+`outils/` (essai sur émulateur, logo et images de la fiche Google Play, image d'aperçu et page d'accueil du dépôt,
+contrôle des textes de la fiche), `docs/` (nouveautés, politique de confidentialité, guide et fiche Google Play),
+`.github/workflows/` (`build.yml` pour l'APK et le fichier Google Play, `cartes.yml` pour les cartes, `cle-play.yml`
+pour l'envoi de la clé à Google, manuel).
 
 ## Architecture de l'appli
 
@@ -132,12 +142,37 @@ Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetil
 - **Sauvegarde** : `RideArchive` écrit toutes les sorties dans une archive ZIP de fichiers GPX (la balise `<src>`
   note l'origine de l'altitude) et relit une archive ou un GPX seul (`TrackImport.prepare` recalcule les vitesses,
   absentes d'un GPX ; une sortie déjà présente, à une minute près, n'est pas ajoutée deux fois).
+- **Deux distributions** (`productFlavors`, dimension `distribution`) : `github` (APK des Releases) et `play` (AAB
+  pour Google Play), même identifiant `fr.velogo.app`, même clé, même code. Deux drapeaux `BuildConfig` font la
+  différence : `SELF_UPDATE` (recherche de mise à jour dans les Releases : `AppContainer.start`,
+  `SettingsContent`) et `DIRECT_BATTERY_EXEMPTION` (fenêtre d'Android « ne pas mettre en veille » contre fiche de
+  l'appli : `batteryExemptionIntent`, `batteryHintText`). L'autorisation `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
+  n'est déclarée que dans `src/github/AndroidManifest.xml`. Variantes : `githubDebug` (la seule à porter les
+  tests), `githubRelease`, `githubSmoke`, `playRelease`, `playSmoke` ; `playDebug` est désactivée. Les écrans qui
+  diffèrent prennent le drapeau en paramètre, pour être rendus dans les deux versions par les tests.
+- **Confidentialité** : `docs/CONFIDENTIALITE.md` est la seule source ; la tâche Gradle `copyPrivacyPolicy` la
+  recopie dans les ressources de l'appli (`confidentialite.md`), `parsePolicy` la lit (titres, paragraphes, listes :
+  n'y mettre rien d'autre) et `PrivacyScreen` l'affiche (Réglages > Confidentialité). Avant de demander la position,
+  l'appli dit ce qu'elle en fait (`LOCATION_DISCLOSURE` : carte sur la carte tant que l'autorisation manque,
+  fenêtre quand on démarre une sortie sans elle).
+- **Thème et verre** (`ui/theme`) : les trois couleurs du logo (`Brand`), un fond d'écran gris à peine vert et des
+  cartes blanches (`surface` = fond des écrans, `surfaceContainerLow` = cartes et feuilles,
+  `surfaceContainerHighest` = ce qui est en creux sur une carte ou un panneau). `Glass.kt` : `GlassStyle` et les
+  quatre verres (`regular`, `panel`, `accent`, `deep`, fournis par `LocalGlass`), `Modifier.glass` (fond, reflet,
+  filet, ombre faite d'anneaux), `GlassBox`, `bounce`, `bleed`. `Shape.kt` : coins continus
+  (`continuousRoundRect`, `ContinuousShape`). Composants : `VeloCard` (carte à coins continus, sans rognage),
+  `Segmented` (sélecteur à pastille glissante), `VeloSwitch`, `GlassIconButton`, `GlassControlStack`, `GlassPill`,
+  `AccentButton`, `LargeTitleBar`. La barre d'onglets (`FloatingTabBar`, dans `AppRoot`) est une pilule de verre
+  flottante ; sous elle, `BottomFade` estompe les listes.
 - **Textes** : interface uniquement en français, textes écrits directement dans les composables (seuls ceux
   du service et des notifications sont dans `strings.xml`).
 - **Écrans testables** : chaque écran a un composable « contenu » sans accès aux données (`RideChrome`,
   `HistoryContent`, `RideDetailBody`, `SettingsContent`, `OfflineMapsContent`, `PlannerPanel`, `PlaceSearchContent`,
   `SavedRoutesList`, `SavedRoutesContent`, `ShareRouteContent`, `WeatherContent`, `StatsContent`,
-  `SegmentsContent`, `SegmentDetailBody`, `SegmentEditor`, `GpsSheetContent`) rendu en image par `ScreenshotTest`. `RoutePosterTest` dessine l'affiche
+  `SegmentsContent`, `SegmentDetailBody`, `SegmentEditor`, `GpsSheetContent`, `PrivacyContent`) rendu en image par
+  `ScreenshotTest`. L'habillage de la carte y est rendu sur un vrai morceau de carte (`fond_carte.jpg`, capture
+  d'OpenFreeMap à Corte) avec la barre d'onglets, pour juger les surfaces translucides ; trois écrans le sont aux
+  tailles d'une tablette. `RoutePosterTest` dessine l'affiche
   pour de bon et range ses images au même endroit (`affiche*.png`).
   Attention : une animation sans fin (barre de progression indéterminée) bloque la capture.
   `LogoTest` charge l'icône adaptative, l'icône de notification et le logo comme le fait Android, vérifie que
@@ -157,6 +192,9 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
    celles du service de l'IGN) ; météo testée contre un faux serveur (intercepteur OkHttp, aucun réseau) ;
    segments, meilleurs temps et sauvegarde testés de bout en bout sur une vraie base Room en mémoire
    (`RideAnalysisTest`, `RideArchiveTest`), trajets enregistrés aussi (`SavedRouteRepositoryTest`) ;
+   `DesignTest` vérifie les briques du thème (parts de l'ombre du verre, tracé des coins continus comparé à un
+   rectangle arrondi classique, contrastes des couleurs du logo) ; `PrivacyPolicyTest`, que l'appli embarque bien
+   le texte du dépôt et que son afficheur le lit sans reste de mise en forme ;
    `DatabaseMigrationTest` fabrique une base à l'ancien format d'après
    son schéma exporté, y range une sortie et l'ouvre avec l'appli d'aujourd'hui (à compléter à chaque nouvelle
    version de la base). Sur l'ordinateur, ces tests ouvrent la base avec le SQLite d'Android
@@ -185,8 +223,15 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
    avoir déplacé la carte), onglet « Trajets » (le trajet enregistré s'y retrouve, se renomme, se rouvre sur la
    carte), puis en mode avion : carte, altitude, **boucle** (bouton « Boucle », étape placée par un appui long,
    calcul), itinéraire vers un point de la carte, guidage avec
-   enregistrement ; reprise après arrêt forcé ; enfin l'icône de l'appli sur sa fiche des réglages d'Android (le
-   logo y est reconnu à ses trois couleurs).
+   enregistrement ; reprise après arrêt forcé ; l'icône de l'appli sur sa fiche des réglages d'Android (le
+   logo y est reconnu à ses trois couleurs) ; la **première ouverture** (autorisation de position retirée :
+   l'explication « Où es-tu ? » doit s'afficher, citer ce qui sort du téléphone et ouvrir la politique de
+   confidentialité) ; enfin la **version Play**, installée par-dessus l'autre (même clé de test, même
+   identifiant) : elle doit démarrer, garder les sorties, annoncer « Les mises à jour arrivent par Google Play. »
+   et ne plus déclarer `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
+   Le démarrage de la première sortie est filmé (`enregistrement_d_une_sortie.mp4`, avec la notification
+   d'enregistrement) : Google Play demande une vidéo du service de premier plan. Simple confort : si l'émulateur
+   ne sait pas filmer, l'essai continue.
    Après la première sortie : création d'un segment (la sortie doit s'y retrouver), statistiques, liste des segments.
    Les fenêtres d'erreur d'Android sont écartées à chaque lecture de l'écran (`system_dialog`) : l'écran d'accueil
    de l'émulateur met parfois si longtemps à démarrer qu'Android affiche « Pixel Launcher isn't responding »
@@ -354,11 +399,49 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   itinéraires enregistrés.
 - **Téléchargements confiés au `DownloadManager` d'Android** plutôt qu'à WorkManager : reprise après coupure,
   attente du Wi-Fi et notification sont gérées par le système, sans service ni autorisation supplémentaires.
-- **Portrait uniquement** pour l'instant (`screenOrientation="portrait"`) : la disposition paysage de l'écran
-  guidon n'est pas au point ; à reprendre aux finitions si besoin.
+- **Portrait sur téléphone, tout sens sur grand écran** : `screenOrientation="portrait"` reste déclaré, mais à
+  partir d'Android 16 visé, Android n'en tient plus compte quand l'écran fait au moins 600 dp de large (tablettes,
+  pliables), sans dérogation possible en visant Android 17. L'appli s'y adapte donc : l'écran guidon a sa
+  disposition paysage, et ce qui est pensé pour un téléphone garde une largeur bornée, au milieu (`COMPACT_WIDTH`
+  520 dp : barre d'onglets, commandes, bandeau de guidage, panneau d'itinéraire ; `READING_WIDTH` 720 dp : listes
+  et fiches). L'activité gère elle-même les changements de taille (`configChanges`) : rien n'est perdu en tournant
+  ou en dépliant l'écran. Vérifié en images seulement (`tablette_*.png`).
 - **R8** : la release est minifiée. Les clés de navigation (`*Key`) sont gardées explicitement.
-- **Identité** : vert émeraude + bleu nuit, police Barlow Condensed (OFL) pour les chiffres, icônes Material
-  Symbols (Apache 2.0). Thème « plein soleil » noir sur blanc pour l'écran guidon.
+- **Identité** (refaite en 0.7 à la demande de l'auteur : « plus moderne, arrondis style iOS, un peu de Liquid
+  Glass, ultra fluide, mêmes couleurs que le logo ») : les trois couleurs du logo et rien d'autre pour l'interface.
+  Vert foncé `#014A38` (texte fort, boutons pleins, bandeau de guidage), vert vif `#01CD95` (ce qui est choisi ou
+  en marche : « Démarrer », onglet actif, interrupteurs, pastilles des sélecteurs ; le texte posé dessus est vert
+  foncé, le blanc n'y serait pas lisible), rose `#E70180` (trace, « Terminer », pente qui monte). Trois couleurs
+  de fonction restent hors logo parce qu'elles servent à lire : le **bleu** de l'itinéraire à suivre (la seule
+  teinte qui tranche sur tous les fonds de carte) et de la pluie, l'**ambre** de ce qui demande attention (pause,
+  signal moyen, hors itinéraire, soleil), le rouge des erreurs. Police Barlow Condensed (OFL) pour les chiffres et
+  les titres, icônes Material Symbols (Apache 2.0). Thème « plein soleil » noir sur blanc pour l'écran guidon :
+  tuiles blanches cernées de noir, verre opaque sans ombre (`SunlightGlass`).
+- **Verre dessiné, pas flouté** : un vrai « Liquid Glass » floute en direct ce qui est derrière lui. La carte est
+  dessinée par MapLibre dans une `SurfaceView`, que Compose ne peut ni lire ni flouter ; la passer en
+  `TextureView` pour la flouter coûterait une copie de l'image à chaque trame, sur un Adreno 610 à 90 Hz. Le verre
+  est donc fait de rectangles arrondis : fond translucide en dégradé, liseré clair (le reflet), filet sombre,
+  ombre. Comme la carte vit dans sa propre surface, la faire glisser ne redessine rien de l'interface.
+- **Ombre du verre en anneaux** : l'ombre d'élévation d'Android se voit à travers une surface translucide (elle
+  est dessinée dessous) et Robolectric ne la rend pas. `Modifier.glass` trace dix anneaux qui partent tous du bord
+  et vont de plus en plus loin (opacité cumulée en carré de la distance restante, `glassShadowShares`), décalés
+  vers le bas, et rognés à l'extérieur de la forme. Ce sont des contours de rectangles arrondis, que le
+  processeur graphique trace sans calcul de géométrie ; ce que montrent les images de test est ce que dessine le
+  téléphone. Aucun `BlurMaskFilter`, aucun `RenderEffect`, aucun calque hors écran.
+- **Coins continus pour dessiner, rectangles arrondis pour rogner** : les cartes des listes ont les coins des
+  rectangles arrondis d'iOS (trois courbes de Bézier par coin, relevées point par point ; le rayon est borné au
+  tiers du petit côté). Rogner selon un tracé quelconque coûte cher : `VeloCard` remplit son tracé sans rien
+  rogner et fonce sous le doigt au lieu de montrer une onde. Tout ce qui a une ombre, rogne ou reçoit une onde
+  (verre, boutons, vignettes) reste un rectangle arrondi ou une pilule.
+- **Un fondu rogne ce qui dépasse** : pendant un fondu, Android dessine l'élément dans une image à sa taille, et
+  l'ombre du verre, qui en déborde, disparaît puis revient d'un coup. La barre d'onglets entre donc en glissant,
+  sans fondu, et les commandes de la sortie agrandissent leur zone animée (`Modifier.bleed`).
+- **Habillage de la carte non dessiné quand il est recouvert** : l'écran « Rouler » reste composé sous les autres
+  onglets ; son habillage serait retracé pour rien à chaque image d'une liste qui défile. `RideScreen` coupe son
+  dessin (`drawWithContent`) 450 ms après le changement d'onglet, le temps du fondu.
+- **Textes et descriptions de l'interface = contrat avec l'essai sur émulateur** : `outils/essai_emulateur.py`
+  retrouve les éléments par leur texte exact ou leur description. Un bouton refait doit garder les deux (les
+  composants de verre réunissent le texte de leur contenu comme le faisait `Button`).
 - **Logo** : fourni par l'auteur le 21/11/2026, en deux images gardées telles quelles dans `docs/logo/`
   (`logo-source.png` : le mot « VeloGo » dont « oGo » dessine un vélo, un repère de carte et un trait rose, sur
   fond blanc ; `icone-source.png` : le même sur un carré arrondi « verre » au décor de carte). Trois couleurs :
@@ -386,8 +469,10 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   continue sans publier ; présent mais faux, il le dit tout de suite (avec sa longueur) et fait échouer le job
   après les tests. Les espaces et retours à la ligne collés autour du mot de passe sont ignorés, dans le
   workflow comme dans `app/build.gradle.kts`.
-- `.github/workflows/build.yml` : à chaque push, tests + lint et APK signé (job `apk`), essai sur émulateur
-  (job `essai`), puis, **seulement si les deux ont réussi**, publication en Release par le job `publication`
+- `.github/workflows/build.yml` : à chaque push, tests + lint des deux versions, APK signé et fichier AAB pour
+  Google Play (job `apk`, qui vérifie que les deux portent la même signature et que l'APK accepte les pages
+  mémoire de 16 Ko), essai sur émulateur des deux versions (job `essai`), puis, **seulement si les deux ont
+  réussi**, publication en Release par le job `publication` : `VeloGo-x.y.z.apk` et `VeloGo-x.y.z-play.aab`
   (`v<majeur>.<mineur>.<numéro de build>`), une vingtaine de minutes après le push : ce qui arrive sur le
   téléphone a tourné sur un vrai Android. `versionCode` = numéro de build GitHub, donc chaque APK s'installe
   par-dessus le précédent. Le mineur de `version.properties` suit les jalons.
@@ -396,7 +481,23 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   `apksigner verify --print-certs` doit donner le certificat `CN=VeloGo` d'empreinte SHA-256
   `1e80bd8e20912aaae8f62310cff7fd004f58e605a265d6b193161fb29193768b` (signature v2 seule, normal avec minSdk 26).
 - L'appli cherche ses mises à jour dans la liste des Releases (`UpdateChecker`) : étiquettes `v1.2.3` avec un
-  fichier `.apk`, le plus grand numéro de build l'emporte ; la Release `cartes` est ignorée.
+  fichier `.apk`, le plus grand numéro de build l'emporte ; la Release `cartes` est ignorée. La version Play ne
+  cherche rien (`BuildConfig.SELF_UPDATE`) : le magasin interdit toute mise à jour qui ne passe pas par lui.
+- **Google Play** : le guide est `docs/PLAY_STORE.md` (règles relevées sur les pages de Google le 26/11/2026,
+  avec leurs liens), la fiche `docs/play/fiche.md`, les images `docs/play/` (fabriquées par `outils/logo.py`).
+  Rien n'a été fait dans une Play Console : il faut le compte de l'auteur (25 $, pièce d'identité, test fermé à
+  12 testeurs pendant 14 jours pour un compte personnel).
+- **Même clé sur Google Play** : pour que l'appli du magasin et celle des Releases se remplacent sans
+  désinstallation, la Play Console doit recevoir une copie de la clé du dépôt, chiffrée par l'outil PEPK de Google
+  avec la clé publique qu'elle fournit. Le workflow manuel `cle-play.yml` le fait (confirmation à taper, empreinte
+  de l'outil fixée, artefact gardé un jour). **Jamais exécuté** : il faut une vraie Play Console pour obtenir la
+  clé publique, et l'outil n'a pas pu être lancé dans l'environnement de développement (ses options viennent de
+  son fichier d'aide, lu sans l'exécuter). Ne jamais le lancer soi-même : c'est à l'auteur de décider.
+- **Verrou de veille pendant une sortie** (`RecordingService`, « wake lock ») : gardé dans les deux versions.
+  Google le compte dans les « wake locks excessifs » d'Android vitals (deux heures par jour chez plus de 5 % des
+  utilisateurs) et sa documentation le dit superflu à côté d'un service de localisation ; mais l'enlever sans
+  l'avoir vérifié sur le Samsung de l'auteur risquerait des enregistrements coupés, ce qui serait bien pire
+  qu'une alerte dans la Play Console. À reconsidérer si l'alerte apparaît.
 - **Mémoire des téléchargements** (`actions/cache`, clé = versions des outils et bibliothèques) : Gradle, ses
   extensions, les bibliothèques et l'image Android de Robolectric sont gardés d'une fabrication à l'autre. Sans
   elle, deux fabrications (n° 10 et n° 12, le 21/11/2026) ont échoué avant les tests sur « Plugin
@@ -411,8 +512,8 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   retéléchargé, et son premier appel est passé de 45 s à 12 s).
   La mémoire de l'action `setup-gradle` est coupée (`cache-disabled`) : elle n'écrit que depuis `main`, et sa
   version par défaut est sous licence propriétaire (gratuite pour un dépôt public).
-  Clé « v2 » depuis `GpsSourceTest` (images Android 8 et 11 de Robolectric, téléchargées par les tests) : la
-  mémoire « v1 » sert de point de départ (`restore-keys`). Changer le numéro quand les tests simulent une
+  Clé « v2 » depuis `GpsSourceTest` (images Android 8 et 11 de Robolectric, téléchargées par les tests). À
+  défaut de la mémoire exacte, la plus récente « v2 » sert de point de départ (`restore-keys`). Changer le numéro quand les tests simulent une
   nouvelle version d'Android : la clé ne suit que les fichiers Gradle.
 - `outils/ci_outils_de_construction.sh` : premier appel à Gradle, trois tentatives (30 s puis 90 s d'attente),
   la dernière avec la cause exacte de l'échec.
@@ -465,6 +566,10 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
 5. Stats, records, segments, finitions *(fait)*
 6. Itinéraire en grand, affiche à partager, guidage avec flèche de direction, onglet « Trajets » *(fait ; déroulé
    en entier sur l'émulateur par la fabrication n° 18 du 21/11/2026, première version publiée : `v0.6.18`)*
+
+7. Nouveau design aux couleurs du logo (verre dessiné, barre d'onglets flottante, coins continus) et version
+   pour Google Play (fichier AAB, politique de confidentialité, explication avant la demande de position, grands
+   écrans) *(fait le 26/11/2026)*
 
 Mise à jour du 22/11/2026 (`v0.6.23`, fabrication n° 23) : position approchée en attendant le GPS, pastille à
 états et feuille « Signal GPS ». Le scénario « GPS muet » a tourné sur l'émulateur Android 15 ; rien n'a pu être

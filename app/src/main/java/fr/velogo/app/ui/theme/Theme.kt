@@ -13,6 +13,8 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 val LocalRideColors = staticCompositionLocalOf { LightRideColors }
 /** Vrai quand le thème affiché est sombre (sert au choix du fond de carte). */
 val LocalIsDark = staticCompositionLocalOf { false }
+/** Vrai sous le thème « plein soleil » : ni gris ni transparence, les éléments se cernent de noir. */
+val LocalSunlight = staticCompositionLocalOf { false }
 
 @Composable
 fun VeloGoTheme(
@@ -31,15 +33,25 @@ fun VeloGoTheme(
         dark -> DarkColors
         else -> LightColors
     }
+    val glass = when {
+        sunlight -> SunlightGlass
+        dark -> DarkGlass
+        else -> LightGlass
+    }
     CompositionLocalProvider(
         LocalRideColors provides if (dark) DarkRideColors else LightRideColors,
         LocalIsDark provides dark,
+        LocalSunlight provides sunlight,
+        LocalGlass provides glass,
     ) {
-        MaterialTheme(colorScheme = colors, typography = VeloGoTypography, content = content)
+        MaterialTheme(colorScheme = colors, typography = VeloGoTypography, shapes = VeloGoShapes, content = content)
     }
 }
 
 object VeloGoThemeExtras {
     val rideColors: RideColors
         @Composable @ReadOnlyComposable get() = LocalRideColors.current
+
+    val glass: GlassPalette
+        @Composable @ReadOnlyComposable get() = LocalGlass.current
 }

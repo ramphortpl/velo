@@ -280,6 +280,31 @@ def main():
     partage.paste(petit, ((1280 - petit.width) // 2, (640 - petit.height) // 2), petit)
     ecrire(partage, SOURCES, "partage.png", optimize=True)
 
+    print("Pour Google Play")
+    # Icône de la fiche du magasin : un carré plein de 512 points, sans coins arrondis ni ombre (le magasin la
+    # découpe lui-même). Ce sont les 72 dp du milieu des deux couches de l'icône adaptative, comme sur un téléphone.
+    marge = (ICONE_DP - VISIBLE_DP) / 2 / ICONE_DP
+    def milieu(img, taille):
+        w = img.width
+        return reduire(img.crop((round(w * marge), round(w * marge), round(w * (1 - marge)), round(w * (1 - marge)))), taille)
+    magasin = Image.alpha_composite(milieu(fond, 512).convert("RGBA"), milieu(premier_plan, 512))
+    ecrire(magasin, RACINE, "docs", "play", "icone-512.png", optimize=True)
+    # Bannière de la fiche : 1024 × 500, sans transparence. Le décor de carte de l'icône, et le logo au milieu.
+    largeur, hauteur = 1024, 500
+    decor_large = reduire(fond, largeur).convert("RGB")
+    haut_decor = (decor_large.height - hauteur) // 2
+    banniere = decor_large.crop((0, haut_decor, largeur, haut_decor + hauteur))
+    # Un voile clair au centre, pour que le logo se lise sur les traits de la carte.
+    voile = Image.new("L", (largeur, hauteur), 0)
+    yy, xx = np.mgrid[0:hauteur, 0:largeur]
+    eloignement = ((xx - largeur / 2) / (largeur * 0.46)) ** 2 + ((yy - hauteur / 2) / (hauteur * 0.52)) ** 2
+    voile = Image.fromarray(np.rint(np.clip(1.0 - eloignement, 0.0, 1.0) ** 0.8 * 150).astype(np.uint8))
+    banniere.paste(Image.new("RGB", (largeur, hauteur), (255, 255, 255)), (0, 0), voile)
+    large_logo = 600
+    petit_logo = reduire(logo, (large_logo, round(large_logo * logo.height / logo.width)))
+    banniere.paste(petit_logo, ((largeur - petit_logo.width) // 2, (hauteur - petit_logo.height) // 2), petit_logo)
+    ecrire(banniere, RACINE, "docs", "play", "banniere-1024x500.png", optimize=True)
+
     if apercus:
         os.makedirs(apercus, exist_ok=True)
         print("Planches de contrôle")

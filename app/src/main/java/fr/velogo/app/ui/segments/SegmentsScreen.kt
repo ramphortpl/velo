@@ -1,5 +1,7 @@
 package fr.velogo.app.ui.segments
 
+import fr.velogo.app.ui.theme.Corners
+import fr.velogo.app.ui.components.VeloCard
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -108,11 +110,7 @@ fun SegmentsContent(rows: List<SegmentRow>?, onBack: () -> Unit, onOpenSegment: 
 
 @Composable
 private fun SegmentCard(row: SegmentRow, onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-    ) {
+    VeloCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(row.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)

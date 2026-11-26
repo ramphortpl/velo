@@ -87,6 +87,30 @@ android {
         }
     }
 
+    // Deux façons de distribuer la même appli, signées de la même clé (on passe de l'une à l'autre sans désinstaller).
+    flavorDimensions += "distribution"
+    productFlavors {
+        // Releases GitHub : l'appli cherche elle-même ses mises à jour et peut demander directement à Android de
+        // ne pas la mettre en veille (voir src/github/AndroidManifest.xml).
+        create("github") {
+            dimension = "distribution"
+            isDefault = true
+            buildConfigField("boolean", "SELF_UPDATE", "true")
+            buildConfigField("boolean", "DIRECT_BATTERY_EXEMPTION", "true")
+        }
+        // Google Play : le magasin interdit qu'une appli se mette à jour autrement que par lui, et n'admet la
+        // demande directe d'exemption de batterie que pour quelques familles d'applis. Toutes les architectures
+        // sont fournies : le magasin n'envoie à chaque téléphone que la sienne.
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("boolean", "SELF_UPDATE", "false")
+            buildConfigField("boolean", "DIRECT_BATTERY_EXEMPTION", "false")
+            ndk {
+                abiFilters += listOf("armeabi-v7a", "x86_64")
+            }
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -117,6 +141,40 @@ android {
         abortOnError = true
         warningsAsErrors = false
         disable += setOf("MissingTranslation", "GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion", "ChromeOsAbiSupport", "ObsoleteSdkInt")
+    }
+}
+
+/**
+ * Recopie la politique de confidentialité du dépôt (docs/CONFIDENTIALITE.md) dans les ressources de l'appli : la
+ * page publiée en ligne et celle qu'affiche l'appli (Réglages > Confidentialité) sont ainsi le même texte.
+ */
+abstract class CopyPrivacyPolicy : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val source: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val target = outputDir.get().asFile
+        target.mkdirs()
+        source.get().asFile.copyTo(target.resolve("confidentialite.md"), overwrite = true)
+    }
+}
+
+val copyPrivacyPolicy = tasks.register<CopyPrivacyPolicy>("copyPrivacyPolicy") {
+    source.set(rootProject.layout.projectDirectory.file("docs/CONFIDENTIALITE.md"))
+}
+
+androidComponents {
+    beforeVariants { variant ->
+        // La version Play n'existe qu'en version publiable et en version d'essai pour l'émulateur.
+        if (variant.flavorName == "play" && variant.buildType == "debug") variant.enable = false
+    }
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(copyPrivacyPolicy, CopyPrivacyPolicy::outputDir)
     }
 }
 

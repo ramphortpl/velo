@@ -1,5 +1,7 @@
 package fr.velogo.app.ui.settings
 
+import fr.velogo.app.ui.theme.Corners
+import fr.velogo.app.ui.components.VeloCard
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -128,11 +130,7 @@ fun AboutScreen(onBack: () -> Unit) {
 
 @Composable
 private fun CreditCard(credit: Credit, onClick: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick),
-    ) {
+    VeloCard(modifier = Modifier.fillMaxWidth(), onClick = onClick, corner = Corners.Inner) {
         Column(Modifier.padding(14.dp)) {
             Text(credit.title, style = MaterialTheme.typography.titleMedium)
             Text(credit.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -5,7 +5,10 @@ Le script installe l'APK « essai » (le même code minifié que la version publ
 des positions GPS à l'émulateur, pilote l'interface comme le ferait un doigt, vérifie quelques valeurs et prend des
 captures d'écran. Il sort en erreur si l'appli plante ou si une vérification échoue.
 
-Usage : python3 outils/essai_emulateur.py chemin/vers/app.apk
+Avec un second APK (la version destinée à Google Play), il l'installe à la fin par-dessus le premier et vérifie
+qu'elle démarre, garde les sorties et ne propose aucune mise à jour hors du magasin.
+
+Usage : python3 outils/essai_emulateur.py chemin/vers/app-github.apk [chemin/vers/app-play.apk]
 """
 import math
 import os
@@ -281,6 +284,41 @@ def long_press(label, millis=1800):
     shell(f"input swipe {x} {y} {x} {y} {millis}")
     time.sleep(1.5)
     return True
+
+
+def start_video(name, seconds=45):
+    """Commence à filmer l'écran (au plus [seconds] secondes). Simple confort : si l'émulateur ne sait pas filmer,
+    l'essai continue sans vidéo."""
+    try:
+        process = subprocess.Popen(
+            ["adb", "shell", "screenrecord", "--time-limit", str(seconds), "--bit-rate", "4000000", f"/sdcard/{name}.mp4"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        return None
+    time.sleep(1.5)
+    return name, process
+
+
+def stop_video(video):
+    """Arrête le film et le range avec les captures d'écran."""
+    if video is None:
+        return
+    name, process = video
+    # Interrompu poliment, l'enregistreur termine son fichier ; tué net, il le laisserait illisible.
+    shell("pkill -INT screenrecord")
+    try:
+        process.wait(timeout=20)
+    except subprocess.TimeoutExpired:
+        process.kill()
+    time.sleep(2)
+    target = os.path.join(OUT, f"{name}.mp4")
+    run(["adb", "pull", f"/sdcard/{name}.mp4", target], timeout=120)
+    size = os.path.getsize(target) if os.path.exists(target) else 0
+    if size > 20_000:
+        log(f"vidéo enregistrée : {name}.mp4 ({size // 1024} Ko)")
+    else:
+        log("pas de vidéo : l'émulateur n'a pas su filmer l'écran")
 
 
 def alive():
@@ -953,6 +991,8 @@ def main():
         gps_sheet_when_fixed(gps)
 
     log("démarrage d'une sortie")
+    # Filmé : Google Play demande une courte vidéo de ce que fait le service d'enregistrement.
+    video = start_video("enregistrement_d_une_sortie")
     tap("Démarrer")
     # Première fois : explication sur l'économie de batterie.
     if wait_for("Plus tard", 6):
@@ -961,6 +1001,14 @@ def main():
     if not wait_for("Pause", 20):
         fail("l'enregistrement ne démarre pas (bouton « Pause » absent)")
     check_alive("après « Démarrer »")
+    gps.ride(6)
+    # La notification d'enregistrement, telle qu'on la voit en tirant le volet du haut de l'écran.
+    shell("cmd statusbar expand-notifications")
+    time.sleep(3)
+    shot("notification_d_enregistrement")
+    shell("cmd statusbar collapse")
+    time.sleep(1.5)
+    stop_video(video)
 
     gps.ride(60)
     shot("guidon_en_roulant")
@@ -1040,6 +1088,14 @@ def main():
         time.sleep(1)
     else:
         fail("le bouton « Voir » des sources et licences est introuvable")
+    if tap("Lire", timeout=5, required=False):
+        if not wait_for("Politique de confidentialité de VeloGo", 10):
+            fail("la politique de confidentialité ne s'affiche pas")
+        shot("confidentialite")
+        shell("input keyevent KEYCODE_BACK")
+        time.sleep(1)
+    else:
+        fail("le bouton « Lire » de la confidentialité est introuvable dans les réglages")
 
     log("fonds de carte")
     tap("Rouler")
@@ -1075,6 +1131,88 @@ def main():
         fail("la seconde sortie ne démarre pas")
     check_alive("à la fin")
     app_icon()
+    first_opening()
+    if len(sys.argv) > 2:
+        play_version(sys.argv[2])
+
+
+def first_opening():
+    """Première ouverture : tant que la position n'est pas autorisée, l'appli dit ce qu'elle en fera avant de la
+    demander, et donne accès à sa politique de confidentialité. On retire donc l'autorisation (Android arrête
+    alors l'appli), on rouvre, on regarde, puis on la rend."""
+    log("explication avant la demande de position")
+    for permission in ("ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"):
+        shell(f"pm revoke {PACKAGE} android.permission.{permission}")
+    time.sleep(2)
+    shell(f"am start -W -n {PACKAGE}/{ACTIVITY}", timeout=120)
+    time.sleep(8)
+    shot("explication_position")
+    if not wait_for("Où es-tu ?", 20):
+        fail("sans autorisation de position, l'explication n'est pas affichée sur la carte")
+    else:
+        if not find("Autoriser la position"):
+            fail("l'explication sur la position n'a pas son bouton « Autoriser la position »")
+        if not find("Open-Meteo", exact=False):
+            fail("l'explication ne dit pas ce qui sort du téléphone (Open-Meteo, IGN)")
+        if tap("Confidentialité", timeout=5, required=False):
+            if not wait_for("Politique de confidentialité de VeloGo", 10):
+                fail("la politique de confidentialité ne s'ouvre pas depuis l'explication sur la position")
+            shot("confidentialite_depuis_l_explication")
+            shell("input keyevent KEYCODE_BACK")
+            time.sleep(1)
+        else:
+            fail("le lien « Confidentialité » manque sous l'explication sur la position")
+    check_alive("sans autorisation de position")
+    for permission in ("ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"):
+        shell(f"pm grant {PACKAGE} android.permission.{permission}")
+    shell(f"am force-stop {PACKAGE}")
+    time.sleep(1)
+
+
+def play_version(apk):
+    """La version destinée à Google Play. Elle s'installe par-dessus l'autre sans rien effacer (même clé, même
+    identifiant), démarre, garde les sorties, ne propose aucune mise à jour hors du magasin et ne déclare pas la
+    demande directe d'exemption de batterie."""
+    log("version Google Play : installation par-dessus la version GitHub")
+    result = run(["adb", "install", "-r", "-g", apk], timeout=240)
+    log(result.stdout.decode("utf-8", "replace").strip()[-200:])
+    if b"Success" not in result.stdout:
+        fail("la version Play ne s'installe pas par-dessus la version GitHub")
+        return
+    declared = shell(f"dumpsys package {PACKAGE}")
+    if "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" in declared:
+        fail("la version Play déclare encore la demande directe d'exemption de batterie")
+    if "ACCESS_BACKGROUND_LOCATION" in declared:
+        fail("la version Play demande la position en arrière-plan")
+    shell(f"am start -W -n {PACKAGE}/{ACTIVITY}", timeout=120)
+    time.sleep(10)
+    if not check_alive("version Play, au démarrage"):
+        shot("play_demarrage")
+        return
+    if not wait_for("Démarrer", 30):
+        fail("version Play : le bouton « Démarrer » n'apparaît pas")
+    shot("play_carte")
+    tap("Historique")
+    if not wait_for("Mes sorties", 10):
+        fail("version Play : l'historique ne s'affiche pas")
+    elif not find("Statistiques"):
+        fail("version Play : les sorties enregistrées avec l'autre version ont disparu")
+    shot("play_historique")
+    tap("Réglages")
+    time.sleep(1)
+    updates = "Les mises à jour arrivent par Google Play."
+    for _ in range(14):
+        if find(updates):
+            break
+        shell("input swipe 540 1900 540 700 300")
+        time.sleep(0.7)
+    shot("play_reglages")
+    if not find(updates):
+        fail("version Play : la mention des mises à jour par Google Play est absente des réglages")
+    if find("Vérifier") or find("Vérifier automatiquement"):
+        fail("version Play : la recherche de mises à jour hors du magasin est encore proposée")
+    tap("Rouler", required=False)
+    check_alive("version Play, à la fin")
 
 
 def finish():

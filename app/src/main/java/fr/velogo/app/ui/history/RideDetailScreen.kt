@@ -1,5 +1,6 @@
 package fr.velogo.app.ui.history
 
+import fr.velogo.app.ui.components.VeloCard
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -349,7 +350,7 @@ private const val MAP_HIGHLIGHT_DELAY_MS = 120L
 /** Ce que cette sortie a de remarquable : ses records sur les distances de référence, ses temps sur les segments. */
 @Composable
 private fun Highlights(segments: List<RideSegmentRow>, bests: List<Pair<String, String>>, onOpenSegment: (Long) -> Unit) {
-    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    VeloCard {
         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
             Text(
                 if (segments.isEmpty()) "Records" else if (bests.isEmpty()) "Segments" else "Records et segments",
@@ -416,7 +417,7 @@ private fun StatsGrid(ride: RideEntity) {
         RideEntity.ALTITUDE_RELIEF -> "Altitude issue du relief hors ligne"
         else -> "Altitude mesurée au GPS seul : dénivelé approximatif"
     }
-    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    VeloCard {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row {
                 Stat("DISTANCE", Formats.distanceKm(ride.distanceM), "km", Modifier.weight(1f))
@@ -467,7 +468,7 @@ private fun Readout(data: RideTrackData, selected: Int?) {
 
 @Composable
 private fun ChartCard(title: String, unit: String, content: @Composable () -> Unit) {
-    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    VeloCard {
         Column(Modifier.padding(start = 8.dp, end = 12.dp, top = 12.dp, bottom = 8.dp)) {
             Row(Modifier.padding(start = 8.dp), verticalAlignment = Alignment.Bottom) {
                 Text(title, style = MaterialTheme.typography.titleMedium)

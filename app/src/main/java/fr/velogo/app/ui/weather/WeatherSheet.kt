@@ -237,7 +237,7 @@ private fun RainBlock(report: WeatherReport, nowMs: Long) {
     if (sentence != null) InfoRow(R.drawable.ic_umbrella, "Pluie", sentence)
     if (event == null || steps.size < 4) return
 
-    val bar = MaterialTheme.colorScheme.secondary
+    val bar = LocalRideColors.current.rain
     val idle = MaterialTheme.colorScheme.outlineVariant
     Column(Modifier.fillMaxWidth().padding(start = 60.dp, end = 24.dp, top = 4.dp).clearAndSetSemantics { }) {
         Row(Modifier.fillMaxWidth().height(44.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
@@ -323,7 +323,7 @@ private fun HourColumn(hour: WeatherPoint, first: Boolean) {
             if (rain >= 0.1) Formats.decimal(rain, 1) else "",
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.secondary,
+            color = LocalRideColors.current.rain,
             maxLines = 1,
         )
         Spacer(Modifier.weight(1f))
@@ -445,7 +445,7 @@ private fun RouteRow(row: RouteWeatherRow, place: String) {
                     "Pluie ${Formats.rainMm(weather.precipitationMm ?: 0.0)} dans l'heure",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.secondary,
+                    color = LocalRideColors.current.rain,
                     maxLines = 1,
                 )
             }

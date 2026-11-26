@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import fr.velogo.app.location.GpsStatus
 import fr.velogo.app.location.LocationAccess
+import fr.velogo.app.ui.components.GlassPill
 import fr.velogo.app.ui.theme.LabelCapsStyle
 import fr.velogo.app.ui.theme.LocalRideColors
 import fr.velogo.core.format.Formats
@@ -215,7 +216,7 @@ private fun elapsed(seconds: Int): String =
 
 @Composable
 private fun toneColor(tone: GpsTone): Color = when (tone) {
-    GpsTone.GOOD -> MaterialTheme.colorScheme.primary
+    GpsTone.GOOD -> LocalRideColors.current.active
     GpsTone.WEAK -> LocalRideColors.current.paused
     GpsTone.BAD -> MaterialTheme.colorScheme.error
 }
@@ -223,25 +224,16 @@ private fun toneColor(tone: GpsTone): Color = when (tone) {
 /** État du GPS en un coup d'œil ; un appui ouvre la feuille qui l'explique. */
 @Composable
 fun GpsChip(model: GpsChipModel, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(50),
-        shadowElevation = 3.dp,
-        color = MaterialTheme.colorScheme.surface,
-    ) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(10.dp).clip(CircleShape).background(toneColor(model.tone)))
-            Spacer(Modifier.width(8.dp))
-            Text(
-                model.label,
-                style = LabelCapsStyle.copy(fontSize = 14.sp),
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+    GlassPill(modifier, onClick = onClick, horizontalPadding = 13.dp, verticalPadding = 10.dp) {
+        Box(Modifier.size(10.dp).clip(CircleShape).background(toneColor(model.tone)))
+        Spacer(Modifier.width(8.dp))
+        Text(
+            model.label,
+            style = LabelCapsStyle.copy(fontSize = 14.sp),
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

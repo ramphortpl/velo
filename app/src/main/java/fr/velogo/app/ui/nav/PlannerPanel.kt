@@ -1,5 +1,11 @@
 package fr.velogo.app.ui.nav
 
+import androidx.compose.material3.LocalContentColor
+import fr.velogo.app.ui.components.AccentButton
+import fr.velogo.app.ui.theme.Corners
+import fr.velogo.app.ui.theme.GlassBox
+import fr.velogo.app.ui.theme.LocalGlass
+import fr.velogo.app.ui.components.Segmented
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -33,9 +39,6 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,7 +65,6 @@ import fr.velogo.app.nav.PlannerState
 import fr.velogo.app.nav.RouteOption
 import fr.velogo.app.ui.components.ChartSeries
 import fr.velogo.app.ui.components.ProfileChart
-import fr.velogo.app.ui.ride.brandSegmentColors
 import fr.velogo.app.ui.theme.LocalRideColors
 import fr.velogo.app.ui.theme.NumberStyle
 import fr.velogo.core.format.Formats
@@ -138,14 +140,15 @@ fun PlannerPanel(
     expanded: Boolean = true,
     onExpandedChange: (Boolean) -> Unit = {},
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 12.dp,
+    // Un panneau de verre presque opaque (il porte beaucoup de texte), détaché des bords de l'écran.
+    GlassBox(
+        modifier = modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 6.dp),
+        style = LocalGlass.current.panel,
+        corner = Corners.Panel,
+        contentAlignment = Alignment.TopStart,
     ) {
         // Le bouton principal reste toujours visible en bas ; le reste défile au-dessus s'il manque de place.
-        Column(Modifier.animateContentSize(tween(220)).heightIn(max = maxHeight).padding(bottom = 12.dp)) {
+        Column(Modifier.clip(RoundedCornerShape(Corners.Panel)).animateContentSize(tween(220)).heightIn(max = maxHeight).padding(bottom = 12.dp)) {
             if (state.options.isEmpty()) {
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                     PointsStage(state, hasRoutingData, actions)
@@ -252,7 +255,7 @@ private fun PointsStage(state: PlannerState, hasRoutingData: Boolean, actions: P
     if (!hasRoutingData || state.needsData) {
         Surface(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(Corners.Inner),
             color = MaterialTheme.colorScheme.secondaryContainer,
         ) {
             Column(Modifier.padding(14.dp)) {
@@ -275,13 +278,13 @@ private fun PointsStage(state: PlannerState, hasRoutingData: Boolean, actions: P
 
 @Composable
 private fun PointsFooter(state: PlannerState, actions: PlannerActions) {
-    Button(
+    AccentButton(
         onClick = actions::compute,
         enabled = state.canCompute && !state.computing,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(56.dp),
     ) {
         if (state.computing) {
-            CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp, color = MaterialTheme.colorScheme.onPrimary)
+            CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp, color = LocalContentColor.current)
             Spacer(Modifier.width(12.dp))
             Text("Calcul en cours…", style = MaterialTheme.typography.titleMedium)
         } else {
@@ -296,17 +299,7 @@ private fun PointsFooter(state: PlannerState, actions: PlannerActions) {
 @Composable
 private fun BikeSelector(bike: BikeType, onBike: (BikeType) -> Unit) {
     val choices = listOf(BikeType.ROAD to "Route", BikeType.HYBRID to "VTC · Gravel", BikeType.MTB to "VTT")
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-        choices.forEachIndexed { index, (type, label) ->
-            SegmentedButton(
-                selected = bike == type,
-                onClick = { onBike(type) },
-                shape = SegmentedButtonDefaults.itemShape(index, choices.size),
-                colors = brandSegmentColors(),
-                icon = { },
-            ) { Text(label, maxLines = 1) }
-        }
-    }
+    Segmented(choices, bike, onBike, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp))
 }
 
 @Composable
@@ -463,13 +456,13 @@ private fun ResultsDetails(state: PlannerState, weather: PlannerWeather?, action
 @Composable
 private fun ResultsFooter(voiceEnabled: Boolean, actions: PlannerActions) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Button(onClick = actions::startGuidance, modifier = Modifier.weight(1f).height(56.dp)) {
+        AccentButton(onClick = actions::startGuidance, modifier = Modifier.weight(1f).height(56.dp)) {
             Icon(painterResource(R.drawable.ic_navigation_filled), contentDescription = null)
             Spacer(Modifier.width(10.dp))
             Text("Démarrer le guidage", style = MaterialTheme.typography.titleMedium, maxLines = 1)
         }
-        Spacer(Modifier.width(8.dp))
-        FilledTonalIconButton(onClick = actions::toggleVoice, modifier = Modifier.size(52.dp)) {
+        Spacer(Modifier.width(10.dp))
+        FilledTonalIconButton(onClick = actions::toggleVoice, modifier = Modifier.size(56.dp)) {
             Icon(
                 painterResource(if (voiceEnabled) R.drawable.ic_volume_up else R.drawable.ic_volume_off),
                 contentDescription = if (voiceEnabled) "Guidage vocal activé" else "Guidage vocal désactivé",
@@ -508,7 +501,7 @@ private fun StartReturnNotice(state: PlannerState, compact: Boolean, onStop: () 
     val back = remember(route) { RouteShape.returnToStart(route) } ?: return
     val text = startReturnText(back, compact)
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(Corners.Inner),
         color = MaterialTheme.colorScheme.secondaryContainer,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = if (compact) 0.dp else 8.dp, bottom = 8.dp),
     ) {
@@ -542,15 +535,15 @@ private fun StartReturnNotice(state: PlannerState, compact: Boolean, onStop: () 
 private fun WeatherLine(weather: PlannerWeather, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(Corners.Inner),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
         Row(Modifier.padding(start = 14.dp, end = 8.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 painterResource(if (weather.wet) R.drawable.ic_umbrella else R.drawable.ic_partly_cloudy_day),
                 contentDescription = null,
-                tint = if (weather.wet) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (weather.wet) LocalRideColors.current.rain else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(24.dp),
             )
             Spacer(Modifier.width(12.dp))
@@ -576,9 +569,9 @@ private fun OptionCard(title: String, option: RouteOption, selected: Boolean, co
     Surface(
         onClick = onClick,
         modifier = Modifier.width(if (compact) 214.dp else 196.dp).semantics { contentDescription = "$title : $summary" },
-        shape = RoundedCornerShape(20.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(2.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent),
+        shape = RoundedCornerShape(Corners.Inner),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+        border = BorderStroke(2.dp, if (selected) LocalRideColors.current.active else Color.Transparent),
     ) {
         if (compact) {
             Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {

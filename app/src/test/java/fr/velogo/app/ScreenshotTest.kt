@@ -11,7 +11,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import android.graphics.BitmapFactory
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.layout.widthIn
+import fr.velogo.app.ui.BottomFade
+import fr.velogo.app.ui.READING_WIDTH
+import fr.velogo.app.ui.FloatingTabBar
+import fr.velogo.app.ui.Tab
 import androidx.compose.ui.res.painterResource
 import fr.velogo.app.nav.PosterText
 import fr.velogo.app.nav.RoutePoster
@@ -41,6 +49,8 @@ import fr.velogo.app.ui.ride.RideMode
 import fr.velogo.app.ui.ride.gpsChip
 import fr.velogo.app.ui.ride.gpsSheet
 import fr.velogo.app.ui.settings.AboutScreen
+import fr.velogo.app.ui.settings.PrivacyContent
+import fr.velogo.app.ui.settings.parsePolicy
 import fr.velogo.app.ui.settings.ArchiveState
 import fr.velogo.app.ui.settings.SettingsActions
 import fr.velogo.app.ui.settings.SettingsContent
@@ -164,7 +174,8 @@ class ScreenshotTest {
         gps: GpsChipModel = gpsOk,
     ): @Composable () -> Unit = {
         VeloGoTheme(mode = theme) {
-            Box(Modifier.fillMaxSize().background(if (theme == ThemeMode.DARK) Color(0xFF1B2630) else Color(0xFFDDE7DD))) {
+            Box(Modifier.fillMaxSize()) {
+                MapBackdrop(dark = theme == ThemeMode.DARK)
                 RideChrome(
                     snapshot = snapshot, mode = mode, onMode = {}, themeMode = theme, sunlight = sunlight,
                     attribution = "© OpenStreetMap · OpenFreeMap", following = true, headingUp = false,
@@ -174,6 +185,32 @@ class ScreenshotTest {
                     onStart = {}, onPause = {}, onResume = {}, onStop = {}, onStopHint = {},
                     weather = weather,
                 )
+                FloatingTabBar(Tab.RIDE, badge = null, onSelect = {}, modifier = Modifier.align(Alignment.BottomCenter))
+            }
+        }
+    }
+
+    /**
+     * Un vrai morceau de carte (OpenFreeMap, Corte) derrière l'habillage : c'est sur lui qu'on juge les surfaces
+     * translucides. Sur l'émulateur, la carte est dessinée par MapLibre ; ici, c'est une image.
+     */
+    @Composable
+    private fun MapBackdrop(dark: Boolean) {
+        val bitmap = remember(dark) {
+            javaClass.getResourceAsStream(if (dark) "/fond_carte_sombre.jpg" else "/fond_carte.jpg")!!.use { BitmapFactory.decodeStream(it) }.asImageBitmap()
+        }
+        Image(bitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+    }
+
+    /** Un écran d'onglet comme dans l'appli : son contenu, le fondu du bas et la barre d'onglets flottante. */
+    private fun tabScreen(tab: Tab, theme: ThemeMode = ThemeMode.LIGHT, badge: Tab? = null, content: @Composable () -> Unit): @Composable () -> Unit = {
+        VeloGoTheme(mode = theme) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                Box(Modifier.fillMaxSize()) {
+                    content()
+                    BottomFade(102.dp, Modifier.align(Alignment.BottomCenter))
+                    FloatingTabBar(tab, badge = badge, onSelect = {}, modifier = Modifier.align(Alignment.BottomCenter))
+                }
             }
         }
     }
@@ -275,9 +312,30 @@ class ScreenshotTest {
         GpsStatus(listening = true, hasApproximate = true, approximateAccuracyM = 2_000.0),
     )
 
+    // --- Grand écran -------------------------------------------------------------------------------------------
+    // Sur une tablette ou un téléphone déplié (largeur d'au moins 600 dp), Android ne tient plus compte du
+    // verrouillage en portrait : l'appli doit s'y présenter correctement, couchée comme debout.
+
     @Test
-    @Config(sdk = [35], qualifiers = "w914dp-h411dp-420dpi")
-    fun guidon_paysage() = captureRoboImage("$OUT/guidon_paysage.png", content = chrome(recording, RideMode.DATA))
+    @Config(sdk = [35], qualifiers = "w1280dp-h800dp-240dpi")
+    fun tablette_guidon() = captureRoboImage("$OUT/tablette_guidon.png", content = chrome(recording, RideMode.DATA))
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w1280dp-h800dp-240dpi")
+    fun tablette_carte() = captureRoboImage("$OUT/tablette_carte.png", content = chrome(recording, RideMode.MAP))
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w800dp-h1280dp-240dpi")
+    fun tablette_historique() = captureRoboImage(
+        "$OUT/tablette_historique.png",
+        content = tabScreen(Tab.HISTORY) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                Box(Modifier.widthIn(max = READING_WIDTH)) {
+                    HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 80.dp), today = sampleToday)
+                }
+            }
+        },
+    )
 
     @Test
     fun carte_au_repos() = captureRoboImage("$OUT/carte_repos.png", content = chrome(RideSnapshot(), RideMode.MAP))
@@ -292,18 +350,16 @@ class ScreenshotTest {
     fun carte_sombre() = captureRoboImage("$OUT/carte_sombre.png", content = chrome(recording, RideMode.MAP, ThemeMode.DARK))
 
     @Test
-    fun historique() = captureRoboImage("$OUT/historique.png") {
-        VeloGoTheme(mode = ThemeMode.LIGHT) {
-            Surface(Modifier.fillMaxSize()) { HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 80.dp), today = sampleToday) }
-        }
-    }
+    fun historique() = captureRoboImage(
+        "$OUT/historique.png",
+        content = tabScreen(Tab.HISTORY) { HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 80.dp), today = sampleToday) },
+    )
 
     @Test
-    fun historique_sombre() = captureRoboImage("$OUT/historique_sombre.png") {
-        VeloGoTheme(mode = ThemeMode.DARK) {
-            Surface(Modifier.fillMaxSize()) { HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 80.dp), today = sampleToday) }
-        }
-    }
+    fun historique_sombre() = captureRoboImage(
+        "$OUT/historique_sombre.png",
+        content = tabScreen(Tab.HISTORY, ThemeMode.DARK) { HistoryContent(sampleRides(), onOpenRide = {}, contentPadding = PaddingValues(bottom = 80.dp), today = sampleToday) },
+    )
 
     @Test
     fun historique_vide() = captureRoboImage("$OUT/historique_vide.png") {
@@ -445,12 +501,36 @@ class ScreenshotTest {
     }
 
     @Test
-    fun reglages() = captureRoboImage("$OUT/reglages.png") {
+    fun reglages() = captureRoboImage(
+        "$OUT/reglages.png",
+        content = tabScreen(Tab.SETTINGS, badge = Tab.SETTINGS) {
+            SettingsContent(
+                settings = Settings(),
+                update = UpdateInfo("0.2.14", 14, "https://exemple.invalid/a.apk", "https://exemple.invalid", ""),
+                check = UpdateCheck.IDLE,
+                batteryOk = false,
+                notificationsOk = true,
+                isSamsung = true,
+                actions = NoActions,
+                onOpenAbout = {},
+                onOpenOfflineMaps = {},
+                contentPadding = PaddingValues(bottom = 80.dp),
+            )
+        },
+    )
+
+    /**
+     * La version distribuée par Google Play : pas de mise à jour par GitHub (ni bandeau ni bouton « Vérifier »), et
+     * l'économie de batterie se règle sur la fiche de l'appli.
+     */
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h3300dp-420dpi")
+    fun reglages_version_play() = captureRoboImage("$OUT/reglages_version_play.png") {
         VeloGoTheme(mode = ThemeMode.LIGHT) {
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
                 SettingsContent(
                     settings = Settings(),
-                    update = UpdateInfo("0.2.14", 14, "https://exemple.invalid/a.apk", "https://exemple.invalid", ""),
+                    update = UpdateInfo("9.9.99", 99, "https://exemple.invalid/a.apk", "https://exemple.invalid", ""),
                     check = UpdateCheck.IDLE,
                     batteryOk = false,
                     notificationsOk = true,
@@ -459,7 +539,21 @@ class ScreenshotTest {
                     onOpenAbout = {},
                     onOpenOfflineMaps = {},
                     contentPadding = PaddingValues(bottom = 80.dp),
+                    selfUpdate = false,
+                    directBatteryExemption = false,
                 )
+            }
+        }
+    }
+
+    /** La politique de confidentialité, telle que l'appli l'affiche : le texte est celui du dépôt. */
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h4200dp-420dpi")
+    fun confidentialite() = captureRoboImage("$OUT/confidentialite.png") {
+        val file = listOf(File("docs/CONFIDENTIALITE.md"), File("../docs/CONFIDENTIALITE.md")).first { it.isFile }
+        VeloGoTheme(mode = ThemeMode.LIGHT) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                PrivacyContent(parsePolicy(file.readText()), onBack = {})
             }
         }
     }
@@ -850,16 +944,14 @@ class ScreenshotTest {
     /** L'onglet « Trajets » : les mêmes itinéraires enregistrés, avec le dessin de leur tracé. */
     private fun savedRoutes(theme: ThemeMode, routes: List<SavedRouteEntity>?): @Composable () -> Unit = {
         val previews = routes.orEmpty().associate { it.id to Polyline.encode(Simplify.toMaxPoints(sampleRoute(it.id.toInt()).points, 90)) }
-        VeloGoTheme(mode = theme) {
-            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-                SavedRoutesContent(
-                    // La troisième vignette n'est pas encore prête : la ligne doit rester en place.
-                    rows = routes?.let { savedRouteRows(it, previews - 3L, today = sampleToday) },
-                    onOpen = {}, onRename = { _, _ -> }, onShare = {}, onDelete = {}, onNew = {},
-                    contentPadding = PaddingValues(bottom = 80.dp),
-                )
-            }
-        }
+        tabScreen(Tab.ROUTES, theme) {
+            SavedRoutesContent(
+                // La troisième vignette n'est pas encore prête : la ligne doit rester en place.
+                rows = routes?.let { savedRouteRows(it, previews - 3L, today = sampleToday) },
+                onOpen = {}, onRename = { _, _ -> }, onShare = {}, onDelete = {}, onNew = {},
+                contentPadding = PaddingValues(bottom = 80.dp),
+            )
+        }()
     }
 
     private val sampleSavedRoutes = listOf(

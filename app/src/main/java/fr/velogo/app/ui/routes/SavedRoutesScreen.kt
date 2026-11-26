@@ -1,5 +1,8 @@
 package fr.velogo.app.ui.routes
 
+import fr.velogo.app.ui.components.LargeTitleBar
+import fr.velogo.app.ui.theme.Corners
+import fr.velogo.app.ui.components.VeloCard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,7 +36,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -242,26 +244,22 @@ fun SavedRoutesContent(
     onNew: () -> Unit,
     contentPadding: PaddingValues,
 ) {
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var renaming by remember { mutableStateOf<SavedRouteRow?>(null) }
     var deleting by remember { mutableStateOf<SavedRouteRow?>(null) }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = { Text("Mes trajets") },
-                actions = {
-                    if (!rows.isNullOrEmpty()) {
-                        TextButton(onClick = onNew) {
-                            Icon(painterResource(R.drawable.ic_add), contentDescription = null, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Nouveau")
-                        }
+            LargeTitleBar("Mes trajets", scrollBehavior) {
+                if (!rows.isNullOrEmpty()) {
+                    TextButton(onClick = onNew) {
+                        Icon(painterResource(R.drawable.ic_add), contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Nouveau")
                     }
-                },
-                scrollBehavior = scrollBehavior,
-            )
+                }
+            }
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { inner ->
@@ -340,16 +338,12 @@ private fun RouteCard(
     modifier: Modifier = Modifier,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    Surface(
-        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).clickable(onClickLabel = "Rouvrir sur la carte", onClick = onOpen),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-    ) {
+    VeloCard(modifier = modifier.fillMaxWidth(), onClick = onOpen, onClickLabel = "Rouvrir sur la carte") {
         Row(Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             TrackThumbnail(
                 encodedPreview = row.preview,
                 color = LocalRideColors.current.route,
-                modifier = Modifier.size(76.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                modifier = Modifier.size(76.dp).clip(RoundedCornerShape(Corners.Thumbnail)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
                 startColor = MaterialTheme.colorScheme.primary,
             )
             Spacer(Modifier.width(14.dp))

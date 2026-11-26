@@ -1,5 +1,6 @@
 package fr.velogo.app.ui.ride
 
+import fr.velogo.app.ui.COMPACT_WIDTH
 import android.content.Intent
 import android.location.Location
 import android.view.WindowManager
@@ -75,16 +76,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -104,6 +100,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -129,6 +126,16 @@ import fr.velogo.app.recording.RecorderEvent
 import fr.velogo.app.recording.RecordingService
 import fr.velogo.app.ui.LocalContainer
 import fr.velogo.app.ui.components.FittedNumber
+import fr.velogo.app.ui.components.GlassControlStack
+import fr.velogo.app.ui.components.GlassIconButton
+import fr.velogo.app.ui.components.GlassPill
+import fr.velogo.app.ui.components.Segmented
+import fr.velogo.app.ui.components.StackControl
+import fr.velogo.app.ui.theme.Corners
+import fr.velogo.app.ui.theme.GlassBox
+import fr.velogo.app.ui.theme.GlassDefaults
+import fr.velogo.app.ui.theme.LocalGlass
+import androidx.compose.ui.text.style.TextAlign
 import fr.velogo.app.ui.findActivity
 import fr.velogo.app.ui.theme.LabelCapsStyle
 import fr.velogo.app.ui.theme.LocalIsDark
@@ -158,6 +165,7 @@ fun RideScreen(
     bottomPadding: Dp,
     onRideSaved: (Long) -> Unit,
     onOpenOfflineMaps: () -> Unit,
+    onOpenPrivacy: () -> Unit,
 ) {
     val container = LocalContainer.current
     val vm = veloViewModel { RideViewModel(it) }
@@ -534,8 +542,19 @@ fun RideScreen(
     }
     val panelHeight = with(density) { panelHeightPx.toDp() }
 
+    // Recouvert par un autre onglet, l'habillage de la carte n'a plus à être dessiné : sans cela il le serait, pour
+    // rien, à chaque image de la liste qu'on fait défiler par-dessus. On attend la fin du fondu pour le couper.
+    var chromeDrawn by remember { mutableStateOf(true) }
+    LaunchedEffect(isForeground) {
+        if (isForeground) chromeDrawn = true else {
+            delay(450)
+            chromeDrawn = false
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
         VeloMap(mapState, spec, mapColors, Modifier.fillMaxSize())
+      Box(Modifier.fillMaxSize().drawWithContent { if (chromeDrawn) drawContent() }) {
         RideChrome(
             snapshot = snapshot,
             mode = mode,
@@ -569,6 +588,7 @@ fun RideScreen(
             onStopGuidance = { navigation.stopGuidance() },
             weather = glance,
             onWeather = { showWeather = true },
+            onPrivacy = onOpenPrivacy,
             onLayers = { showLayers = true },
             onRecenter = { mapState.follow() },
             onToggleHeading = { vm.setHeadingUp(!settings.headingUp) },
@@ -590,7 +610,7 @@ fun RideScreen(
             visible = planner.open && isForeground,
             enter = slideInVertically { it },
             exit = slideOutVertically { it },
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = bottomPadding),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = bottomPadding).widthIn(max = COMPACT_WIDTH + 20.dp),
         ) {
             PlannerPanel(
                 state = planner,
@@ -609,6 +629,7 @@ fun RideScreen(
                 },
             )
         }
+      }
     }
 
     searchTarget?.let { target ->
@@ -967,6 +988,8 @@ fun RideChrome(
     weather: WeatherGlance? = null,
     onWeather: () -> Unit = {},
     onGps: () -> Unit = {},
+    /** Ouvre la politique de confidentialité (lien sous l'explication qui précède la demande de position). */
+    onPrivacy: () -> Unit = {},
 ) {
     VeloGoTheme(mode = themeMode, sunlight = sunlight) {
         Box(modifier.fillMaxSize()) {
@@ -992,6 +1015,7 @@ fun RideChrome(
                     onToggleHeading = onToggleHeading,
                     onRequestPermission = onRequestPermission,
                     onRoute = onRoute,
+                    onPrivacy = onPrivacy,
                 )
             }
 
@@ -1005,13 +1029,10 @@ fun RideChrome(
                     Column(
                         Modifier
                             .fillMaxSize()
-                            .padding(top = topInset + TOP_BAR_HEIGHT + 6.dp + bannerSpace, bottom = bottomPadding + CONTROLS_HEIGHT + 20.dp),
+                            .padding(top = topInset + TOP_BAR_HEIGHT + 10.dp + bannerSpace, bottom = bottomPadding + CONTROLS_HEIGHT + 22.dp),
                     ) {
                         Dashboard(snapshot = snapshot, modifier = Modifier.fillMaxWidth().weight(1f))
-                        if (weather != null) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            WeatherStrip(weather, onWeather)
-                        }
+                        if (weather != null) WeatherStrip(weather, onWeather, Modifier.padding(start = 10.dp, end = 10.dp, top = 8.dp))
                     }
                 }
             }
@@ -1030,14 +1051,17 @@ fun RideChrome(
                 GuidanceBanner(
                     guidance = guidance,
                     onStop = onStopGuidance,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = topInset + TOP_BAR_HEIGHT + 12.dp).padding(horizontal = 12.dp),
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = topInset + TOP_BAR_HEIGHT + 12.dp).padding(horizontal = 12.dp)
+                        .widthIn(max = COMPACT_WIDTH),
                 )
             }
 
             // --- Boutons de la sortie ---------------------------------------------------------------------
+            // Sur un grand écran, les commandes gardent une largeur de téléphone, au milieu.
             Column(
                 Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp)
                     .padding(bottom = bottomPadding + (if (plannerOpen) plannerHeight else 0.dp) + 10.dp)
+                    .widthIn(max = COMPACT_WIDTH)
             ) {
                 SnackbarHost(snackbar, Modifier.padding(bottom = 8.dp))
                 if (!plannerOpen) {
@@ -1082,7 +1106,6 @@ private suspend fun awaitStable(value: () -> Int) {
 /** En dessous de cette vitesse, le cap donné par le GPS ne veut rien dire. */
 private const val MOVING_MPS = 2.0
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TopBar(
     mode: RideMode,
@@ -1096,29 +1119,14 @@ private fun TopBar(
         // Sur un écran étroit, la bascule Carte / Données cède un peu de place à la pastille du GPS.
         val switchWidth = (maxWidth - GPS_CHIP_ROOM).coerceIn(SWITCH_MIN_WIDTH, SWITCH_WIDTH)
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-        Surface(shape = RoundedCornerShape(50), shadowElevation = 3.dp, color = MaterialTheme.colorScheme.surface) {
-            SingleChoiceSegmentedButtonRow(Modifier.padding(4.dp).width(switchWidth)) {
-                SegmentedButton(
-                    selected = mode == RideMode.MAP,
-                    onClick = { onMode(RideMode.MAP) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                    colors = brandSegmentColors(),
-                    icon = { },
-                ) { Text("Carte") }
-                SegmentedButton(
-                    selected = mode == RideMode.DATA,
-                    onClick = { onMode(RideMode.DATA) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                    colors = brandSegmentColors(),
-                    icon = { },
-                ) { Text("Données") }
-            }
-        }
-        Spacer(Modifier.weight(1f).widthIn(min = 8.dp))
-        if (gps != null) GpsChip(gps, onGps)
+            Segmented(MODES, mode, onMode, Modifier.width(switchWidth), floating = true, height = 44.dp)
+            Spacer(Modifier.weight(1f).widthIn(min = 8.dp))
+            if (gps != null) GpsChip(gps, onGps)
         }
     }
 }
+
+private val MODES = listOf(RideMode.MAP to "Carte", RideMode.DATA to "Données")
 
 /** La pastille du GPS telle qu'elle doit s'afficher à l'instant, avant la première mise à jour reçue. */
 private fun currentGpsChip(gps: GpsSource, access: LocationAccess): GpsChipModel = gpsChip(access, gps.status.value)
@@ -1127,14 +1135,6 @@ private val SWITCH_WIDTH = 212.dp
 private val SWITCH_MIN_WIDTH = 168.dp
 /** Place gardée à droite de la bascule pour la pastille du GPS (« Recherche GPS » est son texte le plus long). */
 private val GPS_CHIP_ROOM = 158.dp
-
-/** Boutons segmentés aux couleurs de VeloGo (émeraude) plutôt qu'au bleu par défaut. */
-@Composable
-fun brandSegmentColors() = SegmentedButtonDefaults.colors(
-    activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
-    activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-    inactiveContainerColor = MaterialTheme.colorScheme.surface,
-)
 
 @Composable
 private fun MapOverlays(
@@ -1156,69 +1156,66 @@ private fun MapOverlays(
     onToggleHeading: () -> Unit,
     onRequestPermission: () -> Unit,
     onRoute: () -> Unit,
+    onPrivacy: () -> Unit,
 ) {
+    val glass = LocalGlass.current
+    val active = LocalRideColors.current.active
     Box(Modifier.fillMaxSize().padding(top = topPadding, bottom = bottomPadding).padding(horizontal = 12.dp)) {
-        Column(Modifier.align(Alignment.TopStart).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.align(Alignment.TopStart).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (snapshot.isActive) MapStatsStrip(snapshot)
             // La météo se range à droite, sous le rappel des données quand une sortie est en cours. Panneau
             // d'itinéraire ouvert, elle laisse la place aux boutons de la carte : le panneau a sa propre ligne météo.
             if (weather != null && hasLocationPermission && showRouteButton) WeatherChip(weather, onWeather, Modifier.align(Alignment.End))
         }
 
-        Column(Modifier.align(Alignment.BottomEnd), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // À droite : le bouton d'itinéraire, en vert, puis les réglages de la carte réunis dans une seule pilule.
+        Column(Modifier.align(Alignment.BottomEnd), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (showRouteButton) {
-                SmallFloatingActionButton(
-                    onClick = onRoute,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ) {
-                    Icon(painterResource(R.drawable.ic_route), contentDescription = "Itinéraire")
-                }
+                GlassIconButton(R.drawable.ic_route, "Itinéraire", onRoute, style = glass.accent, size = 52.dp, iconSize = 26.dp)
             }
-            if (showFitRoute) {
-                SmallFloatingActionButton(onClick = onFitRoute, containerColor = MaterialTheme.colorScheme.surface) {
-                    Icon(painterResource(R.drawable.ic_fit_route), contentDescription = "Voir tout l'itinéraire")
-                }
-            }
-            SmallFloatingActionButton(onClick = onLayers, containerColor = MaterialTheme.colorScheme.surface) {
-                Icon(painterResource(R.drawable.ic_layers), contentDescription = "Changer de fond de carte")
-            }
-            if (hasLocationPermission) {
-                // En guidage, la carte est toujours dans le sens de la marche : ce réglage ne sert qu'en dehors.
-                if (!guiding) {
-                    SmallFloatingActionButton(onClick = onToggleHeading, containerColor = MaterialTheme.colorScheme.surface) {
-                        Icon(
-                            painterResource(if (headingUp) R.drawable.ic_navigation_filled else R.drawable.ic_north),
-                            contentDescription = if (headingUp) "Carte orientée dans le sens de la marche" else "Nord en haut",
-                            tint = if (headingUp) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            GlassControlStack(
+                controls = buildList {
+                    if (showFitRoute) add(StackControl(R.drawable.ic_fit_route, "Voir tout l'itinéraire", onClick = onFitRoute))
+                    add(StackControl(R.drawable.ic_layers, "Changer de fond de carte", onClick = onLayers))
+                    if (hasLocationPermission) {
+                        // En guidage, la carte est toujours dans le sens de la marche : ce réglage ne sert qu'en dehors.
+                        if (!guiding) {
+                            add(
+                                StackControl(
+                                    icon = if (headingUp) R.drawable.ic_navigation_filled else R.drawable.ic_north,
+                                    description = if (headingUp) "Carte orientée dans le sens de la marche" else "Nord en haut",
+                                    active = headingUp,
+                                    onClick = onToggleHeading,
+                                )
+                            )
+                        }
+                        add(
+                            StackControl(
+                                icon = if (following) R.drawable.ic_my_location_filled else R.drawable.ic_my_location,
+                                description = "Recentrer sur ma position",
+                                active = following,
+                                onClick = onRecenter,
+                            )
                         )
                     }
-                }
-                SmallFloatingActionButton(onClick = onRecenter, containerColor = MaterialTheme.colorScheme.surface) {
-                    Icon(
-                        painterResource(if (following) R.drawable.ic_my_location_filled else R.drawable.ic_my_location),
-                        contentDescription = "Recentrer sur ma position",
-                        tint = if (following) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
+                },
+                activeColor = active,
+            )
         }
 
         // En guidage, dès qu'on a déplacé la carte : un gros bouton pour revenir à la vue de guidage.
         if (guiding && !following && hasLocationPermission) {
-            Surface(
-                onClick = onRecenter,
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shadowElevation = 6.dp,
+            GlassPill(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 34.dp),
+                style = glass.accent,
+                onClick = onRecenter,
+                reach = GlassDefaults.Reach,
+                horizontalPadding = 18.dp,
+                verticalPadding = 12.dp,
             ) {
-                Row(Modifier.padding(start = 16.dp, end = 22.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(painterResource(R.drawable.ic_navigation_filled), contentDescription = null, modifier = Modifier.size(22.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Recentrer", style = MaterialTheme.typography.titleMedium)
-                }
+                Icon(painterResource(R.drawable.ic_navigation_filled), contentDescription = null, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Recentrer", style = MaterialTheme.typography.titleMedium)
             }
         }
 
@@ -1226,35 +1223,36 @@ private fun MapOverlays(
         Text(
             attribution,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = glass.regular.content,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .clip(RoundedCornerShape(6.dp))
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f))
-                .padding(horizontal = 6.dp, vertical = 2.dp),
+                .clip(CircleShape)
+                .background(glass.regular.fillBottom)
+                .padding(horizontal = 8.dp, vertical = 3.dp),
         )
 
         if (!hasLocationPermission) {
-            Surface(
-                modifier = Modifier.align(Alignment.Center).padding(horizontal = 12.dp),
-                shape = RoundedCornerShape(24.dp),
-                shadowElevation = 6.dp,
-                color = MaterialTheme.colorScheme.surface,
-            ) {
-                Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(painterResource(R.drawable.ic_my_location), contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
+            GlassBox(Modifier.align(Alignment.Center).padding(horizontal = 12.dp), style = glass.panel, corner = Corners.Panel) {
+                Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(painterResource(R.drawable.ic_my_location), contentDescription = null, tint = active, modifier = Modifier.size(38.dp))
                     Spacer(Modifier.height(10.dp))
                     Text("Où es-tu ?", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(6.dp))
-                    Text(
-                        "VeloGo a besoin de ta position pour te situer sur la carte et enregistrer tes sorties. Elle reste sur ton téléphone.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    Button(onClick = onRequestPermission) { Text("Autoriser la position") }
+                    // Dit avant de demander l'autorisation : à quoi sert la position et ce qui en sort du téléphone.
+                    for (paragraph in LOCATION_DISCLOSURE) {
+                        Text(
+                            paragraph,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(bottom = 8.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Button(onClick = onRequestPermission, modifier = Modifier.height(48.dp)) { Text("Autoriser la position") }
+                    TextButton(onClick = onPrivacy) { Text("Confidentialité") }
                 }
             }
         }
@@ -1265,20 +1263,21 @@ private fun MapOverlays(
 @Composable
 private fun MapStatsStrip(snapshot: RideSnapshot, modifier: Modifier = Modifier) {
     val paused = snapshot.state == RideState.PAUSED || snapshot.state == RideState.AUTO_PAUSED
-    Surface(modifier, shape = RoundedCornerShape(20.dp), shadowElevation = 4.dp, color = MaterialTheme.colorScheme.surface) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    val caption = LocalGlass.current.regular.content.copy(alpha = 0.66f)
+    GlassBox(modifier, corner = 26.dp) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
             Column {
-                Text(if (paused) "PAUSE" else "KM/H", style = LabelCapsStyle.copy(fontSize = 12.sp), color = if (paused) LocalRideColors.current.paused else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if (paused) "PAUSE" else "KM/H", style = LabelCapsStyle.copy(fontSize = 12.sp), color = if (paused) LocalRideColors.current.paused else caption)
                 FittedNumber(Formats.speedKmh(snapshot.speedMps), "88,8", Modifier.width(92.dp).height(46.dp), align = Alignment.Start)
             }
             Spacer(Modifier.width(14.dp))
             Column {
-                Text("KM", style = LabelCapsStyle.copy(fontSize = 12.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("KM", style = LabelCapsStyle.copy(fontSize = 12.sp), color = caption)
                 FittedNumber(Formats.distanceKm(snapshot.totals.distanceM), "88,88", Modifier.width(84.dp).height(34.dp), align = Alignment.Start)
             }
             Spacer(Modifier.width(14.dp))
             Column {
-                Text("DURÉE", style = LabelCapsStyle.copy(fontSize = 12.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("DURÉE", style = LabelCapsStyle.copy(fontSize = 12.sp), color = caption)
                 FittedNumber(Formats.duration(snapshot.totals.movingMs), "8:88:88", Modifier.width(96.dp).height(34.dp), align = Alignment.Start)
             }
         }

@@ -1,5 +1,10 @@
 package fr.velogo.app.ui.offline
 
+import androidx.compose.foundation.selection.toggleable
+import fr.velogo.app.ui.components.VeloSwitch
+import fr.velogo.app.ui.components.flatBarColors
+import fr.velogo.app.ui.components.VeloCard
+import fr.velogo.app.ui.components.Segmented
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,13 +35,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -60,7 +61,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import fr.velogo.app.R
-import fr.velogo.app.ui.ride.brandSegmentColors
 import fr.velogo.app.ui.veloViewModel
 import fr.velogo.core.format.Formats
 
@@ -107,6 +107,7 @@ fun OfflineMapsContent(
                     }
                 },
                 scrollBehavior = scrollBehavior,
+                colors = flatBarColors(),
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -130,7 +131,7 @@ fun OfflineMapsContent(
             )
 
             if (state.anyInstalled && !state.offlineLayerActive) {
-                Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                VeloCard(color = MaterialTheme.colorScheme.primaryContainer) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("La carte hors ligne est prête", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
                         Text(
@@ -170,7 +171,7 @@ fun OfflineMapsContent(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .clickable(role = Role.Switch) { actions.setWifiOnly(!state.wifiOnly) }
+                        .toggleable(value = state.wifiOnly, role = Role.Switch, onValueChange = { actions.setWifiOnly(it) })
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -183,20 +184,16 @@ fun OfflineMapsContent(
                         )
                     }
                     Spacer(Modifier.width(12.dp))
-                    Switch(checked = state.wifiOnly, onCheckedChange = null)
+                    VeloSwitch(state.wifiOnly)
                 }
                 if (state.storages.size > 1) {
                     Text("Emplacement des prochains téléchargements", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp))
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        state.storages.forEachIndexed { index, storage ->
-                            SegmentedButton(
-                                selected = state.selectedStorage == storage.index,
-                                onClick = { actions.setStorage(storage.index) },
-                                shape = SegmentedButtonDefaults.itemShape(index, state.storages.size),
-                                colors = brandSegmentColors(),
-                            ) { Text(storage.label) }
-                        }
-                    }
+                    Segmented(
+                        options = state.storages.map { it.index to it.label },
+                        selected = state.selectedStorage,
+                        onSelect = { actions.setStorage(it) },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
                 }
                 val place = state.storages.firstOrNull { it.index == state.selectedStorage }
                 Text(
@@ -312,7 +309,7 @@ private fun Panel(title: String, subtitle: String? = null, content: @Composable 
             Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
         }
         Spacer(Modifier.height(8.dp))
-        Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        VeloCard {
             Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) { content() }
         }
     }

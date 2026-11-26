@@ -1,5 +1,7 @@
 package fr.velogo.app.ui.stats
 
+import fr.velogo.app.ui.components.VeloCard
+import fr.velogo.app.ui.components.Segmented
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,9 +26,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -44,7 +43,6 @@ import androidx.lifecycle.viewModelScope
 import fr.velogo.app.AppContainer
 import fr.velogo.app.R
 import fr.velogo.app.ui.components.BarChart
-import fr.velogo.app.ui.ride.brandSegmentColors
 import fr.velogo.app.ui.theme.LabelCapsStyle
 import fr.velogo.app.ui.theme.NumberStyle
 import fr.velogo.app.ui.veloViewModel
@@ -135,23 +133,13 @@ fun StatsContent(
 @Composable
 private fun PeriodSelector(period: Period, onPeriod: (Period) -> Unit) {
     val choices = listOf(Period.WEEK to "Semaine", Period.MONTH to "Mois", Period.YEAR to "Année")
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-        choices.forEachIndexed { index, (value, label) ->
-            SegmentedButton(
-                selected = period == value,
-                onClick = { onPeriod(value) },
-                shape = SegmentedButtonDefaults.itemShape(index, choices.size),
-                colors = brandSegmentColors(),
-                icon = { },
-            ) { Text(label) }
-        }
-    }
+    Segmented(choices, period, onPeriod, Modifier.fillMaxWidth())
 }
 
 @Composable
 private fun PeriodCard(state: StatsUiState, onSelect: (Int) -> Unit) {
     val current = state.current ?: return
-    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    VeloCard {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Text(periodTitle(state.period, current.start), style = MaterialTheme.typography.titleLarge)
             comparison(state.period, current, state.previous)?.let {
@@ -194,7 +182,7 @@ private fun TotalsGrid(totals: PeriodTotals) {
 
 @Composable
 private fun AllTimeCard(totals: PeriodTotals) {
-    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    VeloCard {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("Depuis le début", style = MaterialTheme.typography.titleLarge)
             Row {
@@ -226,7 +214,7 @@ private fun Stat(label: String, value: String, unit: String, modifier: Modifier 
 /** Une liste de records ; un appui sur une ligne ouvre la sortie où le record a été établi. */
 @Composable
 private fun RecordList(title: String, note: String?, rows: List<RecordRow>, onOpenRide: (Long) -> Unit) {
-    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    VeloCard {
         Column(Modifier.fillMaxWidth().padding(vertical = 14.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp))
             if (note != null) {
