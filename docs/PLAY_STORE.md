@@ -33,8 +33,10 @@ changent souvent : en cas de doute, c'est la Play Console qui a raison.
 - **La fiche du magasin** : textes dans `docs/play/fiche.md`, icône et image de présentation dans `docs/play/`.
 - **Les réponses aux formulaires** : plus bas dans ce guide.
 
-Tout cela est vérifié à chaque fabrication : la version Play est installée sur l'émulateur par-dessus la version
-GitHub, doit démarrer, garder les sorties et ne proposer aucune mise à jour hors du magasin.
+Tout cela est vérifié à chaque fabrication. L'outil de Google dont se sert le Play Store (« bundletool ») tire un
+APK d'un fichier AAB d'essai, au même code que celui qui est publié ; cet APK est installé sur l'émulateur
+par-dessus la version GitHub, et doit démarrer, garder les sorties, calculer un itinéraire et ne proposer aucune
+mise à jour hors du magasin.
 
 ## Les étapes
 

@@ -235,8 +235,17 @@ jobs:
       - name: Outils de construction
         run: bash outils/ci_outils_de_construction.sh
 
+      # La version Play n'est pas construite directement en APK : on fabrique son fichier AAB, puis l'outil de
+      # Google (bundletool, que le plugin Android embarque) en tire un APK, comme le fait le Play Store. C'est ce
+      # chemin-là que l'émulateur essaie.
       - name: APK d'essai des deux versions (même code minifié que les versions publiées)
-        run: ./gradlew :app:assembleGithubSmoke :app:assemblePlaySmoke --console=plain -Pvelogo.buildNumber=${{ github.run_number }}
+        run: |
+          ./gradlew :app:assembleGithubSmoke :app:packagePlaySmokeUniversalApk --console=plain -Pvelogo.buildNumber=${{ github.run_number }}
+          APK_PLAY=app/build/outputs/apk_from_bundle/playSmoke/app-play-smoke-universal.apk
+          test -f "$APK_PLAY" || { echo "::error::APK tiré du fichier AAB introuvable"; ls -R app/build/outputs | head -n 60; exit 1; }
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
+          # Google Play exige des bibliothèques natives alignées sur 16 Ko dans les APK qu'il distribue.
+          "$BUILD_TOOLS/zipalign" -c -P 16 4 "$APK_PLAY"
 
       - name: Accélération matérielle pour l'émulateur
         run: |
@@ -255,7 +264,7 @@ jobs:
           # Moteur graphique ANGLE (« swangle ») : avec le rendu logiciel par défaut (« swiftshader »), l'émulateur
           # n'affiche ni les textes ni le repère de position des cartes MapLibre, alors que l'appli est correcte.
           emulator-options: -no-snapshot-save -no-window -gpu swangle_indirect -noaudio -no-boot-anim -camera-back none
-          script: python3 outils/essai_emulateur.py app/build/outputs/apk/github/smoke/app-github-smoke.apk app/build/outputs/apk/play/smoke/app-play-smoke.apk
+          script: python3 outils/essai_emulateur.py app/build/outputs/apk/github/smoke/app-github-smoke.apk app/build/outputs/apk_from_bundle/playSmoke/app-play-smoke-universal.apk
 
       - uses: actions/upload-artifact@v7
         if: always()
@@ -266,10 +275,13 @@ jobs:
 
   # La version n'est publiée qu'une fois l'essai de bout en bout réussi : ce qui arrive dans les Releases, et donc
   # sur le téléphone, a tourné sur un vrai Android.
+  # « [sans publication] » dans le message du dernier commit poussé : tout est déroulé (tests, essai sur
+  # émulateur) mais rien n'est publié. Pour les changements qui ne touchent pas l'appli (essais, outils, notes) :
+  # une version identique à la précédente ne ferait que proposer une mise à jour pour rien.
   publication:
     name: Publication dans les Releases
     needs: [apk, essai]
-    if: needs.apk.outputs.signe == 'oui'
+    if: needs.apk.outputs.signe == 'oui' && !contains(github.event.head_commit.message, '[sans publication]')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

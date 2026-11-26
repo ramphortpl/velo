@@ -18,7 +18,8 @@ Ce fichier résume l'architecture et les décisions. Il est tenu à jour à chaq
 ./gradlew :app:assembleGithubRelease  # APK des Releases GitHub (signé seulement si VELOGO_KEYSTORE_PASSWORD est défini)
 ./gradlew :app:bundlePlayRelease      # fichier AAB pour Google Play (même clé, même condition)
 ./gradlew :app:recordRoborazziGithubDebug  # captures d'écran des écrans (PNG dans app/build/outputs/roborazzi/)
-./gradlew :app:assembleGithubSmoke :app:assemblePlaySmoke  # APK d'essai pour émulateur (code minifié, clé de test, x86_64)
+./gradlew :app:assembleGithubSmoke :app:packagePlaySmokeUniversalApk  # APK d'essai pour émulateur (code minifié, clé de test) ;
+                               # celui de la version Play est tiré de son fichier AAB (app/build/outputs/apk_from_bundle/)
 python3 outils/fiche_play.py   # longueurs des textes de la fiche Google Play (docs/play/fiche.md)
 cd cartes/style && npm install && npm run generer   # régénère le style de la carte hors ligne (assets/hors-ligne)
 ```
@@ -227,8 +228,13 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
    logo y est reconnu à ses trois couleurs) ; la **première ouverture** (autorisation de position retirée :
    l'explication « Où es-tu ? » doit s'afficher, citer ce qui sort du téléphone et ouvrir la politique de
    confidentialité) ; enfin la **version Play**, installée par-dessus l'autre (même clé de test, même
-   identifiant) : elle doit démarrer, garder les sorties, annoncer « Les mises à jour arrivent par Google Play. »
-   et ne plus déclarer `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
+   identifiant) : elle doit démarrer, garder les sorties, **calculer un itinéraire** (`play_route` : depuis le
+   point d'où le calcul sans réseau a déjà réussi), annoncer « Les mises à jour arrivent par Google Play. »
+   et ne plus déclarer `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`. Cet APK-là n'est pas construit directement : la
+   tâche `:app:packagePlaySmokeUniversalApk` fabrique le fichier AAB de la variante d'essai, puis l'outil de
+   Google (bundletool, embarqué par AGP) en tire un APK « universel », comme le Play Store tire les siens du
+   fichier publié. L'itinéraire est là pour ça : dans un AAB, les profils et `lookups.dat` de BRouter sont
+   rangés à part du code (`base/root/`), et leur absence ne se verrait ni au démarrage ni sur la carte.
    Le démarrage de la première sortie est filmé (`enregistrement_d_une_sortie.mp4`, avec la notification
    d'enregistrement) : Google Play demande une vidéo du service de premier plan. Simple confort : si l'émulateur
    ne sait pas filmer, l'essai continue.
@@ -488,6 +494,10 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   téléphone a tourné sur un vrai Android. `versionCode` = numéro de build GitHub, donc chaque APK s'installe
   par-dessus le précédent. Le mineur de `version.properties` suit les jalons.
 - Les notes de version viennent de la première section de `docs/NOUVEAUTES.md`.
+- **`[sans publication]`** dans le message du dernier commit poussé : toute la fabrication est déroulée (tests,
+  APK signé, essai sur émulateur) mais le job `publication` est sauté. Pour ce qui ne change pas l'appli (essai
+  sur émulateur, outils, workflow) : une version identique à la précédente ne ferait que proposer une mise à
+  jour pour rien. `[skip ci]`, lui, ne lance rien du tout (notes, README).
 - Première version publiée : `v0.5.11` (21/11/2026). Pour contrôler un APK publié :
   `apksigner verify --print-certs` doit donner le certificat `CN=VeloGo` d'empreinte SHA-256
   `1e80bd8e20912aaae8f62310cff7fd004f58e605a265d6b193161fb29193768b` (signature v2 seule, normal avec minSdk 26).

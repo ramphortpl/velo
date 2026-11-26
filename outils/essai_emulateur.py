@@ -6,7 +6,9 @@ des positions GPS à l'émulateur, pilote l'interface comme le ferait un doigt, 
 captures d'écran. Il sort en erreur si l'appli plante ou si une vérification échoue.
 
 Avec un second APK (la version destinée à Google Play), il l'installe à la fin par-dessus le premier et vérifie
-qu'elle démarre, garde les sorties et ne propose aucune mise à jour hors du magasin.
+qu'elle démarre, garde les sorties, calcule un itinéraire et ne propose aucune mise à jour hors du magasin. La CI
+lui donne l'APK que l'outil de Google (bundletool) tire du fichier AAB, comme le fait le Play Store, et non un APK
+construit directement : c'est ce chemin-là qui est essayé.
 
 Usage : python3 outils/essai_emulateur.py chemin/vers/app-github.apk [chemin/vers/app-play.apk]
 """
@@ -345,6 +347,8 @@ class Gps:
     def __init__(self):
         self.lat, self.lon = START_LAT, START_LON
         self.distance = 0.0
+        # L'endroit d'où un itinéraire vers un point touché sur la carte a été calculé (voir play_route).
+        self.route_start = None
         # Le droit « position fictive » est donné au shell d'adb, sous ses différentes identités possibles.
         for cible in ("com.android.shell", "shell", "root"):
             shell(f"appops set {cible} android:mock_location allow")
@@ -907,6 +911,7 @@ def offline_maps(gps):
 
         log("mode avion : itinéraire vers un point touché sur la carte, puis guidage avec enregistrement")
         guided = False
+        gps.route_start = (gps.lat, gps.lon)
         if tap("Itinéraire"):
             time.sleep(2)
             loop_route()
@@ -1149,7 +1154,7 @@ def main():
     app_icon()
     first_opening()
     if len(sys.argv) > 2:
-        play_version(sys.argv[2])
+        play_version(sys.argv[2], gps)
 
 
 def first_opening():
@@ -1189,10 +1194,10 @@ def first_opening():
     time.sleep(1)
 
 
-def play_version(apk):
+def play_version(apk, gps):
     """La version destinée à Google Play. Elle s'installe par-dessus l'autre sans rien effacer (même clé, même
-    identifiant), démarre, garde les sorties, ne propose aucune mise à jour hors du magasin et ne déclare pas la
-    demande directe d'exemption de batterie."""
+    identifiant), démarre, garde les sorties, calcule un itinéraire, ne propose aucune mise à jour hors du magasin
+    et ne déclare pas la demande directe d'exemption de batterie."""
     log("version Google Play : installation par-dessus la version GitHub")
     result = run(["adb", "install", "-r", "-g", apk], timeout=240)
     log(result.stdout.decode("utf-8", "replace").strip()[-200:])
@@ -1232,7 +1237,44 @@ def play_version(apk):
     if find("Vérifier") or find("Vérifier automatiquement"):
         fail("version Play : la recherche de mises à jour hors du magasin est encore proposée")
     tap("Rouler", required=False)
+    play_route(gps)
     check_alive("version Play, à la fin")
+
+
+def play_route(gps):
+    """Un itinéraire calculé par la version Play. Dans un fichier AAB, les profils et les tables du moteur
+    d'itinéraire sont rangés à part du code : s'ils manquaient dans l'APK que l'outil de Google en tire, la carte
+    s'afficherait encore, mais plus aucun itinéraire ne se calculerait.
+
+    On repart de l'endroit d'où le calcul sans réseau a déjà réussi, vers le même point touché sur la carte : la
+    seule chose qui change est l'APK."""
+    log("version Google Play : itinéraire vers un point touché sur la carte")
+    if gps.route_start:
+        gps.lat, gps.lon = gps.route_start
+    gps.stand(12)
+    if not tap("Itinéraire", timeout=10, required=False):
+        shot("play_itineraire_bouton_absent")
+        fail("version Play : le bouton d'itinéraire est introuvable sur la carte")
+        return
+    time.sleep(2)
+    # Appui long sur la carte, quelques centaines de mètres au nord de la position.
+    shell("input swipe 540 640 540 640 1400")
+    time.sleep(1)
+    if find("Aller ici"):
+        tap("Aller ici")
+    if wait_for("Calculer l'itinéraire", 10):
+        tap("Calculer l'itinéraire")
+        found = wait_for_pattern(r"\d itinéraires?", 60)
+        time.sleep(3)
+        shot("play_itineraire")
+        if found:
+            log(f"version Play : {found}")
+        else:
+            fail("version Play : aucun itinéraire calculé")
+    else:
+        shot("play_itineraire_sans_arrivee")
+        fail("version Play : le point touché sur la carte n'a pas été pris comme arrivée")
+    tap("Fermer l'itinéraire", timeout=5, required=False)
 
 
 def finish():
