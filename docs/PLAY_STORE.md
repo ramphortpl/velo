@@ -99,7 +99,7 @@ Les réponses sont plus bas (« Réponses aux formulaires »). Il y a une chose 
 ### 6. Fiche du magasin
 
 Copie les textes de `docs/play/fiche.md`, dépose `icone-512.png`, `banniere-1024x500.png` et de 2 à 8 captures
-d'écran du dossier `docs/play/captures/`.
+d'écran du dossier `docs/play/ecrans/`.
 
 ### 7. Tester, puis publier
 

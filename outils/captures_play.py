@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prépare les captures d'écran de la fiche Google Play (docs/play/captures/) à partir de l'essai sur émulateur.
+"""Prépare les captures d'écran de la fiche Google Play (docs/play/ecrans/) à partir de l'essai sur émulateur.
 
 Les captures viennent de l'artefact « essai-emulateur » d'une fabrication : ce sont de vrais écrans de l'appli.
 Le magasin en demande de 2 à 8, en PNG ou JPEG, dont le grand côté ne dépasse pas 2,3 fois le petit ; celles de
@@ -18,7 +18,7 @@ import sys
 from PIL import Image
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SORTIE = os.path.join(RACINE, "docs", "play", "captures")
+SORTIE = os.path.join(RACINE, "docs", "play", "ecrans")
 # Dans l'ordre où la fiche les montrera : le nom du fichier produit, puis la capture de l'essai qui le fournit.
 ECRANS = [
     ("1-carte", "carte_avec_trace"),

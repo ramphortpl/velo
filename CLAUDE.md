@@ -537,7 +537,7 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   La capture de la météo manque dans bien des essais (quota d'Open-Meteo sur les machines de GitHub) : on donne
   alors un second dossier de captures, plus ancien, où elle existe. L'image actuelle vient de la fabrication
   n° 25 (version 0.7, la première au nouveau design).
-- Les captures de la fiche Google Play (`docs/play/captures/`, huit écrans en JPEG) se refont de la même façon :
+- Les captures de la fiche Google Play (`docs/play/ecrans/`, huit écrans en JPEG) se refont de la même façon :
   `python3 outils/captures_play.py <captures>`.
 
 ## Fabrication des cartes hors ligne

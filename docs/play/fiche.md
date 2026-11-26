@@ -66,7 +66,7 @@ Cartes et données : © les contributeurs d'OpenStreetMap, IGN, Open-Meteo, Prot
 |---|---|
 | Icône, 512 × 512, PNG | `docs/play/icone-512.png` |
 | Image de présentation, 1024 × 500 | `docs/play/banniere-1024x500.png` |
-| Captures d'écran de téléphone (2 à 8) | `docs/play/captures/` (vrais écrans de l'appli, pris sur l'émulateur) |
+| Captures d'écran de téléphone (2 à 8) | `docs/play/ecrans/` (vrais écrans de l'appli, pris sur l'émulateur) |
 
 ## Catégorie et coordonnées
 
