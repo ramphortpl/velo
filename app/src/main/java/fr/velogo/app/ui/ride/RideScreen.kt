@@ -1,5 +1,7 @@
 package fr.velogo.app.ui.ride
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.FlowRow
 import fr.velogo.app.ui.COMPACT_WIDTH
 import android.content.Intent
 import android.location.Location
@@ -1234,25 +1236,39 @@ private fun MapOverlays(
         )
 
         if (!hasLocationPermission) {
-            GlassBox(Modifier.align(Alignment.Center).padding(horizontal = 12.dp), style = glass.panel, corner = Corners.Panel) {
-                Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(painterResource(R.drawable.ic_my_location), contentDescription = null, tint = active, modifier = Modifier.size(38.dp))
-                    Spacer(Modifier.height(10.dp))
-                    Text("Où es-tu ?", style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(6.dp))
+            // En haut de la carte et aussi compacte que possible : au milieu, ou plus haute, la fiche recouvrait
+            // les boutons de la carte sur les petits écrans.
+            GlassBox(
+                Modifier.align(Alignment.TopCenter).padding(start = 12.dp, end = 12.dp, top = 4.dp).widthIn(max = COMPACT_WIDTH),
+                style = glass.panel,
+                corner = Corners.Panel,
+            ) {
+                Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(painterResource(R.drawable.ic_my_location), contentDescription = null, tint = active, modifier = Modifier.size(26.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text("Où es-tu ?", style = MaterialTheme.typography.titleLarge)
+                    }
+                    Spacer(Modifier.height(8.dp))
                     // Dit avant de demander l'autorisation : à quoi sert la position et ce qui en sort du téléphone.
                     for (paragraph in LOCATION_DISCLOSURE) {
                         Text(
                             paragraph,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(bottom = 8.dp),
+                            modifier = Modifier.padding(bottom = 6.dp),
                         )
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Button(onClick = onRequestPermission, modifier = Modifier.height(48.dp)) { Text("Autoriser la position") }
-                    TextButton(onClick = onPrivacy) { Text("Confidentialité") }
+                    FlowRow(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        TextButton(onClick = onPrivacy, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Confidentialité") }
+                        Button(onClick = onRequestPermission, contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)) {
+                            Text("Autoriser la position")
+                        }
+                    }
                 }
             }
         }

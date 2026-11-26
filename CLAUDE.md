@@ -233,6 +233,10 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
    d'enregistrement) : Google Play demande une vidéo du service de premier plan. Simple confort : si l'émulateur
    ne sait pas filmer, l'essai continue.
    Après la première sortie : création d'un segment (la sortie doit s'y retrouver), statistiques, liste des segments.
+   Deux pièges rencontrés en ajoutant la première ouverture (fabrication n° 25) : retirer une autorisation à une
+   appli ouverte la fait redémarrer **là où elle en était** (ici, sur le détail de la dernière sortie), pas sur la
+   carte : il faut l'arrêter complètement d'abord (`am force-stop`) ; et `adb exec-out screencap` renvoie parfois
+   une image tronquée (43 Ko au lieu de 10 Mo) : la lecture de l'écran pour l'icône est retentée une fois.
    Les fenêtres d'erreur d'Android sont écartées à chaque lecture de l'écran (`system_dialog`) : l'écran d'accueil
    de l'émulateur met parfois si longtemps à démarrer qu'Android affiche « Pixel Launcher isn't responding »
    devant l'appli, et tout le début de l'essai échouait sans que l'appli y soit pour rien (fabrication n° 21).
@@ -572,6 +576,13 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
 7. Nouveau design aux couleurs du logo (verre dessiné, barre d'onglets flottante, coins continus) et version
    pour Google Play (fichier AAB, politique de confidentialité, explication avant la demande de position, grands
    écrans) *(fait le 26/11/2026)*
+
+Mise à jour du 26/11/2026 (`v0.7.27`, fabrication n° 27, première version du jalon 7) : le scénario complet a
+tourné sur l'émulateur Android 15 avec le nouveau design, sans qu'aucun de ses repères (textes, descriptions) ait
+dû changer, ainsi que la première ouverture et la version Play installée par-dessus l'autre. L'APK et le fichier
+AAB publiés portent le certificat `CN=VeloGo` habituel. Restent à confirmer par l'auteur : la lisibilité et la
+fluidité sur le Galaxy A05s, et tout ce qui se passe dans la Play Console (aucun compte n'existe encore). Le
+dossier des captures de la fiche s'appelle `docs/play/ecrans/` parce que `captures/` est ignoré par Git.
 
 Mise à jour du 22/11/2026 (`v0.6.23`, fabrication n° 23) : position approchée en attendant le GPS, pastille à
 états et feuille « Signal GPS ». Le scénario « GPS muet » a tourné sur l'émulateur Android 15 ; rien n'a pu être

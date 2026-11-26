@@ -346,6 +346,21 @@ class ScreenshotTest {
     @Test
     fun carte_sans_autorisation() = captureRoboImage("$OUT/carte_sans_autorisation.png", content = chrome(RideSnapshot(), RideMode.MAP, permission = false))
 
+    /** La même explication sur un petit écran (360 × 740 dp) : elle ne doit pas recouvrir les boutons de la carte. */
+    @Test
+    @Config(sdk = [35], qualifiers = "w360dp-h740dp-420dpi")
+    fun carte_sans_autorisation_petit_ecran() = captureRoboImage(
+        "$OUT/carte_sans_autorisation_petit_ecran.png",
+        content = chrome(RideSnapshot(), RideMode.MAP, permission = false),
+    )
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h914dp-420dpi")
+    fun carte_sans_autorisation_sombre() = captureRoboImage(
+        "$OUT/carte_sans_autorisation_sombre.png",
+        content = chrome(RideSnapshot(), RideMode.MAP, ThemeMode.DARK, permission = false),
+    )
+
     @Test
     fun carte_sombre() = captureRoboImage("$OUT/carte_sombre.png", content = chrome(recording, RideMode.MAP, ThemeMode.DARK))
 

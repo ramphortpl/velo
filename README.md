@@ -117,8 +117,8 @@ magasin : elle ne cherche pas ses mises à jour sur GitHub, et elle ne demande p
 la mettre en veille (elle ouvre la fiche de l'appli dans les réglages du téléphone).
 
 Le [guide de publication](docs/PLAY_STORE.md) dit ce qu'il reste à faire côté Google (compte développeur à 25 $,
-test fermé, formulaires) et donne les réponses toutes prêtes ; les textes et les images de la fiche sont dans
-[docs/play](docs/play).
+test fermé, formulaires) et donne les réponses toutes prêtes ; les textes de la fiche sont dans
+[docs/play/fiche.md](docs/play/fiche.md), ses images dans le même dossier.
 
 ## Fabrication et publication
 
