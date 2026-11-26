@@ -24,6 +24,8 @@ import xml.etree.ElementTree as ET
 PACKAGE = "fr.velogo.app.essai"
 ACTIVITY = "fr.velogo.app.MainActivity"
 OUT = "essai"
+# Écrit quand l'émulateur n'a aucun réseau utilisable : la CI recommence alors l'essai sur un émulateur neuf.
+NO_NETWORK = os.path.join(OUT, "sans_reseau.txt")
 # Corte, au centre de la Corse : point de départ des sorties simulées. La Corse est la plus petite région de
 # cartes hors ligne (80 Mo) : on peut la télécharger pendant l'essai.
 START_LAT, START_LON = 42.3060, 9.1500
@@ -849,6 +851,52 @@ def route_poster():
     check_alive("après la préparation de l'affiche")
 
 
+def online():
+    """Vrai si le téléphone atteint Internet : Android a validé un de ses réseaux ou, à défaut, un nom se résout."""
+    for line in shell("dumpsys connectivity", timeout=60).splitlines():
+        if "NetworkAgentInfo" not in line:
+            continue
+        for capabilities in re.findall(r"Capabilities: ([A-Z0-9_&]+)", line):
+            names = capabilities.split("&")
+            if "VALIDATED" in names and "INTERNET" in names:
+                return True
+    # Second signe, indépendant du premier : le nom d'un serveur se résout. Les réponses au ping sont filtrées sur
+    # les machines de GitHub ; seule compte la première ligne, qui donne l'adresse trouvée.
+    return "PING github.com (" in shell("ping -c 1 -W 2 github.com 2>&1", timeout=30)
+
+
+def wait_online(timeout):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if online():
+            return True
+        time.sleep(3)
+    return False
+
+
+def network_or_give_up():
+    """L'émulateur de la CI démarre parfois sans réseau utilisable : son Wi-Fi ne résout aucun nom, et le réseau
+    mobile n'est pas toujours là pour prendre le relais (fabrications n° 30 et 31). Sans réseau, ni fond de carte,
+    ni cartes hors ligne, ni recherche d'adresse : l'essai ne dirait rien de l'appli.
+
+    On attend le réseau, on le relance par le mode avion, et s'il ne vient toujours pas on le note dans un
+    fichier : la CI recommence alors une fois, sur un émulateur neuf."""
+    if os.path.exists(NO_NETWORK):
+        os.remove(NO_NETWORK)
+    if wait_online(45):
+        return True
+    log("pas de réseau sur l'émulateur : on le relance par le mode avion")
+    shell("cmd connectivity airplane-mode enable")
+    time.sleep(6)
+    shell("cmd connectivity airplane-mode disable")
+    if wait_online(75):
+        log("réseau rétabli après le mode avion")
+        return True
+    with open(NO_NETWORK, "w", encoding="utf-8") as f:
+        f.write("Émulateur sans réseau utilisable : aucun réseau validé par Android, aucun nom résolu.\n")
+    return False
+
+
 def allow_mobile_data():
     """Désactive « Wi-Fi uniquement », tout en bas de l'écran des cartes hors ligne, puis remonte en haut de page."""
     row = None
@@ -1028,6 +1076,9 @@ def offline_maps(gps):
 def main():
     apk = sys.argv[1]
     os.makedirs(OUT, exist_ok=True)
+    if not network_or_give_up():
+        fail("l'émulateur n'a aucun réseau utilisable : essai impossible (ce n'est pas l'appli)")
+        return
     gps = Gps()
 
     log("installation")

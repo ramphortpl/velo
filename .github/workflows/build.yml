@@ -253,7 +253,12 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # L'émulateur démarre parfois sans réseau utilisable (fabrications n° 30 et 31 : son Wi-Fi ne résolvait
+      # aucun nom). L'essai le constate avant de commencer, l'écrit dans essai/sans_reseau.txt et s'arrête : on
+      # recommence alors une fois, sur un émulateur neuf. Un échec de l'appli, lui, n'est jamais rejoué.
       - name: Sortie simulée sur émulateur
+        id: essai
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -265,6 +270,26 @@ jobs:
           # n'affiche ni les textes ni le repère de position des cartes MapLibre, alors que l'appli est correcte.
           emulator-options: -no-snapshot-save -no-window -gpu swangle_indirect -noaudio -no-boot-anim -camera-back none
           script: python3 outils/essai_emulateur.py app/build/outputs/apk/github/smoke/app-github-smoke.apk app/build/outputs/apk_from_bundle/playSmoke/app-play-smoke-universal.apk
+
+      - name: Sortie simulée sur émulateur (seconde tentative, le premier émulateur n'avait pas de réseau)
+        id: essai2
+        if: steps.essai.outcome == 'failure' && hashFiles('essai/sans_reseau.txt') != ''
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swangle_indirect -noaudio -no-boot-anim -camera-back none
+          script: python3 outils/essai_emulateur.py app/build/outputs/apk/github/smoke/app-github-smoke.apk app/build/outputs/apk_from_bundle/playSmoke/app-play-smoke-universal.apk
+
+      # Le premier essai est autorisé à échouer pour laisser sa chance au second : c'est ici que l'échec compte.
+      - name: Verdict de l'essai
+        if: always() && steps.essai.outcome != 'success' && steps.essai2.outcome != 'success'
+        run: |
+          echo "::error::L'essai sur émulateur a échoué (premier essai : ${{ steps.essai.outcome }}, second : ${{ steps.essai2.outcome }}). Le détail est dans le journal de l'étape « Sortie simulée sur émulateur »."
+          exit 1
 
       - uses: actions/upload-artifact@v7
         if: always()

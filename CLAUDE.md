@@ -251,11 +251,18 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
    de l'émulateur met parfois si longtemps à démarrer qu'Android affiche « Pixel Launcher isn't responding »
    devant l'appli, et tout le début de l'essai échouait sans que l'appli y soit pour rien (fabrication n° 21).
    Si c'est VeloGo qui ne répond plus, c'est un échec.
-   Le Wi-Fi de l'émulateur n'est pas garanti : celui de la fabrication n° 30 n'avait que le réseau mobile
-   (« 3G » dans la barre d'état), la carte de Corse n'est jamais partie et tout ce qui en dépend a été sauté. Le
-   scénario coupe donc lui-même le Wi-Fi avant de demander la carte (l'appli doit annoncer « En attente du
-   Wi-Fi »), le rallume, et s'il n'est pas revenu au bout de 75 secondes, désactive « Wi-Fi uniquement » dans
-   l'appli, qui doit relancer le téléchargement par le réseau mobile (`allow_mobile_data`).
+   Le réseau de l'émulateur n'est pas garanti. Fabrication n° 30 : son Wi-Fi ne résolvait aucun nom (Android ne
+   le « valide » pas et passe par le réseau mobile, « 3G » dans la barre d'état) ; la carte de Corse, réservée
+   au Wi-Fi, n'est jamais partie et tout ce qui en dépend a été sauté. Fabrication n° 31 : même Wi-Fi muet, et
+   pas de réseau mobile du tout : fonds de carte vides, catalogue des cartes introuvable. Rien de cela ne vient
+   de l'appli (même image de machine, même émulateur que la n° 29, qui avait tout réussi deux heures plus tôt).
+   Trois parades : avant de commencer, le scénario attend un réseau qu'Android a validé, ou à défaut un nom qui
+   se résout (`online`), le relance par le mode avion, et s'il ne vient pas l'écrit dans `essai/sans_reseau.txt` ;
+   le workflow recommence alors **une fois** sur un émulateur neuf (étape `essai2`, puis « Verdict de l'essai » :
+   un échec de l'appli, lui, n'est jamais rejoué) ; enfin, pour la carte, le scénario coupe lui-même le Wi-Fi
+   (l'appli doit annoncer « En attente du Wi-Fi »), le rallume, et s'il n'est pas revenu au bout de 75 secondes,
+   désactive « Wi-Fi uniquement » dans l'appli, qui doit relancer le téléchargement par le réseau mobile
+   (`allow_mobile_data`).
    La saisie au clavier y est vérifiée (`type_text` relit le champ, complète ou efface) : envoyées pendant que le
    clavier démarre, les touches d'`adb shell input text` se perdent (fabrication n° 16 : « gare d » au lieu de
    « gare de corte », et tout l'essai de l'itinéraire en ligne sauté).
