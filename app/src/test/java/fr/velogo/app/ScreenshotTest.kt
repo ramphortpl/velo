@@ -921,6 +921,20 @@ class ScreenshotTest {
         }
     }
 
+    /** Le service d'adresses ne répond pas, même à la seconde tentative : l'appli le dit et propose de réessayer. */
+    @Test
+    fun recherche_sans_reseau() = captureRoboImage("$OUT/recherche_sans_reseau.png") {
+        VeloGoTheme(mode = ThemeMode.LIGHT) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                PlaceSearchContent(
+                    title = "Où vas-tu ?", query = "gare de corte", onQuery = {}, result = SearchResult.Unavailable,
+                    offerMyPosition = false, onPlace = {}, onMyPosition = {}, onDismiss = {},
+                    offerLoop = true, onLoop = {},
+                )
+            }
+        }
+    }
+
     @Test
     fun recherche_adresse() = captureRoboImage("$OUT/recherche_adresse.png") {
         VeloGoTheme(mode = ThemeMode.LIGHT) {

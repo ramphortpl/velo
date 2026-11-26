@@ -45,6 +45,13 @@ ombre) : quelques rectangles arrondis que le téléphone trace sans effort.
 - **Le guide pas à pas** est dans `docs/PLAY_STORE.md`, avec les réponses toutes prêtes aux formulaires de Google ;
   les textes et les images de la fiche sont dans `docs/play/`.
 
+### Et aussi
+
+- **Recherche d'adresse plus patiente** : une demande qui échoue (réseau qui hésite, service lent) est retentée
+  toute seule ; si elle échoue encore, un bouton « Réessayer » évite de retaper l'adresse.
+- Sur l'écran de recherche, l'heure et les icônes du haut de l'écran sont de nouveau lisibles (elles restaient
+  blanches sur fond clair).
+
 ### Ce qu'il reste à faire de ton côté pour publier
 
 Rien n'est obligatoire tant que tu ne veux pas publier, et rien n'a été créé à ta place.

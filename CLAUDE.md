@@ -237,6 +237,10 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
    appli ouverte la fait redémarrer **là où elle en était** (ici, sur le détail de la dernière sortie), pas sur la
    carte : il faut l'arrêter complètement d'abord (`am force-stop`) ; et `adb exec-out screencap` renvoie parfois
    une image tronquée (43 Ko au lieu de 10 Mo) : la lecture de l'écran pour l'icône est retentée une fois.
+   Le service d'adresses de l'IGN ne répond pas toujours aux machines de la CI : la fabrication n° 28 a échoué
+   là-dessus (« Recherche impossible : il faut du réseau »), sans que l'appli y soit pour rien. Depuis, l'appli
+   retente d'elle-même une recherche qui échoue (`searchWithRetry`) et propose « Réessayer » ; le scénario s'en
+   sert, deux fois au plus, avant de conclure à l'échec.
    Les fenêtres d'erreur d'Android sont écartées à chaque lecture de l'écran (`system_dialog`) : l'écran d'accueil
    de l'émulateur met parfois si longtemps à démarrer qu'Android affiche « Pixel Launcher isn't responding »
    devant l'appli, et tout le début de l'essai échouait sans que l'appli y soit pour rien (fabrication n° 21).
@@ -411,6 +415,9 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   et fiches). L'activité gère elle-même les changements de taille (`configChanges`) : rien n'est perdu en tournant
   ou en dépliant l'écran. Vérifié en images seulement (`tablette_*.png`).
 - **R8** : la release est minifiée. Les clés de navigation (`*Key`) sont gardées explicitement.
+- **Une fenêtre plein écran a sa propre barre d'état** : la recherche d'adresse est un `Dialog`, donc une fenêtre à
+  part ; ses icônes de barre d'état restaient blanches sur fond clair tant que le thème n'y était pas répété
+  (`DialogWindowProvider`, `isAppearanceLightStatusBars`). Défaut ancien, vu sur les captures de l'émulateur.
 - **Identité** (refaite en 0.7 à la demande de l'auteur : « plus moderne, arrondis style iOS, un peu de Liquid
   Glass, ultra fluide, mêmes couleurs que le logo ») : les trois couleurs du logo et rien d'autre pour l'interface.
   Vert foncé `#014A38` (texte fort, boutons pleins, bandeau de guidage), vert vif `#01CD95` (ce qui est choisi ou
@@ -583,6 +590,8 @@ dû changer, ainsi que la première ouverture et la version Play installée par-
 AAB publiés portent le certificat `CN=VeloGo` habituel. Restent à confirmer par l'auteur : la lisibilité et la
 fluidité sur le Galaxy A05s, et tout ce qui se passe dans la Play Console (aucun compte n'existe encore). Le
 dossier des captures de la fiche s'appelle `docs/play/ecrans/` parce que `captures/` est ignoré par Git.
+La fabrication n° 28 (explication sur la position rendue compacte pour les petits écrans) n'a pas été publiée :
+son essai a buté sur le service d'adresses de l'IGN, muet à ce moment-là.
 
 Mise à jour du 22/11/2026 (`v0.6.23`, fabrication n° 23) : position approchée en attendant le GPS, pastille à
 états et feuille « Signal GPS ». Le scénario « GPS muet » a tourné sur l'émulateur Android 15 ; rien n'a pu être

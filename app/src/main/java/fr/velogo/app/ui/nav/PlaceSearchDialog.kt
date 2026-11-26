@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -23,8 +24,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -33,12 +36,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
+import fr.velogo.app.ui.theme.LocalIsDark
 import fr.velogo.app.R
 import fr.velogo.app.search.Place
 import kotlinx.coroutines.delay
@@ -69,9 +76,11 @@ fun PlaceSearchDialog(
 ) {
     var query by remember { mutableStateOf("") }
     var result by remember { mutableStateOf<SearchResult>(SearchResult.Idle) }
+    /** Augmente à chaque « Réessayer » : la même recherche repart. */
+    var attempt by remember { mutableIntStateOf(0) }
     val focus = remember { FocusRequester() }
 
-    LaunchedEffect(query) {
+    LaunchedEffect(query, attempt) {
         if (query.trim().length < 3) {
             result = SearchResult.Idle
             return@LaunchedEffect
@@ -79,21 +88,52 @@ fun PlaceSearchDialog(
         // On attend une courte pause dans la frappe avant d'interroger le service.
         delay(350)
         result = SearchResult.Loading
-        val places = search(query)
+        val places = searchWithRetry(query, search)
         result = if (places == null) SearchResult.Unavailable else SearchResult.Found(places)
     }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        // Cette fenêtre a sa propre barre d'état : sans ce réglage, ses icônes restent blanches sur le fond clair.
+        val view = LocalView.current
+        val dark = LocalIsDark.current
+        DisposableEffect(view, dark) {
+            (view.parent as? DialogWindowProvider)?.window?.let { window ->
+                WindowCompat.getInsetsController(window, view).apply {
+                    isAppearanceLightStatusBars = !dark
+                    isAppearanceLightNavigationBars = !dark
+                }
+            }
+            onDispose { }
+        }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             PlaceSearchContent(
                 title = title, query = query, onQuery = { query = it }, result = result, offerMyPosition = offerMyPosition,
                 onPlace = onPlace, onMyPosition = onMyPosition, onDismiss = onDismiss,
                 fieldModifier = Modifier.focusRequester(focus),
                 offerLoop = offerLoop, onLoop = onLoop,
+                onRetry = { attempt++ },
             )
         }
     }
+}
+
+/** Attente avant la seconde tentative d'une recherche qui a échoué. */
+private const val SEARCH_RETRY_MS = 1_500L
+
+/**
+ * Interroge le service d'adresses ([search] renvoie null quand la demande échoue), une seconde fois si la première
+ * n'aboutit pas : une demande qui échoue n'est pas forcément une panne (réseau qui hésite en roulant, service lent
+ * à répondre), et il serait dommage de l'annoncer pour si peu. Null seulement si les deux échouent.
+ */
+internal suspend fun searchWithRetry(
+    query: String,
+    search: suspend (String) -> List<Place>?,
+    retryDelayMs: Long = SEARCH_RETRY_MS,
+): List<Place>? {
+    search(query)?.let { return it }
+    delay(retryDelayMs)
+    return search(query)
 }
 
 /** Le contenu de la recherche, sans accès aux données : c'est lui qu'on vérifie en image. */
@@ -111,6 +151,8 @@ fun PlaceSearchContent(
     fieldModifier: Modifier = Modifier,
     offerLoop: Boolean = false,
     onLoop: () -> Unit = {},
+    /** Relance la recherche qui vient d'échouer. */
+    onRetry: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -152,7 +194,10 @@ fun PlaceSearchContent(
                     items(result.places) { place -> ResultRow(R.drawable.ic_location_on, place.title, place.subtitle) { onPlace(place) } }
                 }
                 SearchResult.Unavailable -> item {
-                    Hint("Recherche impossible : il faut du réseau. Sans réseau, place ton point par un appui long sur la carte.")
+                    Column {
+                        Hint("Recherche impossible : il faut du réseau. Sans réseau, place ton point par un appui long sur la carte.")
+                        FilledTonalButton(onClick = onRetry, modifier = Modifier.padding(horizontal = 24.dp)) { Text("Réessayer") }
+                    }
                 }
                 SearchResult.Idle -> item { Hint("Tape une adresse, une commune ou un lieu (gare, col, lac…). Recherche limitée à la France.") }
                 SearchResult.Loading -> Unit

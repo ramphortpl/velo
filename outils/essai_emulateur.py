@@ -612,7 +612,17 @@ def route_by_address(gps):
     wait_keyboard()
     if not type_text("gare de corte"):
         log("la saisie de l'adresse n'est pas arrivée entière dans le champ de recherche")
-    if not wait_for("Gare de Corte", 25):
+    found_place = wait_for("Gare de Corte", 25)
+    # Le service d'adresses ne répond pas toujours du premier coup aux machines de la CI (fabrication n° 28) :
+    # l'appli propose alors de réessayer, et on le fait comme le ferait quelqu'un, deux fois au plus.
+    for _ in range(2):
+        if found_place or not find("Réessayer"):
+            break
+        log("le service d'adresses n'a pas répondu : nouvel essai")
+        time.sleep(4)
+        tap("Réessayer", required=False)
+        found_place = wait_for("Gare de Corte", 25)
+    if not found_place:
         shot("itineraire_recherche_sans_resultat")
         fail("la recherche d'adresse ne propose pas la gare de Corte")
         shell("input keyevent KEYCODE_BACK")
