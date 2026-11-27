@@ -4,7 +4,7 @@
 
 # VeloGo
 
-Appli Android de vélo pour un usage personnel, en France : enregistrement GPS des sorties, itinéraires vélo et
+Appli Android de vélo pour la France : enregistrement GPS des sorties, itinéraires vélo et
 guidage, cartes hors ligne, météo et statistiques. Gratuite, sans compte, sans publicité ; les données restent sur
 le téléphone.
 
@@ -156,7 +156,8 @@ qui en découle dans l'appli (icône, écran de démarrage, notification, affich
 
 ## Licences et données
 
-Code de l'appli : usage personnel. Données cartographiques © les contributeurs d'OpenStreetMap (ODbL) ; fonds,
+Le code de l'appli n'est placé sous aucune licence libre pour l'instant : il reste la propriété de son auteur.
+Données cartographiques © les contributeurs d'OpenStreetMap (ODbL) ; fonds,
 adresses et altitudes de l'IGN (Géoplateforme, Licence Ouverte 2.0) ; météo Open-Meteo (CC BY 4.0), modèles
 Météo-France ; fond hors ligne Protomaps ; relief Mapterhorn ; itinéraires BRouter (MIT). Le détail des
 attributions est dans l'appli (Réglages > Sources et licences).
