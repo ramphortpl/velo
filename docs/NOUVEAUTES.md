@@ -75,8 +75,8 @@ Rien n'est obligatoire tant que tu ne veux pas publier, et rien n'a été créé
 1. Un compte développeur Google Play : **25 $ une seule fois**, avec vérification de ton identité. Google affiche
    publiquement ton nom légal, ton pays et une adresse e-mail.
 2. Un **test fermé avec 12 testeurs pendant 14 jours**, exigé des comptes personnels avant l'ouverture à tous.
-3. Une adresse publique pour la politique de confidentialité : le plus simple est de fusionner la branche de
-   travail dans `main` (dis-le-moi).
+3. Donner à Google l'adresse de la politique de confidentialité : elle existe maintenant, le code étant sur la
+   branche `main` (`https://github.com/ramphortpl/velo/blob/main/docs/CONFIDENTIALITE.md`).
 4. Une courte vidéo montrant l'enregistrement d'une sortie, demandée par Google.
 
 ### Limites connues

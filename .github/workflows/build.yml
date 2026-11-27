@@ -2,9 +2,11 @@ name: APK VeloGo
 
 # À chaque push : tests, APK signé et fichier pour Google Play (toujours avec la même clé), essai de bout en bout
 # sur un émulateur Android, puis, si tout a réussi, publication des deux dans les Releases.
+# Pas sur « main » : cette branche ne reçoit, en avance rapide, que des commits déjà fabriqués et essayés sur une
+# branche de travail. Les refabriquer publierait une seconde version identique, sous un autre numéro.
 on:
   push:
-    branches: ["main", "claude/**"]
+    branches: ["claude/**"]
     paths-ignore:
       - "cartes/**"
       - ".github/workflows/cartes.yml"

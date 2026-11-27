@@ -12,8 +12,10 @@ on:
       regions:
         description: "Régions à générer (identifiants séparés par des espaces) ou « toutes »"
         default: "toutes"
+  # Pas sur « main », qui ne reçoit que des commits déjà passés par une branche de travail : les cartes seraient
+  # refaites deux fois. Sur « main », seuls le rendez-vous mensuel et le lancement à la main s'appliquent.
   push:
-    branches: ["main", "claude/**"]
+    branches: ["claude/**"]
     # Seulement ce qui change le contenu des packs (le style, lui, est embarqué dans l'appli).
     paths:
       - "cartes/selection.txt"

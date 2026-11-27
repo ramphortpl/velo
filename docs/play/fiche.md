@@ -75,4 +75,4 @@ Cartes et données : © les contributeurs d'OpenStreetMap, IGN, Open-Meteo, Prot
 - Balises : vélo, cyclisme, GPS.
 - Adresse e-mail de contact : la tienne (elle est affichée sur la fiche).
 - Site web : `https://github.com/ramphortpl/velo`
-- Politique de confidentialité : l'adresse publique de `docs/CONFIDENTIALITE.md` (voir `docs/PLAY_STORE.md`).
+- Politique de confidentialité : `https://github.com/ramphortpl/velo/blob/main/docs/CONFIDENTIALITE.md`

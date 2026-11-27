@@ -85,11 +85,13 @@ Si tu préfères laisser Google fabriquer la clé, saute cette étape : tout le 
 
 ### 4. Déposer la politique de confidentialité
 
-Google demande une adresse web publique. Le texte est prêt ; il lui faut une adresse stable. Deux possibilités :
+Google demande une adresse web publique et stable. Elle existe depuis que le code est sur la branche `main`
+(27 novembre 2026) :
 
-- la page du fichier sur GitHub, une fois la branche de travail fusionnée dans `main` :
-  `https://github.com/ramphortpl/velo/blob/main/docs/CONFIDENTIALITE.md` ;
-- ou GitHub Pages, si tu l'actives sur le dépôt.
+`https://github.com/ramphortpl/velo/blob/main/docs/CONFIDENTIALITE.md`
+
+C'est cette adresse qu'il faut coller dans la Play Console. (GitHub Pages donnerait une page plus sobre, si tu
+l'actives un jour sur le dépôt ; ce n'est pas nécessaire.)
 
 Google exige une page publique, sans connexion, qui ne soit ni un PDF ni un document modifiable par les visiteurs.
 Une page de dépôt GitHub répond à ces critères, mais Google ne cite aucun hébergeur : c'est une déduction, pas une

@@ -48,7 +48,7 @@ d'adresses IGN), `weather/` (météo Open-Meteo : client, mémoire, alerte pluie
 Releases GitHub).
 
 Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetiler, contours des régions, style),
-`outils/` (essai sur émulateur, logo et images de la fiche Google Play, image d'aperçu et page d'accueil du dépôt,
+`outils/` (essai sur émulateur, logo et images de la fiche Google Play, image d'aperçu du dépôt,
 contrôle des textes de la fiche), `docs/` (nouveautés, politique de confidentialité, guide et fiche Google Play),
 `.github/workflows/` (`build.yml` pour l'APK et le fichier Google Play, `cartes.yml` pour les cartes, `cle-play.yml`
 pour l'envoi de la clé à Google, manuel).
@@ -447,9 +447,11 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   l'appli : `MapLayer.attributionUrl` (un appui sur la mention ouvre la page des droits), lien sous la météo,
   `ROAD_NOTICE` dans « Sources et licences ». Le tableau pour l'auteur est dans `docs/PLAY_STORE.md`. **Si
   l'appli devenait payante ou financée par la publicité, Open-Meteo et CyclOSM ne seraient plus permis tels quels.**
-- **Google Maps : demandé par l'auteur le 27/11/2026 (« que la map utilisée soit celle de Google Maps »), rien
-  n'est codé tant qu'il n'a pas choisi et fourni une clé.** Faits relevés sur les pages de Google le 26/11/2026
-  (conditions « EEA », celles d'un compte de facturation en France) :
+- **Google Maps : écarté par l'auteur le 27/11/2026.** Il avait demandé « que la map utilisée soit celle de
+  Google Maps » ; devant ce que cela impose (ci-dessous), entre quatre possibilités (fonds Google en plus, bouton
+  vers l'appli Google Maps, tout remplacer, ne rien changer), il a choisi **de ne rien changer** : les cartes
+  restent OpenStreetMap et IGN. Ne pas y revenir sans qu'il le redemande. Faits relevés sur les pages de Google
+  le 26/11/2026 (conditions « EEA », celles d'un compte de facturation en France) :
   - afficher une carte Google par le Maps SDK for Android est gratuit et sans plafond tant qu'on n'utilise pas
     de « map ID » (SKU « Maps SDK » ; avec un map ID : 10 000 chargements gratuits par mois, puis 7 $ les 1 000) ;
     il faut tout de même un projet Google Cloud **avec facturation activée** (carte bancaire) et une clé ;
@@ -548,7 +550,7 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   continue sans publier ; présent mais faux, il le dit tout de suite (avec sa longueur) et fait échouer le job
   après les tests. Les espaces et retours à la ligne collés autour du mot de passe sont ignorés, dans le
   workflow comme dans `app/build.gradle.kts`.
-- `.github/workflows/build.yml` : à chaque push, tests + lint des deux versions, APK signé et fichier AAB pour
+- `.github/workflows/build.yml` : à chaque push sur une branche de travail (`claude/**`), tests + lint des deux versions, APK signé et fichier AAB pour
   Google Play (job `apk`, qui vérifie que les deux portent la même signature et que l'APK accepte les pages
   mémoire de 16 Ko), essai sur émulateur des deux versions (job `essai`), puis, **seulement si les deux ont
   réussi**, publication en Release par le job `publication` : `VeloGo-x.y.z.apk` et `VeloGo-x.y.z-play.aab`
@@ -603,15 +605,20 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
 
 ## Page d'accueil du dépôt
 
-- GitHub affiche en page d'accueil le README de la branche par défaut, `main`. Tant que la branche de travail
-  n'est pas fusionnée, `main` ne contient que ce README : c'est une copie de celui de la branche de travail, dont
-  les liens vers les autres fichiers (image d'aperçu, nouveautés, ce fichier) pointent vers la branche de travail,
-  avec une ligne qui dit où est le code. `python3 outils/readme_accueil.py` écrit cette copie ; elle est à refaire
-  et à déposer sur `main` quand le README change (écrite pour la première fois le 21/11/2026, à la demande de
-  l'utilisateur, seul fichier jamais modifié sur `main`).
-- `main` reste un ancêtre de la branche de travail (son commit de README y a été fusionné en gardant le README de
-  la branche) : le jour de la fusion, ce sera une simple avance rapide, et le README d'origine, aux liens
-  relatifs, remplacera la copie.
+- **`main` contient tout le code depuis le 27/11/2026**, à la demande de l'auteur (« Oui, fusionne ») : la page
+  d'accueil du dépôt est le vrai README, la politique de confidentialité a son adresse stable
+  (`…/blob/main/docs/CONFIDENTIALITE.md`, celle que demande Google Play) et les cartes hors ligne sont refaites
+  le 4 de chaque mois (un rendez-vous de GitHub ne tourne que sur la branche par défaut). Jusque-là, `main` ne
+  portait qu'une copie du README, aux liens tournés vers la branche de travail.
+- **`main` suit la branche de travail, il ne la précède jamais.** Le travail se fait sur la branche de la
+  session (`claude/…`), où chaque envoi est fabriqué et essayé ; une fois la fabrication réussie, `main` est
+  avancée au même commit (`git push origin <branche>:main`, avance rapide seulement, jamais forcée). C'est la
+  suite de la décision de l'auteur : sans cela, la page d'accueil et la politique de confidentialité
+  vieilliraient à la première modification. Si `main` a reçu autre chose entre-temps (une retouche faite sur
+  GitHub), la fusionner d'abord dans la branche de travail.
+- Aucun workflow ne part d'un envoi sur `main` (`branches: ["claude/**"]` dans `build.yml` et `cartes.yml`) :
+  ces commits ont déjà été fabriqués, et les refaire publierait une seconde version identique sous un autre
+  numéro. Sur `main` ne tournent que le rendez-vous mensuel des cartes et les lancements à la main.
 - Le logo en tête du README est `docs/logo/icone.png` (coins transparents : lisible en thème clair comme en
   thème sombre de GitHub). `docs/logo/partage.png` (1280 × 640) est prévue pour l'aperçu de partage du dépôt,
   que seul le propriétaire peut déposer (Settings > General > Social preview).
@@ -625,8 +632,10 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
 
 ## Fabrication des cartes hors ligne
 
-`.github/workflows/cartes.yml` (manuel, à chaque changement de `cartes/selection.txt` ou du profil, et le 4 de
-chaque mois une fois la branche fusionnée dans `main`) :
+`.github/workflows/cartes.yml` (manuel, le 4 de chaque mois, et à chaque envoi sur une branche de travail qui touche
+`cartes/selection.txt`, le profil, les contours, `cartes/outils/catalogue.py`, `dalles.py` ou le workflow lui-même :
+le 27/11/2026, une simple retouche du texte des notes dans `catalogue.py` a ainsi refait toutes les cartes, sans
+dommage, en trois quarts d'heure) :
 
 1. `preparation` : liste des régions (`cartes/selection.txt` : `toutes` ou des identifiants), dernier build Protomaps.
 2. `surcouche` : Planetiler lit l'extrait OpenStreetMap de la France (Geofabrik, OSM France en secours) avec
@@ -655,6 +664,13 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
 7. Nouveau design aux couleurs du logo (verre dessiné, barre d'onglets flottante, coins continus) et version
    pour Google Play (fichier AAB, politique de confidentialité, explication avant la demande de position, grands
    écrans) *(fait le 26/11/2026)*
+
+Mise à jour du 27/11/2026 (`v0.7.34`, fabrication n° 34) : l'auteur publie l'appli, qui n'est plus présentée
+comme personnelle. Conditions des services relues pour une appli publique (toutes le permettent), mentions des
+sources complétées et rendues cliquables, avertissement « Sur la route ». Google Maps étudié puis écarté par
+l'auteur. Branche de travail fusionnée dans `main`. L'APK et le fichier AAB de la 0.7.34 ont été contrôlés après
+téléchargement (certificat habituel, pages de 16 Ko). Non vérifié : l'appui sur la mention de la carte et le
+lien de la météo n'ont été vus qu'en images, pas touchés sur l'émulateur.
 
 Mise à jour du 26/11/2026 au soir (`v0.7.32`, fabrication n° 32) : la « version Play » de l'essai sur émulateur
 est désormais l'APK que l'outil de Google tire du fichier AAB, et elle y calcule un itinéraire (vérifié deux

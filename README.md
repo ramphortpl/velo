@@ -133,7 +133,7 @@ Tout est automatique et gratuit, sur GitHub :
   tournent mais aucun APK n'est publié ; s'il est faux, le workflow le dit dès ses premières secondes (le bon mot
   de passe fait 40 caractères, lettres et chiffres uniquement).
 - Les cartes hors ligne sont fabriquées par le workflow **Cartes hors ligne** et publiées dans la Release `cartes`.
-  Leur mise à jour mensuelle automatique ne fonctionne qu'une fois la branche de travail fusionnée dans `main`.
+  Elles sont refaites automatiquement le 4 de chaque mois, avec les données OpenStreetMap du moment.
 
 ## Développement
 
