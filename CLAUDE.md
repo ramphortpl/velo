@@ -843,6 +843,25 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
 9. Cartes de Mapbox, en plus des autres : second moteur de carte, accord de l'utilisateur, fusible *(écrit le
    27/11/2026 ; voir la mise à jour ci-dessous pour ce qui a été vérifié)*
 
+Mise à jour du 27/11/2026 au soir, jalon 9 (fabrication n° 37, `[sans publication] [essai mapbox]`, **rien de
+publié** : la dernière version publiée reste `v0.8.36`, et `main` y reste aussi tant que la 0.9 ne l'est pas).
+**Le secret `MAPBOX_ACCESS_TOKEN` n'existait pas dans le dépôt** : la fabrication l'a dit (« Secret
+MAPBOX_ACCESS_TOKEN absent ») et a tout déroulé sans les fonds Mapbox. Ce que cela a vérifié : 507 tests (208
+`core`, 13 `routing`, 286 `app`) et lint sans remarque sur GitHub comme ici ; le kit de Mapbox se télécharge sur
+les machines de GitHub sans identifiant ; APK signé de 19 Mo et fichier AAB, mêmes autorisations et mêmes
+exigences que la 0.8.36 (comparées à l'APK publié), pages de 16 Ko, pas de jeton dedans ; essai sur émulateur
+réussi en entier avec l'APK aux bibliothèques compressées (installation, démarrage, carte créée après la relecture
+des réglages, liste des fonds refaite, guidage, mode avion, version Play), et « aucun fond Mapbox proposé » sans
+jeton. L'émulateur annonce OpenGL ES 3.1 : les fonds Mapbox y seront donc proposés quand le jeton sera là. Ici,
+avec un faux jeton `pk.`, il arrive bien dans les deux APK d'essai et `controle_apk.py` le voit.
+**Ce qui n'a jamais tourné : une carte Mapbox.** Ni l'affichage, ni le repère de position, ni le suivi, ni les
+tracés, ni la place du logo, ni la fenêtre d'information de Mapbox, ni le réglage des statistiques n'ont été vus
+ailleurs que dans le code du kit. Marche à suivre quand l'auteur aura ajouté le secret : pousser un commit avec
+`[sans publication] [essai mapbox]` (ou relancer la fabrication n° 37, qui porte ces deux mentions), regarder les
+captures `mapbox_*` et les lignes « journal » de l'essai, corriger, puis seulement publier la 0.9 et avancer
+`main`. Questions laissées à l'auteur : faire confirmer par Mapbox le § 1.2.2 (appli de vélo et « vehicle usage ») ;
+garder ou non le plan de VeloGo comme fond de départ.
+
 Mise à jour du 27/11/2026, jalon 8 (`v0.8.36`, fabrication n° 36, publiée ; la n° 35, identique à l'ombrage du
 relief près, avait été envoyée sans publication pour regarder les captures d'abord) : sur l'émulateur Android 15, les deux nouveaux styles s'affichent sans une erreur du moteur de
 carte dans le journal (plan en ligne avec le relief de Mapterhorn, carte hors ligne, détail d'une sortie, affiche) ;
