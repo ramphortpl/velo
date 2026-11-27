@@ -18,8 +18,6 @@ data class MapLayer(
     /** Adresses des tuiles image, pour un fond « raster ». */
     val rasterTiles: List<String> = emptyList(),
     val rasterMaxZoom: Int = 19,
-    /** Vrai si le fond utilise le schéma OpenMapTiles : on peut y surligner les pistes cyclables. */
-    val highlightCycleways: Boolean = false,
     /** Vrai pour la carte servie depuis les packs du téléphone : elle n'a besoin d'aucun réseau. */
     val offline: Boolean = false,
 )
@@ -49,16 +47,19 @@ object MapLayers {
     private const val IGN_WMTS = "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0" +
         "&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}"
 
+    /**
+     * La carte de VeloGo : un style dessiné pour l'appli (cartes/style, embarqué dans assets/en-ligne), sur les
+     * tuiles vectorielles d'OpenFreeMap et le relief de Mapterhorn. Mêmes couleurs que la carte hors ligne.
+     */
     val OPENFREEMAP = MapLayer(
         id = "openfreemap",
         title = "Plan",
-        description = "Carte vectorielle nette et rapide, claire ou sombre, pistes cyclables surlignées.",
+        description = "La carte de VeloGo : nette et rapide, claire ou sombre, relief ombré, pistes cyclables en vert.",
         // « © OpenMapTiles » est la partie qu'OpenFreeMap rend obligatoire ; son propre nom ne l'est pas.
-        attribution = "© OpenStreetMap · © OpenMapTiles · OpenFreeMap",
+        attribution = "© OpenStreetMap · © OpenMapTiles · Mapterhorn",
         attributionUrl = OSM_COPYRIGHT,
-        lightStyleUri = "https://tiles.openfreemap.org/styles/liberty",
-        darkStyleUri = "https://tiles.openfreemap.org/styles/dark",
-        highlightCycleways = true,
+        lightStyleUri = "asset://en-ligne/style-clair.json",
+        darkStyleUri = "asset://en-ligne/style-sombre.json",
     )
 
     val CYCLOSM = MapLayer(

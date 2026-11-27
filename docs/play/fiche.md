@@ -28,7 +28,7 @@ ROULER
 • Ta musique continue : l'appli ne la coupe jamais.
 
 CARTES
-• Carte vélo détaillée : pistes cyclables, véloroutes, revêtements, cols, points d'eau.
+• Carte vélo claire ou sombre, relief ombré : pistes cyclables, véloroutes, revêtements, cols, points d'eau.
 • Cartes hors ligne par région, avec le relief : tout marche en montagne, sans réseau.
 • Plan IGN, photos aériennes et CyclOSM quand tu as du réseau.
 
@@ -36,7 +36,7 @@ ITINÉRAIRES ET GUIDAGE
 • Itinéraires calculés sur le téléphone, même en mode avion : le plus rapide, le plus sûr, le moins de dénivelé.
 • Route, VTC / gravel ou VTT : l'itinéraire s'adapte à ton vélo.
 • Boucles au départ de chez toi, étapes, import de traces GPX.
-• Guidage façon GPS, avec flèche de direction, vibration et voix (facultative).
+• Guidage façon GPS : flèche de direction, nom des rues, vibration et voix (facultative).
 • Itinéraires enregistrés, à rouvrir d'un appui, et affiche à partager avec tes amis.
 
 MÉTÉO

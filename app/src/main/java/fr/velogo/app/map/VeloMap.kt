@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import androidx.core.graphics.createBitmap
@@ -63,13 +64,18 @@ data class MapColors(
     val track: Int,
     val trackCasing: Int,
     val puck: Int,
-    val cycleway: Int,
     val start: Int,
     val end: Int,
-    /** Itinéraire choisi (ou suivi). */
+    /** Itinéraire choisi (ou suivi), et le liseré plus sombre qui le détache du fond. */
     val route: Int = 0xFF1565C0.toInt(),
+    val routeCasing: Int = 0xFF0C3F7E.toInt(),
+    /** Partie de l'itinéraire déjà parcourue, pendant le guidage. */
+    val routeDone: Int = 0xFF9AA8B5.toInt(),
     /** Autres itinéraires proposés. */
     val routeOther: Int = 0xFF78909C.toInt(),
+    /** Flèche de la prochaine manœuvre : claire, cernée de sombre, lisible sur le trait de l'itinéraire. */
+    val arrow: Int = 0xFFFFFFFF.toInt(),
+    val arrowCasing: Int = 0xFF0A2540.toInt(),
     /** Étapes d'un itinéraire. */
     val via: Int = 0xFFEF6C00.toInt(),
 )
@@ -119,6 +125,11 @@ class VeloMapState {
     private var marker: LatLon? = null
     private var routes: List<List<LatLon>> = emptyList()
     private var routeSelected = 0
+    /** Guidage : jusqu'où l'itinéraire affiché est parcouru (rang du segment et point exact), ou null. */
+    private var routeProgress: Pair<Int, LatLon>? = null
+    private var appliedDoneChunks = -1
+    /** Guidage : tracé de la prochaine manœuvre, dessiné en flèche ; vide s'il n'y en a pas. */
+    private var maneuverArrow: List<LatLon> = emptyList()
     private var planMarkers: List<PlanMarker> = emptyList()
     private var pendingFit: Fit? = null
 
@@ -212,6 +223,7 @@ class VeloMapState {
         isStyleLoaded = false
         locationShown = false
         appliedChunks = -1
+        appliedDoneChunks = -1
     }
 
     internal fun onHostStarted(isStarted: Boolean) {
@@ -241,6 +253,7 @@ class VeloMapState {
             view.onStart(); view.onResume()
             // Rattrapage de ce qui a changé pendant que la carte était masquée.
             applyLiveTrack()
+            applyRouteProgress()
             location?.let { pushLocation(it) }
         } else {
             view.onPause(); view.onStop()
@@ -262,6 +275,7 @@ class VeloMapState {
         isStyleLoaded = false
         locationShown = false
         appliedChunks = -1
+        appliedDoneChunks = -1
         MapInit.setOfflineLayer(spec.layer.offline)
         val uri = spec.uri
         val builder = if (uri != null) Style.Builder().fromUri(uri) else Style.Builder().fromJson(spec.json.orEmpty())
@@ -269,9 +283,11 @@ class VeloMapState {
             // Un autre fond a pu être demandé entre-temps : seul le dernier compte.
             if (this.spec != spec) return@setStyle
             style = loaded
-            installOverlays(loaded, spec)
+            installOverlays(loaded)
             isStyleLoaded = true
             applyRoutes()
+            applyRouteProgress()
+            applyManeuverArrow()
             applyPlanMarkers()
             applyRide()
             applyLiveTrack()
@@ -281,32 +297,55 @@ class VeloMapState {
         }
     }
 
-    private fun installOverlays(style: Style, spec: MapStyleSpec) {
+    private fun installOverlays(style: Style) {
         val c = colors ?: return
+        // Les tracés passent sous les noms du fond : une rue garde son nom lisible par-dessus l'itinéraire.
         val labels = firstLabelLayerId(style)
-        if (spec.layer.highlightCycleways) addCycleways(style, c, labels)
+        fun addTrace(layer: LineLayer) = if (labels != null) style.addLayerBelow(layer, labels) else style.addLayer(layer)
+        fun emptySource(id: String) = style.addSource(GeoJsonSource(id, FeatureCollection.fromFeatures(emptyList<Feature>())))
 
         // Itinéraires : dessinés sous la trace de la sortie, qui doit rester lisible par-dessus.
-        style.addSource(GeoJsonSource(SRC_ROUTES_OTHER, FeatureCollection.fromFeatures(emptyList<Feature>())))
-        style.addSource(GeoJsonSource(SRC_ROUTE, FeatureCollection.fromFeatures(emptyList<Feature>())))
-        style.addSource(GeoJsonSource(SRC_PLAN, FeatureCollection.fromFeatures(emptyList<Feature>())))
-        style.addLayer(line("$SRC_ROUTES_OTHER-liseré", SRC_ROUTES_OTHER, c.trackCasing, routeWidth(2.5f, 0.85f)))
-        style.addLayer(line("$SRC_ROUTES_OTHER-trait", SRC_ROUTES_OTHER, c.routeOther, routeWidth(0f, 0.85f)))
-        style.addLayer(line("$SRC_ROUTE-liseré", SRC_ROUTE, c.trackCasing, routeWidth(3.5f, 1f)))
-        style.addLayer(line("$SRC_ROUTE-trait", SRC_ROUTE, c.route, routeWidth(0f, 1f)))
+        for (source in listOf(SRC_ROUTES_OTHER, SRC_ROUTE, SRC_DONE_FROZEN, SRC_DONE_TAIL, SRC_PLAN)) emptySource(source)
+        addTrace(line("$SRC_ROUTES_OTHER-liseré", SRC_ROUTES_OTHER, c.trackCasing, routeWidth(2.5f, 0.85f)))
+        addTrace(line("$SRC_ROUTES_OTHER-trait", SRC_ROUTES_OTHER, c.routeOther, routeWidth(0f, 0.85f)))
+        addTrace(line("$SRC_ROUTE-liseré", SRC_ROUTE, c.routeCasing, routeWidth(3f, 1f)))
+        addTrace(line("$SRC_ROUTE-trait", SRC_ROUTE, c.route, routeWidth(0f, 1f)))
+        // Pendant le guidage, ce qui est déjà parcouru s'efface : un trait gris posé sur l'itinéraire.
+        for (source in listOf(SRC_DONE_FROZEN, SRC_DONE_TAIL)) addTrace(line("$source-trait", source, c.routeDone, routeWidth(0f, 1f)))
 
-        style.addSource(GeoJsonSource(SRC_RIDE, FeatureCollection.fromFeatures(emptyList<Feature>())))
-        style.addSource(GeoJsonSource(SRC_FROZEN, FeatureCollection.fromFeatures(emptyList<Feature>())))
-        style.addSource(GeoJsonSource(SRC_TAIL, FeatureCollection.fromFeatures(emptyList<Feature>())))
-        style.addSource(GeoJsonSource(SRC_ENDS, FeatureCollection.fromFeatures(emptyList<Feature>())))
-        style.addSource(GeoJsonSource(SRC_MARKER, FeatureCollection.fromFeatures(emptyList<Feature>())))
+        for (source in listOf(SRC_RIDE, SRC_FROZEN, SRC_TAIL, SRC_ARROW, SRC_ARROW_HEAD, SRC_ENDS, SRC_MARKER)) emptySource(source)
 
         // Chaque trace est dessinée deux fois : un liseré clair dessous, la couleur dessus (lisible sur tous les fonds).
         for (source in listOf(SRC_RIDE, SRC_FROZEN, SRC_TAIL)) {
-            style.addLayer(line("$source-liseré", source, c.trackCasing, TRACK_WIDTH + 3f))
+            addTrace(line("$source-liseré", source, c.trackCasing, TRACK_WIDTH + 3f))
         }
         for (source in listOf(SRC_RIDE, SRC_FROZEN, SRC_TAIL)) {
-            style.addLayer(line("$source-trait", source, c.track, TRACK_WIDTH))
+            addTrace(line("$source-trait", source, c.track, TRACK_WIDTH))
+        }
+
+        // La prochaine manœuvre, en flèche sur le tracé : par-dessus tout, noms compris, elle doit sauter aux yeux.
+        style.addLayer(line("$SRC_ARROW-liseré", SRC_ARROW, c.arrowCasing, routeWidth(3.5f, 0.72f)).apply { minZoom = ARROW_MIN_ZOOM })
+        style.addLayer(line("$SRC_ARROW-trait", SRC_ARROW, c.arrow, routeWidth(0f, 0.72f)).apply { minZoom = ARROW_MIN_ZOOM })
+        context?.let { ctx ->
+            style.addImage(ARROW_IMAGE, arrowHeadImage(ctx, c))
+            style.addLayer(
+                SymbolLayer("$SRC_ARROW_HEAD-pointe", SRC_ARROW_HEAD).withProperties(
+                    PropertyFactory.iconImage(ARROW_IMAGE),
+                    PropertyFactory.iconRotate(Expression.get(ARROW_BEARING)),
+                    // La pointe tourne avec la carte et se couche avec elle : elle reste dans l'axe du tracé.
+                    PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
+                    PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_MAP),
+                    PropertyFactory.iconAllowOverlap(true),
+                    PropertyFactory.iconIgnorePlacement(true),
+                    // Elle grossit avec le zoom, comme le trait qu'elle termine.
+                    PropertyFactory.iconSize(
+                        Expression.interpolate(
+                            Expression.exponential(1.4f), Expression.zoom(),
+                            Expression.stop(14, 0.62f), Expression.stop(16.5, 1f), Expression.stop(19, 1.55f),
+                        )
+                    ),
+                ).apply { minZoom = ARROW_MIN_ZOOM }
+            )
         }
         style.addLayer(
             CircleLayer("$SRC_ENDS-points", SRC_ENDS).withProperties(
@@ -371,6 +410,31 @@ class VeloMapState {
         return image
     }
 
+    /** La pointe de la flèche de manœuvre : un triangle tourné vers le nord, que la carte oriente ensuite. */
+    private fun arrowHeadImage(ctx: Context, c: MapColors): Bitmap {
+        val metrics = ctx.resources.displayMetrics
+        val size = (ARROW_IMAGE_DP * metrics.density).roundToInt().coerceAtLeast(12)
+        val image = createBitmap(size, size).apply { density = metrics.densityDpi }
+        val s = size.toFloat()
+        val shape = Path().apply {
+            moveTo(s * 0.5f, s * 0.08f)
+            lineTo(s * 0.9f, s * 0.82f)
+            lineTo(s * 0.5f, s * 0.66f)
+            lineTo(s * 0.1f, s * 0.82f)
+            close()
+        }
+        val canvas = Canvas(image)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeJoin = Paint.Join.ROUND }
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = s * 0.14f
+        paint.color = c.arrowCasing
+        canvas.drawPath(shape, paint)
+        paint.style = Paint.Style.FILL
+        paint.color = c.arrow
+        canvas.drawPath(shape, paint)
+        return image
+    }
+
     private fun line(id: String, source: String, color: Int, width: Float): LineLayer =
         LineLayer(id, source).withProperties(
             PropertyFactory.lineColor(color),
@@ -397,44 +461,10 @@ class VeloMapState {
         Expression.stop(16.5, 9f * factor + extra), Expression.stop(19, 14f * factor + extra),
     )
 
-    /** Surligne les pistes cyclables et voies vertes du fond vectoriel (schéma OpenMapTiles). */
-    private fun addCycleways(style: Style, c: MapColors, belowLayerId: String?) {
-        if (style.getSource(OPENMAPTILES_SOURCE) == null) return
-        val filter = Expression.all(
-            Expression.eq(Expression.get("class"), Expression.literal("path")),
-            Expression.any(
-                Expression.eq(Expression.get("subclass"), Expression.literal("cycleway")),
-                Expression.eq(Expression.get("bicycle"), Expression.literal("designated")),
-            ),
-        )
-        // Une expression de zoom doit rester au premier niveau : on écrit donc deux échelles plutôt qu'un produit.
-        fun widthAt(factor: Float) = Expression.interpolate(
-            Expression.exponential(1.5f), Expression.zoom(),
-            Expression.stop(11, 0.8f * factor), Expression.stop(14, 2.2f * factor),
-            Expression.stop(17, 4.5f * factor), Expression.stop(20, 10f * factor),
-        )
-        val casing = LineLayer("velogo-pistes-liseré", OPENMAPTILES_SOURCE).withProperties(
-            PropertyFactory.lineColor(Color.WHITE),
-            PropertyFactory.lineOpacity(0.75f),
-            PropertyFactory.lineWidth(widthAt(1.8f)),
-            PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
-            PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
-        )
-        val fill = LineLayer("velogo-pistes", OPENMAPTILES_SOURCE).withProperties(
-            PropertyFactory.lineColor(c.cycleway),
-            PropertyFactory.lineWidth(widthAt(1f)),
-            PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
-            PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
-        )
-        for (layer in listOf(casing, fill)) {
-            layer.sourceLayer = "transportation"
-            layer.setFilter(filter)
-            layer.minZoom = 11f
-            if (belowLayerId != null) style.addLayerBelow(layer, belowLayerId) else style.addLayer(layer)
-        }
-    }
-
-    /** Première couche d'étiquettes du fond : nos surlignages se glissent juste en dessous des noms. */
+    /**
+     * Première couche de noms du fond : les tracés (itinéraire, trace de la sortie) se glissent juste en dessous,
+     * pour que les noms de rue et de lieu restent lisibles par-dessus. Null pour un fond en images, qui n'en a pas.
+     */
     private fun firstLabelLayerId(style: Style): String? =
         style.layers.firstOrNull { it is SymbolLayer && !it.textField.isNull }?.id
 
@@ -488,9 +518,95 @@ class VeloMapState {
 
     /** Itinéraires proposés : celui de rang [selected] est mis en avant, les autres restent en retrait. */
     fun setRoutes(options: List<List<LatLon>>, selected: Int) {
+        // Un autre tracé : ce qu'on avait parcouru du précédent ne le concerne plus.
+        if (routes.getOrNull(routeSelected) !== options.getOrNull(selected)) {
+            routeProgress = null
+            appliedDoneChunks = -1
+        }
         routes = options
         routeSelected = selected
         applyRoutes()
+        applyRouteProgress()
+    }
+
+    /**
+     * Guidage : l'itinéraire affiché est parcouru jusqu'au point [position], situé sur son segment de rang
+     * [segment] ; null pour ne plus rien montrer de parcouru. Ce qui est derrière soi est dessiné en gris.
+     *
+     * Le tracé parcouru est envoyé à la carte par morceaux : les morceaux complets une fois pour toutes, le
+     * dernier (quelques centaines de points au plus) à chaque position. Renvoyer tout le tracé chaque seconde
+     * ferait travailler le téléphone pour rien sur un long itinéraire.
+     */
+    fun setRouteProgress(segment: Int, position: LatLon) {
+        routeProgress = segment to position
+        applyRouteProgress()
+    }
+
+    fun clearRouteProgress() {
+        if (routeProgress == null) return
+        routeProgress = null
+        applyRouteProgress()
+    }
+
+    private fun applyRouteProgress() {
+        val style = style ?: return
+        if (!rendering) return
+        val empty = FeatureCollection.fromFeatures(emptyList<Feature>())
+        val line = routes.getOrNull(routeSelected)
+        val progress = routeProgress
+        if (line == null || progress == null || progress.first !in 0 until line.size - 1) {
+            if (appliedDoneChunks != -1 || progress == null) {
+                (style.getSource(SRC_DONE_FROZEN) as? GeoJsonSource)?.setGeoJson(empty)
+                (style.getSource(SRC_DONE_TAIL) as? GeoJsonSource)?.setGeoJson(empty)
+                appliedDoneChunks = -1
+            }
+            return
+        }
+        val (segment, position) = progress
+        val chunks = segment / DONE_CHUNK
+        val frozenEnd = chunks * DONE_CHUNK
+        if (chunks != appliedDoneChunks) {
+            (style.getSource(SRC_DONE_FROZEN) as? GeoJsonSource)?.setGeoJson(
+                if (chunks == 0) empty
+                else FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(line.subList(0, frozenEnd + 1).map { it.toPoint() })))
+            )
+            appliedDoneChunks = chunks
+        }
+        val tail = ArrayList<Point>(segment - frozenEnd + 2)
+        for (i in frozenEnd..segment) tail.add(line[i].toPoint())
+        tail.add(position.toPoint())
+        (style.getSource(SRC_DONE_TAIL) as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(tail))))
+    }
+
+    /**
+     * Guidage : le tracé de la prochaine manœuvre (quelques dizaines de mètres avant et après le carrefour),
+     * dessiné en flèche par-dessus l'itinéraire. Une liste vide l'efface.
+     */
+    fun setManeuverArrow(points: List<LatLon>) {
+        if (maneuverArrow == points) return
+        maneuverArrow = points
+        applyManeuverArrow()
+    }
+
+    private fun applyManeuverArrow() {
+        val style = style ?: return
+        val empty = FeatureCollection.fromFeatures(emptyList<Feature>())
+        val points = maneuverArrow
+        // La pointe prend la direction des derniers mètres du tracé.
+        val tip = points.lastOrNull()
+        val before = points.dropLast(1).lastOrNull { it != tip }
+        if (points.size < 2 || tip == null || before == null) {
+            (style.getSource(SRC_ARROW) as? GeoJsonSource)?.setGeoJson(empty)
+            (style.getSource(SRC_ARROW_HEAD) as? GeoJsonSource)?.setGeoJson(empty)
+            return
+        }
+        (style.getSource(SRC_ARROW) as? GeoJsonSource)?.setGeoJson(
+            FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(points.map { it.toPoint() })))
+        )
+        val head = Feature.fromGeometry(tip.toPoint()).apply {
+            addNumberProperty(ARROW_BEARING, Geo.bearingDeg(before.lat, before.lon, tip.lat, tip.lon))
+        }
+        (style.getSource(SRC_ARROW_HEAD) as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeature(head))
     }
 
     private fun applyRoutes() {
@@ -791,12 +907,22 @@ class VeloMapState {
         const val SRC_ROUTES_OTHER = "velogo-itineraires"
         const val SRC_ROUTE = "velogo-itineraire"
         const val SRC_PLAN = "velogo-etapes"
+        /** Partie parcourue de l'itinéraire suivi : morceaux complets, et le morceau en cours. */
+        const val SRC_DONE_FROZEN = "velogo-parcouru"
+        const val SRC_DONE_TAIL = "velogo-parcouru-fin"
+        const val DONE_CHUNK = 250
+        /** Flèche de la prochaine manœuvre : son trait, sa pointe, et la propriété qui oriente la pointe. */
+        const val SRC_ARROW = "velogo-manoeuvre"
+        const val SRC_ARROW_HEAD = "velogo-manoeuvre-pointe"
+        const val ARROW_IMAGE = "velogo-pointe"
+        const val ARROW_BEARING = "cap"
+        const val ARROW_IMAGE_DP = 30f
+        const val ARROW_MIN_ZOOM = 13.5f
         /** Les étapes numérotées : nom de leurs images, propriété qui dit laquelle afficher, taille du chiffre. */
         const val STEP_IMAGE = "velogo-etape-"
         const val STEP_PROPERTY = "numero"
         const val MAX_STEP_NUMBER = 9
         const val STEP_IMAGE_DP = 18f
-        const val OPENMAPTILES_SOURCE = "openmaptiles"
         const val TRACK_WIDTH = 4.5f
         const val MIN_ZOOM = 4.4
         const val MAX_ZOOM = 19.5

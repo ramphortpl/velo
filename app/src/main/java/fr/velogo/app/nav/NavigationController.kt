@@ -19,6 +19,7 @@ import fr.velogo.core.nav.Route
 import fr.velogo.core.nav.RouteFollower
 import fr.velogo.core.nav.RoutePreference
 import fr.velogo.core.nav.RouteShape
+import fr.velogo.core.nav.RouteSnap
 import fr.velogo.core.ride.AscentAccumulator
 import fr.velogo.core.ride.TrackPoint
 import fr.velogo.routing.PlanFailure
@@ -107,7 +108,8 @@ class NavigationController(
 
     private var computeJob: Job? = null
     private var guidanceJob: Job? = null
-    private var follower: RouteFollower? = null
+    /** Lu aussi par l'écran, pour dessiner la position sur l'itinéraire ([snapToRoute]). */
+    @Volatile private var follower: RouteFollower? = null
     private var announcer = GuidanceAnnouncer()
 
     /** Vrai si des données d'itinéraire sont installées. */
@@ -262,10 +264,17 @@ class NavigationController(
      * Reprend un itinéraire enregistré : il redevient la proposition affichée, prête à être suivie. [savedId] est
      * son identifiant dans les trajets enregistrés.
      */
-    fun showSaved(name: String, route: Route, bike: BikeType, savedId: Long? = null) {
+    suspend fun showSaved(name: String, route: Route, bike: BikeType, savedId: Long? = null) {
         computeJob?.cancel()
+        // Un trajet enregistré avant que l'appli ne retienne le nom des rues : on les retrouve d'abord dans la carte
+        // du téléphone (une fraction de seconde), sans rien changer d'autre à l'itinéraire. Trop long, ou pas de
+        // carte ici : il s'affiche tel quel.
+        val turns = route.instructions.filter { it.maneuver != Maneuver.ARRIVE }
+        val shown = if (turns.isNotEmpty() && turns.none { it.street != null }) {
+            withTimeoutOrNull(NAMING_TIMEOUT_MS) { routes.withStreetNames(route) } ?: route
+        } else route
         _planner.update {
-            PlannerState(open = true, bike = bike, options = listOf(RouteOption(route, emptyList())), importedName = name, savedId = savedId)
+            PlannerState(open = true, bike = bike, options = listOf(RouteOption(shown, emptyList())), importedName = name, savedId = savedId)
         }
     }
 
@@ -345,6 +354,12 @@ class NavigationController(
         begin(option.route, state.bike, option.preferences.firstOrNull() ?: RoutePreference.FAST, destination, followOnly = state.isImported)
         _planner.update { it.copy(open = false) }
     }
+
+    /**
+     * Où dessiner la position sur la carte pendant le guidage : sur l'itinéraire tant qu'on le suit (voir
+     * [RouteFollower.snap]), sinon null et la carte montre la position telle que le GPS la donne.
+     */
+    fun snapToRoute(position: LatLon, accuracyM: Double?): RouteSnap? = follower?.snap(position, accuracyM)
 
     fun stopGuidance() {
         guidanceJob?.cancel()
@@ -466,6 +481,8 @@ class NavigationController(
         const val LOOP_DESTINATION = "Retour au départ"
         const val MAX_VIAS = 8
         private const val POSITION_TIMEOUT_MS = 8_000L
+        /** Temps laissé à la recherche des noms de rue d'un ancien trajet avant de l'afficher sans eux. */
+        private const val NAMING_TIMEOUT_MS = 2_500L
         private const val PRECISE_WAIT_MS = 3_000L
         /** Une position approchée plus floue que cela ne peut pas servir de point de départ. */
         private const val START_ACCURACY_M = 200.0

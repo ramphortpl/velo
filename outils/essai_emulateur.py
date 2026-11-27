@@ -186,6 +186,27 @@ def nodes():
     return out
 
 
+def guidance_banner():
+    """Ce que dit le bandeau de guidage (sa description, « Guidage : 200 m, À gauche · Rue de la Gare »), ou None."""
+    for _, description, _ in nodes():
+        if description.startswith("Guidage :"):
+            return description
+    return None
+
+
+def note_guidance(when):
+    """Relève le bandeau de guidage dans le journal. Un simple constat : selon l'endroit, la première consigne peut
+    être double (« À gauche, puis à droite ») ou tomber sur une voie sans nom, et n'afficher aucun nom de rue."""
+    banner = guidance_banner()
+    if banner is None:
+        log(f"bandeau de guidage {when} : absent")
+    elif " · " in banner:
+        log(f"bandeau de guidage {when} : « {banner} » (nom de rue affiché)")
+    else:
+        log(f"bandeau de guidage {when} : « {banner} » (sans nom de rue)")
+    return banner
+
+
 def text_field():
     """Le champ de saisie affiché : (son contenu, son cadre), ou None s'il n'y en a pas."""
     root = screen()
@@ -672,9 +693,11 @@ def route_by_address(gps):
         fail("le bandeau de guidage n'apparaît pas")
     # À l'arrêt (le GPS continue d'envoyer la même position) : la flèche montre déjà où part l'itinéraire.
     gps.stand(5)
+    note_guidance("au départ")
     shot("guidage_au_depart")
     # En roulant : la carte suit dans le sens de la marche, inclinée, la flèche vers le bas de l'écran.
     gps.ride(12, bearing_deg=200.0)
+    note_guidance("en roulant")
     shot("guidage_sur_la_carte")
     # On déplace la carte : le bouton « Recentrer » doit apparaître, et ramener à la vue de guidage.
     shell("input swipe 540 1100 300 800 400")
@@ -1065,6 +1088,8 @@ def offline_maps(gps):
             return
         if guided and not wait_for("Guidage :", 10, exact=False):
             fail("le guidage hors ligne n'est pas affiché pendant la sortie")
+        if guided:
+            note_guidance("hors ligne")
         gps.ride(45, bearing_deg=200.0)
         altitude = read_altitude()
         log(f"altitude affichée en mode avion : {altitude} m")

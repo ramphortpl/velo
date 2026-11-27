@@ -4,9 +4,11 @@ import fr.velogo.core.geo.Geo
 import fr.velogo.core.geo.LatLon
 import fr.velogo.core.nav.BikeType
 import fr.velogo.core.nav.Maneuver
+import fr.velogo.core.nav.RoadTiles
 import fr.velogo.core.nav.Route
 import fr.velogo.core.nav.RoutePreference
 import fr.velogo.core.nav.RouteShape
+import fr.velogo.core.nav.StreetNamer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -232,5 +234,28 @@ class BRouterPlannerTest {
         assertFalse(WayClassifier.isUnpaved(mapOf("highway" to "track", "tracktype" to "grade1")))
         assertFalse(WayClassifier.isUnpaved(mapOf("highway" to "path", "surface" to "asphalt")))
         assertTrue(WayClassifier.isUnpaved(mapOf("highway" to "unclassified", "surface" to "gravel")))
+    }
+
+    @Test
+    fun `les consignes d un vrai itineraire recoivent le nom des rues de la carte`() {
+        // Les voies de Corte telles que la carte hors ligne les connaît (tuiles réelles, rangées avec les essais de core).
+        val tiles = RoadTiles { z, x, y -> File("../core/src/test/resources/tuiles/roads-$z-$x-$y.mvt").takeIf { it.exists() }?.readBytes() }
+        val plain = route(GARE, CITADELLE, BikeType.ROAD)
+        assertTrue("le moteur d'itinéraire ne donne aucun nom", plain.instructions.all { it.street == null })
+
+        val named = StreetNamer(tiles).named(plain)
+        assertEquals(plain.points, named.points)
+        assertEquals(plain.instructions.map { it.index to it.maneuver }, named.instructions.map { it.index to it.maneuver })
+        val turns = named.instructions.filter { it.maneuver != Maneuver.ARRIVE }
+        assertTrue("toutes les consignes sont nommées : ${turns.map { it.street }}", turns.all { it.street != null })
+        // Le giratoire de la gare débouche sur l'avenue qui monte en ville ; on finit sur la place de la citadelle.
+        assertEquals("Avenue du 9 Septembre", turns.first { it.maneuver == Maneuver.ROUNDABOUT }.street)
+        assertTrue(turns.any { it.street == "Route de Baliri" })
+        assertEquals("Place d'Armes", turns.last().street)
+        assertNull(named.instructions.last().street)
+
+        // Dans l'autre sens, par les avenues du bas de la ville.
+        val back = StreetNamer(tiles).named(route(CENTRE, GARE, BikeType.ROAD)).instructions.mapNotNull { it.street }
+        assertTrue("$back", back.containsAll(listOf("Avenue Xavier Luciani", "Avenue du Président Pierucci")))
     }
 }

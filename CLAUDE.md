@@ -22,7 +22,8 @@ Ce fichier résume l'architecture et les décisions. Il est tenu à jour à chaq
 ./gradlew :app:assembleGithubSmoke :app:packagePlaySmokeUniversalApk  # APK d'essai pour émulateur (code minifié, clé de test) ;
                                # celui de la version Play est tiré de son fichier AAB (app/build/outputs/apk_from_bundle/)
 python3 outils/fiche_play.py   # longueurs des textes de la fiche Google Play (docs/play/fiche.md)
-cd cartes/style && npm install && npm run generer   # régénère le style de la carte hors ligne (assets/hors-ligne)
+cd cartes/style && npm install && npm run generer   # régénère les styles de la carte (assets/en-ligne, assets/hors-ligne)
+cd cartes/style && npm run controler                # les contrôle : spécification MapLibre, et ce qu'Android ne sait pas lire
 ```
 
 SDK requis : plateforme `android-37.1`, build-tools 37, JDK 21.
@@ -34,7 +35,7 @@ variantes sans tests unitaires (toutes sauf `githubDebug`). Les tâches utiles s
 
 | Module | Rôle |
 |---|---|
-| `core` | Kotlin pur, aucune dépendance Android : géodésie, moteur de sortie, altitude/pente/dénivelé, GPX, mise en forme, lecture des fichiers PMTiles et du relief, suivi d'itinéraire, météo, statistiques, segments. Tout calcul y vit pour être testé sur JVM. |
+| `core` | Kotlin pur, aucune dépendance Android : géodésie, moteur de sortie, altitude/pente/dénivelé, GPX, mise en forme, lecture des fichiers PMTiles, des tuiles vectorielles et du relief, suivi d'itinéraire et noms de rue, météo, statistiques, segments. Tout calcul y vit pour être testé sur JVM. |
 | `brouter` | Sources Java du moteur d'itinéraire BRouter 1.7.10 (MIT), copiées telles quelles : il n'existe pas sur Maven. Deux écarts avec l'original, décrits dans `brouter/README.md`. |
 | `routing` | Kotlin pur : habillage de BRouter (`BRouterPlanner`), choix des profils selon le vélo et la préférence (`RoutingProfiles`), classement des voies. Profils et `lookups.dat` en ressources. |
 | `app` | Android : Compose, service d'enregistrement, carte MapLibre, base Room, réglages, itinéraires et guidage. |
@@ -47,7 +48,8 @@ de tuiles local), `nav/` (itinéraires : calcul, guidage, voix, itinéraires enr
 d'adresses IGN), `weather/` (météo Open-Meteo : client, mémoire, alerte pluie), `update/` (mises à jour via les
 Releases GitHub).
 
-Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetiler, contours des régions, style),
+Hors de l'appli : `cartes/` (fabrication des cartes hors ligne : profil Planetiler, contours des régions ; `cartes/style` : styles
+des deux cartes, aperçu, contrôle),
 `outils/` (essai sur émulateur, logo et images de la fiche Google Play, image d'aperçu du dépôt,
 contrôle des textes de la fiche), `docs/` (nouveautés, politique de confidentialité, guide et fiche Google Play),
 `.github/workflows/` (`build.yml` pour l'APK et le fichier Google Play, `cartes.yml` pour les cartes, `cle-play.yml`
@@ -82,7 +84,15 @@ pour l'envoi de la clé à Google, manuel).
   (`setNavigationInsets`). `fit` cadre une emprise vue de dessus ; `onUserMove` et `onRouteTapped` préviennent
   l'écran quand on déplace la carte ou qu'on touche un itinéraire proposé. Une position floue (plus de 150 m,
   donc une position approchée) cadre le suivi plus large, pour que son cercle d'incertitude tienne dans l'écran
-  (`followZoom`) ; la carte se resserre à la première position fine.
+  (`followZoom`) ; la carte se resserre à la première position fine. Itinéraires et traces sont glissés **sous
+  les noms** du fond (`firstLabelLayerId`) ; repères, étapes et flèche de manœuvre restent par-dessus. Pendant un
+  guidage : `setRouteProgress` grise ce qui est parcouru, `setManeuverArrow` dessine la prochaine manœuvre.
+- **Styles de carte** : le fond « Plan » (en ligne) et le fond « Vélo hors ligne » sont deux styles MapLibre
+  fabriqués par `cartes/style/generer.mjs` à partir d'une même palette (`THEMES`, clair et sombre) et embarqués
+  dans l'appli (`assets/en-ligne/style-*.json`, `assets/hors-ligne/style-*.json`). En ligne : tuiles vectorielles
+  d'OpenFreeMap (schéma OpenMapTiles, zooms 0 à 14), relief de Mapterhorn, polices d'OpenFreeMap, aucune planche
+  d'icônes. Hors ligne : couches du fond Protomaps recolorées (`saveurProtomaps`, `retoucher`) + surcouche vélo.
+  `apercu.mjs` les rend en image dans un navigateur sans écran, `controler.mjs` les valide.
 - **Navigation** : l'écran « Rouler » (carte + enregistrement) reste composé en permanence sous les autres ;
   Trajets, Historique et Réglages se posent par-dessus via Navigation 3 (`AppRoot`). La carte n'est jamais
   recréée en changeant d'onglet ; son rendu est coupé dès qu'elle est recouverte.
@@ -98,8 +108,10 @@ pour l'envoi de la clé à Google, manuel).
   l'itinéraire en préparation (`PlannerState`) et le guidage en cours (`GuidanceState`). `RouteService` calcule
   les trois propositions avec `BRouterPlanner` (rapide, sûr, peu de dénivelé ; doublons réunis, variantes en
   complément) et remplace le profil d'altitude par celui du relief hors ligne quand il existe. Le suivi lui-même
-  est dans `core/nav` : `RouteFollower` (progression, sortie d'itinéraire), `GuidanceAnnouncer` et
-  `GuidancePhrases` (quand parler, et quoi dire). `VoiceGuide` est le seul endroit qui touche au son.
+  est dans `core/nav` : `RouteFollower` (progression, sortie d'itinéraire, `snap` : la position ramenée sur le
+  tracé), `GuidanceAnnouncer` et `GuidancePhrases` (quand parler, et quoi dire), `StreetNamer` (le nom des rues,
+  lu dans les tuiles de la carte hors ligne par `core/tiles/VectorTile` : `RouteService` l'applique à chaque
+  itinéraire calculé, `Instruction.street`). `VoiceGuide` est le seul endroit qui touche au son.
   L'écran « Rouler » affiche `PlannerPanel` en bas de la carte et `GuidanceBanner` sous la barre du haut.
   Une fois les itinéraires proposés, le panneau est **replié par défaut** (propositions compactes + bouton de
   départ) et la carte se cadre sur le trajet dans la place restante ; « Détails » ou la poignée le déplient.
@@ -172,8 +184,8 @@ pour l'envoi de la clé à Google, manuel).
   `HistoryContent`, `RideDetailBody`, `SettingsContent`, `OfflineMapsContent`, `PlannerPanel`, `PlaceSearchContent`,
   `SavedRoutesList`, `SavedRoutesContent`, `ShareRouteContent`, `WeatherContent`, `StatsContent`,
   `SegmentsContent`, `SegmentDetailBody`, `SegmentEditor`, `GpsSheetContent`, `PrivacyContent`) rendu en image par
-  `ScreenshotTest`. L'habillage de la carte y est rendu sur un vrai morceau de carte (`fond_carte.jpg`, capture
-  d'OpenFreeMap à Corte) avec la barre d'onglets, pour juger les surfaces translucides ; trois écrans le sont aux
+  `ScreenshotTest`. L'habillage de la carte y est rendu sur un vrai morceau de carte (`fond_carte.jpg` et
+  `fond_carte_sombre.jpg` : le style « Plan » rendu à Corte par `cartes/style/apercu.mjs`, `TAILLE=360x800`) avec la barre d'onglets, pour juger les surfaces translucides ; trois écrans le sont aux
   tailles d'une tablette. `RoutePosterTest` dessine l'affiche
   pour de bon et range ses images au même endroit (`affiche*.png`).
   Attention : une animation sans fin (barre de progression indéterminée) bloque la capture.
@@ -188,7 +200,8 @@ pour l'envoi de la clé à Google, manuel).
 Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux de vérification :
 
 1. `core` : tests unitaires des calculs (sorties simulées, références GeographicLib, tuiles PMTiles comparées à
-   l'outil officiel `pmtiles`).
+   l'outil officiel `pmtiles`). `VectorTileTest` et `StreetNamerTest` lisent de vraies tuiles de Corte
+   (`core/src/test/resources/tuiles` : quatre tuiles du zoom 15 réduites à leur couche `roads`, 28 Ko).
 2. `app` : `ScreenshotTest` (Robolectric + Roborazzi) rend les écrans en PNG au format du Galaxy A05s ; tests du
    serveur de tuiles local, du catalogue et de `ReliefSource` (une vraie tuile de relief, altitudes comparées à
    celles du service de l'IGN) ; météo testée contre un faux serveur (intercepteur OkHttp, aucun réseau) ;
@@ -210,7 +223,9 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
    avance à la main (`shadowOf(gps.looper).idleFor`), les coroutines avec `UnconfinedTestDispatcher`.
 3. `routing` : itinéraires calculés pour de vrai autour de Corte avec `src/test/resources/dalles` (80 Ko de
    données BRouter réelles) : profils, étapes, évitement des grands axes, consignes, données manquantes, boucle
-   (départ et arrivée confondus), itinéraire qui repasse par son départ puis continue, et sa coupe.
+   (départ et arrivée confondus), itinéraire qui repasse par son départ puis continue, et sa coupe ; noms de rue
+   posés sur un vrai itinéraire gare → citadelle avec les tuiles réelles rangées dans `core` (« Avenue du
+   9 Septembre » après le giratoire, « Route de Baliri », « Place d'Armes »).
    Pour reproduire un itinéraire d'une autre région (un écart signalé par l'utilisateur, par exemple) : les dalles
    `dalle-<carré>-<empreinte>.rd5` se téléchargent depuis la Release `cartes` (noms dans `catalogue.json`), se
    renomment `dalle-<carré>.rd5`, et un test temporaire du module `routing` les donne à `BRouterPlanner`. C'est
@@ -370,7 +385,39 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   retour au premier plan ; les effacer à chaque nouveau partage cassait le précédent.
 - **Guidage vocal** : synthèse vocale d'Android, focus audio `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` le temps de la
   phrase (la musique baisse, ne s'arrête pas), désactivé par défaut. Aucune autre demande de focus dans l'appli.
-- **Pas de nom de rue dans les consignes** : les données BRouter n'en contiennent pas.
+- **Noms de rue lus dans la carte, pas dans l'itinéraire** : les données BRouter n'en contiennent pas, mais le
+  fond Protomaps du téléphone, si (couche `roads`, attributs `name` et `ref`, zoom 15). Or un itinéraire ne se
+  calcule que là où une région est téléchargée : la carte est donc presque toujours là. Pour chaque consigne,
+  `StreetNamer` sonde le tracé tous les 13 m sur les 90 m qui suivent la manœuvre (150 m après un giratoire, dont
+  la consigne est à l'entrée de l'anneau) : voie nommée la plus proche à moins de 14 m, dans la direction du tracé
+  à 35° près ; le nom retenu doit rallier au moins un tiers des sondes (une sonde isolée tombe sur la rue qu'on
+  croise). Quais de gare, escaliers, voies ferrées et bacs sont écartés. Sans nom net, la consigne reste sans
+  nom. Bandeau : « À gauche · Rue de la Gare » (un point médian plutôt qu'une préposition, qui changerait d'une
+  voie à l'autre) ; au giratoire « 2e sortie · … » ; deux consignes enchaînées restent sans nom. Voix : « Dans
+  150 mètres, tourne à gauche, rue de la Gare » ; « D 81 » se dit « départementale 81 » (`speakable`). Les
+  trajets enregistrés gardent les noms (champ `r` des consignes) ; ceux d'avant la 0.8 les retrouvent à
+  l'ouverture (`showSaved`).
+- **Position ramenée sur l'itinéraire** (`RouteFollower.snap`, `NavigationController.snapToRoute`) : tant qu'on
+  est à moins de 25 m du tracé (ou d'une fois et demie la précision du GPS, sans dépasser les 40 m du « hors
+  itinéraire »), la carte montre la position **sur** le tracé, avec la direction du tracé. Au-delà, ou une fois
+  hors itinéraire, elle la montre telle quelle : l'écart doit se voir. La recherche se fait autour du segment où
+  en est le suivi, comme `update` : sur un aller-retour, la flèche regarde du bon côté. Rien n'est changé à ce
+  qui est enregistré ni au suivi lui-même.
+- **Partie parcourue en morceaux, pas en dégradé** : `line-gradient` aurait suffi (un seul tracé, une seule
+  propriété à changer), mais MapLibre Native le dessine dans une texture de 256 points pour toute la ligne : sur
+  un itinéraire de 100 km, la limite entre gris et bleu serait floue sur 400 m. Le tracé parcouru est donc un
+  second trait gris posé sur l'itinéraire, envoyé à la carte par morceaux de 250 segments (les morceaux complets
+  une fois pour toutes, le dernier à chaque position), comme la trace en direct.
+- **Styles : ce que l'aperçu accepte et pas le téléphone.** L'aperçu tourne sur MapLibre GL JS, plus permissif
+  que MapLibre Native : un pointillé (`line-dasharray`) qui dépend de l'objet dessiné s'y affiche, alors
+  qu'Android ne le prend pas en charge (ticket maplibre-native n° 744). `controler.mjs` lit le tableau
+  « sdk-support » de la spécification et refuse ces cas ; `MapStylesTest` vérifie le reste sans téléphone
+  (sources, polices réellement disponibles, aucune adresse réseau dans le style hors ligne).
+- **Itinéraires balisés sous les routes, en couleur pleine** : en surlignage translucide par-dessus, plusieurs
+  itinéraires passant par la même rue s'empilaient en un trait épais et sombre (vu à Annecy). Une bande pâle et
+  opaque glissée sous les routes dépasse de chaque côté et ne s'additionne pas.
+- **Pas de planche d'icônes en ligne** : les points utiles (eau, atelier, abri…) sont des pastilles de couleur,
+  comme sur la carte hors ligne ; une requête de moins, et rien qui dépende du jeu d'icônes d'OpenFreeMap.
 - **Itinéraires enregistrés à six décimales** (`RouteCodec`, `Polyline.FINE`, dix centimètres) : à cinq décimales
   (un mètre), chaque point bougeait un peu et l'itinéraire relu n'avait plus tout à fait sa longueur (de −1 à
   +10 m mesurés sur des itinéraires de 1 à 6 km autour de Corte) ; vu sur l'émulateur, un trajet de « 2,4 km »
@@ -447,6 +494,33 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   l'appli : `MapLayer.attributionUrl` (un appui sur la mention ouvre la page des droits), lien sous la météo,
   `ROAD_NOTICE` dans « Sources et licences ». Le tableau pour l'auteur est dans `docs/PLAY_STORE.md`. **Si
   l'appli devenait payante ou financée par la publicité, Open-Meteo et CyclOSM ne seraient plus permis tels quels.**
+- **Mapbox : non retenu, décision laissée à l'auteur (27/11/2026).** Il a demandé une carte « exactement comme
+  Strava, les mêmes fournisseurs, donc OpenStreetMap et Mapbox ». Relevé sur les pages de Strava et de Mapbox le
+  jour même :
+  - Strava : « maps … are provided by Mapbox, with the data … sourced from OpenStreetMap », et ses itinéraires
+    sont les siens (OpenStreetMap + ses données de fréquentation), pas ceux de Mapbox. VeloGo a déjà les mêmes
+    données et calcule aussi ses itinéraires lui-même ; MapLibre est le moteur libre issu de celui de Mapbox ;
+  - compte Mapbox obligatoire, jeton public `pk.…` dans l'appli ; sans moyen de paiement, essai limité à 100
+    utilisateurs actifs par mois (20 pour le guidage) ; avec carte bancaire, carte gratuite jusqu'à 25 000
+    utilisateurs actifs par mois puis 4 $ les 1 000 ; Navigation SDK gratuit jusqu'à 100 utilisateurs puis 0,30 $
+    par utilisateur et 0,08 $ par trajet au-delà de 1 000 ;
+  - Product Terms du 20/10/2026 : le SDK mobile de Mapbox est le **seul** accès permis depuis une appli mobile
+    (§ 2.9.1 : pas de tuiles ni de styles Mapbox dans MapLibre ; § 2.11 : un style fait dans Studio ne s'affiche
+    que sur une carte Mapbox), il envoie « location and usage data » à Mapbox et on ne doit pas l'en empêcher
+    (désinscription à offrir à l'utilisateur) ; hors ligne limité aux tuiles hébergées par Mapbox, 750 paquets
+    au plus ; logo Mapbox, « © Mapbox », « © OpenStreetMap » et « Improve this map » obligatoires ; interdit de
+    multiplier les comptes pour rester gratuit ; SDK de moins de douze mois exigé.
+  Conséquence : le vrai Mapbox voudrait le compte et la carte bancaire de l'auteur, remplacerait MapLibre,
+  retirerait les cartes hors ligne du fond principal, ferait refaire la politique de confidentialité, et
+  deviendrait payant avec le succès : contraire à « aucune API payante » et à « préviens-moi avant toute clé ».
+  Fait à la place (0.8) : une carte redessinée sur les mêmes données et un guidage complété. **Ne pas ajouter
+  Mapbox sans que l'auteur le redemande en connaissance de cause** ; le relevé (pages et PDF) n'est pas versionné :
+  le refaire avant de s'y fier.
+- **Relief en ligne par Mapterhorn** (`tiles.mapterhorn.com`, tuiles terrarium WebP de 512 points, de 45 à 180 Ko
+  pièce ; le style s'arrête au zoom 11, où une tuile couvre quatorze kilomètres, pour ménager les forfaits) : leur FAQ ouvre le serveur à tous les usages (« for commercial and non-commercial purposes »),
+  sans limite de débit annoncée, cache permis ; mention des sources demandée (pour la France : l'IGN), d'où
+  « Mapterhorn » sur la carte et dans « Sources et licences ». C'est un tiers de plus qui voit la zone de carte
+  affichée : la politique de confidentialité le dit. Projet bénévole : s'il fermait, le plan perdrait ses ombres.
 - **Google Maps : écarté par l'auteur le 27/11/2026.** Il avait demandé « que la map utilisée soit celle de
   Google Maps » ; devant ce que cela impose (ci-dessous), entre quatre possibilités (fonds Google en plus, bouton
   vers l'appli Google Maps, tout remplacer, ne rien changer), il a choisi **de ne rien changer** : les cartes
@@ -665,6 +739,9 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
    pour Google Play (fichier AAB, politique de confidentialité, explication avant la demande de position, grands
    écrans) *(fait le 26/11/2026)*
 
+8. Carte redessinée (styles « maison » en ligne et hors ligne, relief ombré partout) et guidage complété (noms
+   de rue, flèche de manœuvre, position sur le tracé, partie parcourue grisée) *(fait le 27/11/2026)*
+
 Mise à jour du 27/11/2026 (`v0.7.34`, fabrication n° 34) : l'auteur publie l'appli, qui n'est plus présentée
 comme personnelle. Conditions des services relues pour une appli publique (toutes le permettent), mentions des
 sources complétées et rendues cliquables, avertissement « Sur la route ». Google Maps étudié puis écarté par
@@ -711,9 +788,9 @@ itinéraire refait avec les dalles d'Île-de-France ; à confirmer par ce qu'aff
 
 ## Sources de données et attributions
 
-OpenStreetMap (ODbL) · OpenFreeMap / OpenMapTiles (« © OpenMapTiles » sur la carte) · CyclOSM (serveurs OSM
+OpenStreetMap (ODbL) · OpenFreeMap / OpenMapTiles (tuiles du fond « Plan », « © OpenMapTiles » sur la carte) · CyclOSM (serveurs OSM
 France : en ligne uniquement, appli gratuite et sans but lucratif, User-Agent identifiant l'appli, trafic modéré,
 pas de téléchargement en masse) · IGN Géoplateforme (Plan IGN, photos aériennes,
 adresses, altitude ; Licence Ouverte 2.0) · Open-Meteo (CC BY 4.0) · Protomaps (BSD, données OSM) · Mapterhorn
-(MNT LiDAR HD et RGE ALTI® de l'IGN, Licence Ouverte 2.0) · Noto Sans (OFL) · BRouter (MIT).
+(MNT LiDAR HD et RGE ALTI® de l'IGN, Licence Ouverte 2.0 ; relief des deux cartes) · Noto Sans (OFL) · BRouter (MIT).
 Les cartes IGN TOP 25 (SCAN 25) sont interdites aux particuliers : non utilisées.

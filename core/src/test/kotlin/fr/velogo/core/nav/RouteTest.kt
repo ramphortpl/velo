@@ -28,6 +28,56 @@ class RouteTest {
     }
 
     @Test
+    fun `morceau de trace entre deux distances`() {
+        val route = route()
+        // Autour du virage (à 500 m du départ) : trente mètres avant, trente après.
+        val piece = route.slice(470.0, 530.0)
+        assertEquals(60.0, Route.cumulativeDistances(piece).last(), 0.1)
+        assertEquals(0.0, Geo.distanceM(route.positionAt(470.0), piece.first()), 0.01)
+        assertEquals(0.0, Geo.distanceM(route.positionAt(530.0), piece.last()), 0.01)
+        // Il passe par les points du tracé situés entre les deux, donc par le coin du virage.
+        assertEquals(listOf(route.positionAt(470.0), route.points[24], route.points[25], route.points[26], route.positionAt(530.0)), piece)
+
+        // Aux extrémités, le morceau s'arrête au départ et à l'arrivée.
+        assertEquals(route.points.first(), route.slice(-50.0, 30.0).first())
+        assertEquals(30.0, Route.cumulativeDistances(route.slice(-50.0, 30.0)).last(), 0.1)
+        assertEquals(route.points.last(), route.slice(880.0, 2_000.0).last())
+        // Un morceau vide se réduit à un point.
+        assertEquals(1, route.slice(300.0, 300.0).size)
+        assertEquals(1, route.slice(300.0, 100.0).size)
+        // Bornes posées exactement sur des points du tracé : pas de point en double.
+        assertEquals(listOf(route.points[5], route.points[6], route.points[7]), route.slice(route.distances[5], route.distances[7]))
+    }
+
+    @Test
+    fun `fleche d une manoeuvre`() {
+        val route = route()
+        // Virage à gauche au coin (500 m) : la flèche arrive par l'ouest et repart vers le nord.
+        val turn = route.arrowFor(Instruction(25, route.distances[25], Maneuver.LEFT))
+        assertEquals(58.0, Route.cumulativeDistances(turn).last(), 0.2)
+        assertEquals(90.0, Geo.bearingDeg(turn[0].lat, turn[0].lon, turn[1].lat, turn[1].lon), 1.0)
+        val tip = turn.last()
+        val before = turn[turn.size - 2]
+        assertEquals(0.0, Geo.bearingDeg(before.lat, before.lon, tip.lat, tip.lon), 1.0)
+        // Giratoire : elle va plus loin après l'entrée, pour montrer la sortie.
+        val roundabout = route.arrowFor(Instruction(25, route.distances[25], Maneuver.ROUNDABOUT, 2))
+        assertEquals(80.0, Route.cumulativeDistances(roundabout).last(), 0.2)
+        // Une manœuvre tout près du départ : la flèche commence au départ.
+        assertEquals(route.points.first(), route.arrowFor(Instruction(1, route.distances[1], Maneuver.RIGHT)).first())
+    }
+
+    @Test
+    fun `les consignes se remplacent sans toucher au reste`() {
+        val route = route()
+        val named = route.withInstructions(listOf(Instruction(25, route.distances[25], Maneuver.LEFT, street = "Cours Paoli")) + route.instructions)
+        assertEquals("Cours Paoli", named.instructions.first().street)
+        assertEquals(route.points, named.points)
+        assertEquals(route.distanceM, named.distanceM, 0.0)
+        assertEquals(route.durationS, named.durationS, 0.0)
+        assertEquals(route.waypoints, named.waypoints)
+    }
+
+    @Test
     fun `position a une distance du depart`() {
         val route = route()
         assertEquals(route.points.first(), route.positionAt(0.0))

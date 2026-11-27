@@ -25,7 +25,7 @@ object RouteCodec {
             duree = route.durationS,
             montee = route.ascentM,
             descente = route.descentM,
-            consignes = route.instructions.map { InstructionDto(it.index, it.maneuver.name, it.exit) },
+            consignes = route.instructions.map { InstructionDto(it.index, it.maneuver.name, it.exit, it.street) },
             etapes = route.waypoints.map { listOf(it.lat, it.lon) },
             voies = route.mix?.let { listOf(it.cyclewayM, it.quietM, it.roadM, it.busyM, it.pathM, it.unpavedM) },
         ),
@@ -41,7 +41,7 @@ object RouteCodec {
         val instructions = dto.consignes.mapNotNull { c ->
             val maneuver = Maneuver.entries.firstOrNull { it.name == c.m } ?: return@mapNotNull null
             if (c.i !in points.indices) return@mapNotNull null
-            Instruction(c.i, distances[c.i], maneuver, c.s)
+            Instruction(c.i, distances[c.i], maneuver, c.s, c.r?.takeIf { it.isNotBlank() })
         }.ifEmpty { listOf(Instruction(points.size - 1, distances.last(), Maneuver.ARRIVE)) }
         val waypoints = dto.etapes.filter { it.size == 2 }.map { LatLon(it[0], it[1]) }.takeIf { it.size >= 2 } ?: listOf(points.first(), points.last())
         val mix = dto.voies?.takeIf { it.size == 6 }?.let { WayMix(it[0], it[1], it[2], it[3], it[4], it[5]) }
@@ -65,6 +65,7 @@ object RouteCodec {
         val voies: List<Double>? = null,
     )
 
+    /** [r] : nom de la rue qu'on prend après la manœuvre ; absent des itinéraires enregistrés avant la version 0.8. */
     @Serializable
-    private class InstructionDto(val i: Int, val m: String, val s: Int = 0)
+    private class InstructionDto(val i: Int, val m: String, val s: Int = 0, val r: String? = null)
 }

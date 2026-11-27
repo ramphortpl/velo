@@ -29,9 +29,16 @@ enum class Maneuver {
 
 /**
  * Une consigne de guidage : au point [index] de la trace, soit à [distanceM] du départ.
- * Pour un giratoire, [exit] donne le numéro de la sortie à prendre.
+ * Pour un giratoire, [exit] donne le numéro de la sortie à prendre. [street] est le nom de la voie qu'on prend
+ * après la manœuvre, quand la carte du téléphone permet de le retrouver (voir [StreetNamer]).
  */
-data class Instruction(val index: Int, val distanceM: Double, val maneuver: Maneuver, val exit: Int = 0)
+data class Instruction(
+    val index: Int,
+    val distanceM: Double,
+    val maneuver: Maneuver,
+    val exit: Int = 0,
+    val street: String? = null,
+)
 
 /** Répartition d'un itinéraire par nature de voie, en mètres. */
 data class WayMix(
@@ -80,6 +87,10 @@ class Route(
     /** Même itinéraire avec un autre profil d'altitude (relief plus précis, par exemple). */
     fun withElevations(newElevations: DoubleArray, ascentM: Double, descentM: Double): Route =
         Route(points, newElevations, distances, durationS, ascentM, descentM, instructions, waypoints, mix)
+
+    /** Même itinéraire avec d'autres consignes (les mêmes, complétées du nom des rues, par exemple). */
+    fun withInstructions(newInstructions: List<Instruction>): Route =
+        Route(points, elevations, distances, durationS, ascentM, descentM, newInstructions, waypoints, mix)
 
     /**
      * Le début de l'itinéraire, jusqu'au point [index] compris, qui devient l'arrivée. Les consignes rencontrées
@@ -171,6 +182,35 @@ class Route(
     }
 
     /**
+     * Le morceau de tracé compris entre [fromM] et [toM] mètres du départ (ramenés entre le départ et l'arrivée),
+     * extrémités comprises : c'est lui qu'on dessine en flèche sur la carte pour montrer une manœuvre.
+     */
+    fun slice(fromM: Double, toM: Double): List<LatLon> {
+        val from = fromM.coerceIn(0.0, distanceM)
+        val to = toM.coerceIn(from, distanceM)
+        val out = ArrayList<LatLon>()
+        out.add(positionAt(from))
+        for (i in points.indices) {
+            if (distances[i] > from && distances[i] < to) out.add(points[i])
+        }
+        val end = positionAt(to)
+        if (end != out.last()) out.add(end)
+        return out
+    }
+
+    /**
+     * Le tracé de la manœuvre [instruction], à dessiner en flèche sur la carte : une trentaine de mètres avant le
+     * carrefour, autant après. Pour un giratoire, la consigne est à l'entrée de l'anneau : la flèche va plus loin,
+     * pour montrer de quel côté on en sort.
+     */
+    fun arrowFor(instruction: Instruction): List<LatLon> {
+        val roundabout = instruction.maneuver == Maneuver.ROUNDABOUT
+        val before = if (roundabout) ARROW_BEFORE_ROUNDABOUT_M else ARROW_BEFORE_M
+        val after = if (roundabout) ARROW_AFTER_ROUNDABOUT_M else ARROW_AFTER_M
+        return slice(instruction.distanceM - before, instruction.distanceM + after)
+    }
+
+    /**
      * Direction dans laquelle part l'itinéraire à [progressM] mètres du départ, en degrés (0 = nord, 90 = est).
      * Elle est prise sur les [aheadM] mètres qui suivent, pour ne pas dépendre d'un tout petit bout de tracé ;
      * à l'arrivée, sur les derniers mètres.
@@ -202,6 +242,10 @@ class Route(
          * doigt à côté d'une route est rattaché par le moteur à la voie la plus proche, parfois à 400 m.
          */
         private const val STEP_REACH_M = 600.0
+        private const val ARROW_BEFORE_M = 28.0
+        private const val ARROW_AFTER_M = 30.0
+        private const val ARROW_BEFORE_ROUNDABOUT_M = 20.0
+        private const val ARROW_AFTER_ROUNDABOUT_M = 60.0
 
         /** Distances cumulées le long d'une ligne brisée. */
         fun cumulativeDistances(points: List<LatLon>): DoubleArray {

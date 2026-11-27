@@ -30,7 +30,7 @@ class RouteCodecTest {
             distances = distances,
             durationS = 1_830.0, ascentM = 149.0, descentM = 0.0,
             instructions = listOf(
-                Instruction(40, distances[40], Maneuver.LEFT),
+                Instruction(40, distances[40], Maneuver.LEFT, street = "Rue du Vieux Marché"),
                 Instruction(120, distances[120], Maneuver.ROUNDABOUT, 3),
                 Instruction(199, distances[199], Maneuver.ARRIVE),
             ),
@@ -54,6 +54,8 @@ class RouteCodecTest {
         assertEquals(route.ascentM, back.ascentM, 0.001)
         assertEquals(route.instructions.map { Triple(it.index, it.maneuver, it.exit) }, back.instructions.map { Triple(it.index, it.maneuver, it.exit) })
         assertEquals(back.distances[120], back.instructions[1].distanceM, 0.001)
+        // Le nom de la rue qu'on prend est gardé ; une consigne qui n'en a pas n'en reçoit pas.
+        assertEquals(listOf("Rue du Vieux Marché", null, null), back.instructions.map { it.street })
         assertEquals(3, back.waypoints.size)
         assertEquals(route.mix, back.mix)
         // Compact : moins de 12 octets par point, altitudes et consignes comprises.
@@ -71,6 +73,8 @@ class RouteCodecTest {
         for (i in route.points.indices) assertTrue(Geo.distanceM(route.points[i], back.points[i]) < 1.2)
         assertEquals(route.distanceM, back.distanceM, route.distanceM * 0.001)
         assertEquals(listOf(Maneuver.LEFT, Maneuver.ARRIVE), back.instructions.map { it.maneuver })
+        // Avant la version 0.8, les consignes n'avaient pas de nom de rue.
+        assertTrue(back.instructions.all { it.street == null })
         assertEquals(1830.0, back.durationS, 0.001)
     }
 

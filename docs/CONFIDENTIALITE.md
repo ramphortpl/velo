@@ -1,6 +1,6 @@
 # Politique de confidentialité de VeloGo
 
-Dernière mise à jour : 26 novembre 2026.
+Dernière mise à jour : 27 novembre 2026.
 
 VeloGo est une application de vélo gratuite, sans compte, sans publicité et sans outil de mesure d'audience. Son auteur ne reçoit, ne stocke et ne revend aucune donnée : il n'existe aucun serveur VeloGo. Tes sorties restent sur ton téléphone.
 
@@ -26,14 +26,14 @@ VeloGo utilise la position du téléphone (le GPS et, en attendant qu'il trouve 
 
 Chaque demande ci-dessous part directement de ton téléphone vers le service indiqué. Comme pour toute connexion à Internet, ce service voit l'adresse IP de ton téléphone. Aucune demande ne contient ton nom, un identifiant de compte ou un identifiant publicitaire.
 
-- Fonds de carte en ligne (OpenFreeMap, Géoplateforme de l'IGN, serveurs CyclOSM d'OpenStreetMap France) : l'appli demande les morceaux de carte de la zone affichée à l'écran. Avec la carte hors ligne, rien n'est demandé.
+- Fonds de carte en ligne (OpenFreeMap pour le plan, Mapterhorn pour son relief, Géoplateforme de l'IGN, serveurs CyclOSM d'OpenStreetMap France) : l'appli demande les morceaux de carte de la zone affichée à l'écran. Avec la carte hors ligne, rien n'est demandé.
 - Recherche d'adresse (Géoplateforme de l'IGN) : le texte que tu tapes et le centre de la carte affichée, pour proposer d'abord les lieux proches. Quand tu poses un point d'itinéraire sur la carte, la position de ce point est envoyée pour retrouver son adresse.
 - Météo (Open-Meteo, modèles de Météo-France) : ta position arrondie à un kilomètre environ et, quand tu prépares ou suis un itinéraire, quelques points de cet itinéraire arrondis de la même façon. Tu peux la couper : Réglages, puis Météo.
 - Altitude de tes sorties (Géoplateforme de l'IGN) : à la fin d'une sortie, les positions de sa trace sont envoyées au service d'altitude de l'IGN pour corriger le dénivelé. Tu peux le couper : Réglages, puis Altitude et dénivelé. L'appli se sert alors du relief des cartes hors ligne.
 - Cartes hors ligne (GitHub) : la liste des régions, puis les fichiers des régions que tu choisis de télécharger.
 - Mises à jour (GitHub) : seulement dans la version distribuée hors de Google Play, l'appli consulte la liste des versions publiées pour te signaler une mise à jour.
 
-Ces services ont leurs propres règles de confidentialité, consultables sur leurs sites : openfreemap.org, geoservices.ign.fr, openstreetmap.fr, open-meteo.com, github.com.
+Ces services ont leurs propres règles de confidentialité, consultables sur leurs sites : openfreemap.org, mapterhorn.com, geoservices.ign.fr, openstreetmap.fr, open-meteo.com, github.com.
 
 ## Ce que tu partages toi-même
 

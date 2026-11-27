@@ -1,5 +1,53 @@
 # Nouveautés de VeloGo
 
+## Version 0.8 — Une carte redessinée, et un guidage qui nomme les rues
+
+### Une nouvelle carte
+
+- **Le plan a un nouveau visage**, clair et calme : sol crème, routes blanches, forêts et parcs en vert tendre, eau
+  bleu doux, noms discrets. Les grands axes gardent une teinte chaude (jaune pâle, orangé pour les voies
+  rapides) : on les repère d'un coup d'œil pour les éviter.
+- **Le relief en ombres douces**, y compris sur le plan en ligne : on lit les vallées et les cols avant d'y être.
+- **Pistes cyclables et voies vertes en vert**, d'un trait plein ; en tirets quand elles ne sont pas revêtues.
+- **Un thème sombre refait** : anthracite, grands axes dorés, pistes en vert vif.
+- **La carte « Vélo hors ligne » prend les mêmes couleurs**, et s'allège : les bandes cyclables apparaissent
+  quand on distingue les rues, les double-sens cyclables seulement de près (en ville presque toutes les rues en
+  ont), les chemins revêtus sont dessinés comme de petites rues, et les véloroutes sont un surlignage pâle sous la
+  route au lieu d'un trait épais par-dessus.
+- **Les noms restent lisibles** : l'itinéraire et ta trace passent maintenant sous les noms de rue et de lieu.
+
+Les fonds CyclOSM, Plan IGN et Photos aériennes ne changent pas.
+
+### Un guidage plus précis
+
+- **Le nom de la rue dans les consignes** : « À gauche · Rue de la Gare », « 2e sortie · Avenue des Alpes », et à
+  la voix « Dans 150 mètres, tourne à gauche, rue de la Gare ». Les noms viennent de la carte hors ligne de la
+  région, celle qu'il faut déjà pour calculer un itinéraire ; là où elle ne connaît pas le nom d'une voie, la
+  consigne s'en passe.
+- **La prochaine manœuvre dessinée sur la carte** : une flèche blanche posée sur le tracé, au carrefour.
+- **Ta position reste sur l'itinéraire** tant que tu le suis : le GPS d'un téléphone flotte de quelques mètres, et
+  la flèche zigzaguait à côté du trait. Si tu t'en écartes vraiment (plus de 25 mètres), elle le montre.
+- **Ce qui est derrière toi s'efface** : la partie parcourue de l'itinéraire passe en gris.
+- Les trajets enregistrés gardent leurs noms de rue ; ceux d'avant les retrouvent quand tu les rouvres.
+
+### « Comme Strava » : ce qui est pareil, et ce qui ne l'est pas
+
+Strava affiche des cartes dessinées par Mapbox à partir des données d'OpenStreetMap, et calcule lui-même ses
+itinéraires sur ces données. VeloGo part des mêmes données OpenStreetMap, calcule aussi ses itinéraires lui-même,
+et dessine sa carte avec MapLibre, le moteur libre issu de celui de Mapbox.
+
+Les cartes de Mapbox elles-mêmes ne sont pas dans l'appli. Elles demandent un compte et une clé, une carte
+bancaire au-delà de 100 utilisateurs par mois, deviennent payantes au-delà de 25 000 (et dès 100 pour le guidage
+de Mapbox), envoient la position des utilisateurs à Mapbox et ne permettent pas les cartes hors ligne de VeloGo.
+L'appli reste donc gratuite, sans compte, et utilisable sans réseau.
+
+### Bon à savoir
+
+- Le plan en ligne demande maintenant son relief à Mapterhorn (les mêmes données de l'IGN que la carte hors
+  ligne). La politique de confidentialité le dit ; rien d'autre ne change dans ce qui sort du téléphone.
+- Vérifié sur un émulateur Android 15, pas sur un vrai téléphone : la lisibilité au soleil et la fluidité sur le
+  Galaxy A05s restent à juger sur place.
+
 ## Version 0.7 — Un nouveau visage, et une version pour le Play Store
 
 ### Nouveau design

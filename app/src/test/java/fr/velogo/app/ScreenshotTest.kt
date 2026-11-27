@@ -680,9 +680,9 @@ class ScreenshotTest {
         val base = NavigationController.routeFromTrack(samplePoints(seed))!!
         val n = base.points.size
         val instructions = listOf(
-            Instruction(n / 12, base.distances[n / 12], Maneuver.LEFT),
-            Instruction(n / 12 + 6, base.distances[n / 12 + 6], Maneuver.SLIGHT_RIGHT),
-            Instruction(n / 3, base.distances[n / 3], Maneuver.ROUNDABOUT, 2),
+            Instruction(n / 12, base.distances[n / 12], Maneuver.LEFT, street = "Rue de la République"),
+            Instruction(n / 12 + 6, base.distances[n / 12 + 6], Maneuver.SLIGHT_RIGHT, street = "Chemin des Vignes"),
+            Instruction(n / 3, base.distances[n / 3], Maneuver.ROUNDABOUT, 2, street = "Avenue des Chasseurs Alpins"),
             Instruction(n - 1, base.distanceM, Maneuver.ARRIVE),
         )
         val total = base.distanceM

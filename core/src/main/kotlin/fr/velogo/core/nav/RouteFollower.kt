@@ -26,6 +26,12 @@ data class NavState(
     }
 }
 
+/**
+ * La position ramenée sur l'itinéraire : le point du tracé le plus proche ([position]), la direction du tracé à
+ * cet endroit ([bearingDeg]), le rang du segment où il se trouve ([segment]) et sa distance au départ.
+ */
+data class RouteSnap(val position: LatLon, val bearingDeg: Double, val segment: Int, val progressM: Double)
+
 data class FollowerConfig(
     /** Au-delà de cet écart (m), on considère qu'on n'est plus sur l'itinéraire. */
     val offRouteM: Double = 40.0,
@@ -35,6 +41,11 @@ data class FollowerConfig(
     val arrivalM: Double = 25.0,
     /** Deux consignes séparées de moins que cela (m) sont annoncées ensemble. */
     val chainM: Double = 120.0,
+    /**
+     * Tant que la position est à moins de cette distance (m) de l'itinéraire, la carte la montre dessus : le GPS
+     * d'un téléphone flotte de quelques mètres, et une flèche qui zigzague à côté du trait ne guide pas.
+     */
+    val snapM: Double = 25.0,
 )
 
 /**
@@ -47,12 +58,13 @@ data class FollowerConfig(
 class RouteFollower(val route: Route, private val config: FollowerConfig = FollowerConfig()) {
     private val points = route.points
     private val distances = route.distances
-    private var segment = 0
-    private var progress = 0.0
-    private var lastMonoMs = 0L
-    private var located = false
+    // Écrits par le fil du guidage, lus aussi par celui de l'écran ([snap]) : d'où « Volatile ».
+    @Volatile private var segment = 0
+    @Volatile private var progress = 0.0
+    @Volatile private var lastMonoMs = 0L
+    @Volatile private var located = false
     private var offSinceMs: Long? = null
-    private var offRoute = false
+    @Volatile private var offRoute = false
     private var arrived = false
 
     var state: NavState = NavState.NONE.copy(remainingM = route.distanceM, remainingS = route.durationS)
@@ -98,6 +110,28 @@ class RouteFollower(val route: Route, private val config: FollowerConfig = Follo
             arrived = arrived,
         )
         return state
+    }
+
+    /**
+     * Où dessiner [position] sur l'itinéraire, sans rien changer au suivi : le point du tracé le plus proche, autour
+     * de l'endroit où l'on en est (comme [update], donc sur le bon passage d'un aller-retour). Null si l'on n'a pas
+     * encore été situé, si l'on est sorti de l'itinéraire ou si la position en est trop loin : la carte montre alors
+     * la position telle que le GPS la donne, et l'écart se voit.
+     */
+    fun snap(position: LatLon, accuracyM: Double?): RouteSnap? {
+        if (!located || offRoute) return null
+        val match = nearest(position, localRange(lastMonoMs + SNAP_ELAPSED_MS), preferForward = true)
+        val tolerance = max(config.snapM, 1.5 * (accuracyM ?: 0.0)).coerceAtMost(config.offRouteM)
+        if (match.distanceM > tolerance) return null
+        val a = points[match.segment]
+        val b = points[match.segment + 1]
+        val along = distances[match.segment] + match.fraction * (distances[match.segment + 1] - distances[match.segment])
+        return RouteSnap(
+            position = LatLon(a.lat + (b.lat - a.lat) * match.fraction, a.lon + (b.lon - a.lon) * match.fraction),
+            bearingDeg = route.bearingAt(along),
+            segment = match.segment,
+            progressM = along,
+        )
     }
 
     private class Match(val segment: Int, val fraction: Double, val distanceM: Double)
@@ -152,5 +186,7 @@ class RouteFollower(val route: Route, private val config: FollowerConfig = Follo
         /** Une consigne est considérée comme passée quand on l'a dépassée de cette distance. */
         const val PASSED_M = 12.0
         const val EQUIVALENT_M = 15.0
+        /** Temps supposé écoulé depuis la dernière position suivie, pour borner la recherche de [snap] en avant. */
+        const val SNAP_ELAPSED_MS = 2_000L
     }
 }

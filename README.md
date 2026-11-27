@@ -23,12 +23,14 @@ simulée à Corte).*
 - **Rouler** : trace GPS en direct sur la carte, écran « guidon » en très gros chiffres (vitesse, distance, durée,
   moyenne, max, pente, dénivelé, altitude), pause automatique, enregistrement écran éteint. La musique n'est
   jamais coupée.
-- **Cartes** : plusieurs fonds en ligne (plan, CyclOSM, Plan IGN, photos aériennes) et une carte vélo **hors ligne**
-  par région (pistes, voies vertes, véloroutes, relief), en clair ou en sombre.
+- **Cartes** : un plan dessiné pour l'appli (clair ou sombre, relief ombré, pistes cyclables en vert), les fonds
+  CyclOSM, Plan IGN et photos aériennes, et une carte vélo **hors ligne** par région, aux mêmes couleurs (pistes,
+  voies vertes, véloroutes, revêtements, relief).
 - **Itinéraires** : calculés sur le téléphone, même sans réseau : le plus rapide, le plus sûr, le moins de dénivelé,
   pour vélo de route, VTC/gravel ou VTT. La carte se cadre en grand sur le trajet ; un appui sur un tracé le choisit.
-- **Guidage** comme sur un GPS de voiture : ta position est une flèche qui montre ton sens de marche, la carte
-  tourne avec toi et les consignes s'affichent en grand, avec alerte et recalcul si tu t'écartes. Voix en option.
+- **Guidage** comme sur un GPS de voiture : ta position est une flèche posée sur le tracé, la carte tourne avec
+  toi, la prochaine manœuvre est dessinée sur la carte et annoncée en grand avec le nom de la rue (« À gauche ·
+  Rue de la Gare »), avec alerte et recalcul si tu t'écartes. Voix en option.
 - **Partager** : une affiche de l'itinéraire (carte, distance, dénivelé, durée, profil) à envoyer par WhatsApp, SMS,
   e-mail…, ou le fichier GPX. L'appli sait aussi suivre un fichier GPX reçu.
 - **Trajets** : tes itinéraires enregistrés dans leur onglet, à rouvrir d'un appui, même sans réseau.
@@ -80,7 +82,11 @@ Si le téléphone refuse l'installation :
   direction, et il faut rouler quelques mètres pour qu'elle s'oriente.
 - **Sans baromètre**, l'altitude vient du GPS et du relief des cartes ; à la fin d'une sortie elle est recalée sur
   le relief (celui de l'IGN si le réseau répond, sinon celui des cartes hors ligne).
-- Les consignes de guidage ne donnent pas les noms de rue : les données d'itinéraire n'en contiennent pas.
+- Les noms de rue des consignes viennent de la carte hors ligne de la région (celle qu'il faut pour calculer un
+  itinéraire) : là où elle ne connaît pas le nom d'une voie, la consigne s'en passe.
+- La carte et les itinéraires viennent d'OpenStreetMap, comme ceux de Strava, et la carte est dessinée par
+  MapLibre, le moteur libre issu de celui de Mapbox. Les cartes de Mapbox elles-mêmes ne sont pas dans l'appli :
+  elles demandent un compte, deviennent payantes avec le succès et ne fonctionnent pas hors ligne.
 - Un trajet enregistré se suit tel quel, avec ses consignes : si tu t'en écartes, l'appli te prévient sans le
   recalculer.
 - L'affiche a besoin du réseau pour son fond de carte, sauf si le fond choisi est la carte « Vélo hors ligne » ;
@@ -97,7 +103,7 @@ quelques services publics, sans compte ni identifiant :
 
 | Pour | À qui | Ce qui est envoyé |
 |---|---|---|
-| Les fonds de carte en ligne | OpenFreeMap, OpenStreetMap France (CyclOSM), IGN | la zone de carte affichée |
+| Les fonds de carte en ligne | OpenFreeMap et Mapterhorn (plan et son relief), OpenStreetMap France (CyclOSM), IGN | la zone de carte affichée |
 | La recherche d'adresses | IGN (Géoplateforme) | le texte cherché et ta position (pour proposer d'abord les lieux proches) ; le point que tu touches sur la carte, pour lui donner un nom |
 | Le recalage de l'altitude en fin de sortie (désactivable) | IGN (Géoplateforme) | les positions de la trace |
 | La météo (désactivable) | Open-Meteo | ta position et, pour un itinéraire, quelques points du trajet, arrondis à un kilomètre environ |
@@ -156,5 +162,6 @@ qui en découle dans l'appli (icône, écran de démarrage, notification, affich
 Le code de l'appli n'est placé sous aucune licence libre pour l'instant : il reste la propriété de son auteur.
 Données cartographiques © les contributeurs d'OpenStreetMap (ODbL) ; fonds,
 adresses et altitudes de l'IGN (Géoplateforme, Licence Ouverte 2.0) ; météo Open-Meteo (CC BY 4.0), modèles
-Météo-France ; fond hors ligne Protomaps ; relief Mapterhorn ; itinéraires BRouter (MIT). Le détail des
+Météo-France ; plan en ligne OpenFreeMap (© OpenMapTiles) ; fond hors ligne Protomaps ; relief Mapterhorn ;
+itinéraires BRouter (MIT). Le détail des
 attributions est dans l'appli (Réglages > Sources et licences).

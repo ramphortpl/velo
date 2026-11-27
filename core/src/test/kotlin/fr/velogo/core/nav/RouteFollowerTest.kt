@@ -188,6 +188,92 @@ class RouteFollowerTest {
     }
 
     @Test
+    fun `le nom de la rue s ajoute aux consignes quand il est connu`() {
+        val left = Instruction(0, 0.0, Maneuver.LEFT, street = "Rue de la Gare")
+        assertEquals("À gauche · Rue de la Gare", GuidancePhrases.labelWithStreet(left))
+        assertEquals("À gauche", GuidancePhrases.labelWithStreet(Instruction(0, 0.0, Maneuver.LEFT)))
+        assertEquals("À gauche", GuidancePhrases.labelWithStreet(Instruction(0, 0.0, Maneuver.LEFT, street = " ")))
+        assertEquals("Dans 150 mètres, tourne à gauche, rue de la Gare.", GuidancePhrases.prepare(left, 160.0))
+        assertEquals("Tourne à gauche, rue de la Gare.", GuidancePhrases.now(left, null))
+        // Deux manœuvres enchaînées : la phrase reste courte, sans nom.
+        assertEquals("Tourne à gauche, puis tourne à droite.", GuidancePhrases.now(left, Instruction(1, 60.0, Maneuver.RIGHT, street = "Cours Paoli")))
+        val exit = Instruction(0, 0.0, Maneuver.ROUNDABOUT, 2, street = "D 81")
+        assertEquals("2e sortie · D 81", GuidancePhrases.labelWithStreet(exit))
+        assertEquals("Rond-point · D 81", GuidancePhrases.labelWithStreet(Instruction(0, 0.0, Maneuver.ROUNDABOUT, street = "D 81")))
+        assertEquals("Au rond-point, prends la deuxième sortie, départementale 81.", GuidancePhrases.now(exit, null))
+        assertEquals("territoriale 20", GuidancePhrases.speakable("T 20"))
+        assertEquals("nationale 193", GuidancePhrases.speakable("N193"))
+        assertEquals("départementale 909A", GuidancePhrases.speakable("RD 909A"))
+        assertEquals("avenue du Rhône", GuidancePhrases.speakable("Avenue du Rhône"))
+        // Un nom qui ressemble à un numéro de route sans en être un reste tel quel.
+        assertEquals("chemin des 4 Chemins", GuidancePhrases.speakable("Chemin des 4 Chemins"))
+    }
+
+    @Test
+    fun `la position est ramenee sur l itineraire tant qu elle en est proche`() {
+        val route = route()
+        val follower = RouteFollower(route)
+        // Avant la première position suivie, on ne sait pas où l'on en est : rien à ramener.
+        assertNull(follower.snap(at(route, 100.0, side = 3.0), 5.0))
+        follower.update(at(route, 100.0, side = 3.0), 5.0, 0)
+
+        val snap = follower.snap(at(route, 108.0, side = 6.0), 5.0)
+        assertNotNull(snap)
+        assertEquals(108.0, snap!!.progressM, 1.0)
+        assertTrue("sur le tracé", route.distanceTo(snap.position) < 0.5)
+        assertEquals("le premier tronçon va vers l'est", 90.0, snap.bearingDeg, 1.0)
+        assertEquals(5, snap.segment)
+        // Ramener la position ne fait pas avancer le suivi.
+        assertEquals(100.0, follower.state.progressM, 1.0)
+
+        // À trente mètres du tracé, la carte montre la position telle quelle : l'écart doit se voir…
+        assertNull(follower.snap(at(route, 110.0, side = 30.0), 5.0))
+        // … sauf si le GPS lui-même est flou (position à 20 m près : jusqu'à 30 m, c'est encore l'itinéraire).
+        assertNotNull(follower.snap(at(route, 110.0, side = 28.0), 20.0))
+        // Mais jamais au-delà de ce qui compte comme « hors itinéraire ».
+        assertNull(follower.snap(at(route, 110.0, side = 45.0), 60.0))
+    }
+
+    @Test
+    fun `hors itineraire la position n est plus ramenee sur le trace`() {
+        val route = route()
+        val follower = RouteFollower(route)
+        follower.update(at(route, 100.0), 5.0, 0)
+        var t = 1_000L
+        // On s'écarte franchement, assez longtemps pour que le suivi le signale.
+        repeat(12) {
+            follower.update(at(route, 100.0 + it * 5, side = 80.0), 5.0, t)
+            t += 1_000L
+        }
+        assertTrue(follower.state.isOffRoute)
+        assertNull(follower.snap(at(route, 160.0, side = 4.0), 5.0))
+    }
+
+    @Test
+    fun `la position se ramene sur le bon passage d un aller retour`() {
+        // 300 m vers l'est, puis retour par le même chemin.
+        val points = ArrayList<LatLon>()
+        var p = LatLon(45.0, 5.0)
+        points.add(p)
+        repeat(15) { p = Geo.offset(p.lat, p.lon, 90.0, 20.0); points.add(p) }
+        repeat(15) { p = Geo.offset(p.lat, p.lon, 270.0, 20.0); points.add(p) }
+        val distances = Route.cumulativeDistances(points)
+        val route = Route(points, null, distances, 120.0, 0.0, 0.0, listOf(Instruction(points.size - 1, distances.last(), Maneuver.ARRIVE)), listOf(points.first(), points.last()))
+        val follower = RouteFollower(route)
+        follower.update(at(route, 100.0), 5.0, 0)
+        val out = follower.snap(at(route, 110.0, side = 3.0), 5.0)!!
+        assertEquals("à l'aller, la flèche regarde vers l'est", 90.0, out.bearingDeg, 2.0)
+        assertEquals(110.0, out.progressM, 2.0)
+        // Au retour, au même endroit de la route, elle regarde vers l'ouest.
+        var t = 1_000L
+        var m = 120.0
+        while (m <= 480.0) { follower.update(at(route, m), 5.0, t); t += 1_000L; m += 8.0 }
+        val back = follower.snap(at(route, 490.0, side = 3.0), 5.0)!!
+        assertEquals(270.0, back.bearingDeg, 2.0)
+        assertEquals(490.0, back.progressM, 2.0)
+    }
+
+    @Test
     fun `deux itineraires au meme trace sont reconnus comme identiques`() {
         val a = route()
         val b = route()

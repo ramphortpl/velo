@@ -13,6 +13,7 @@ import fr.velogo.core.nav.Maneuver
 import fr.velogo.core.nav.Route
 import fr.velogo.core.nav.RouteShape
 import fr.velogo.core.nav.StartReturn
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -103,7 +104,7 @@ class PlannerLoopTest {
     @Test
     fun `un trajet enregistre qui repasse par son depart s arrete a ce retour`() {
         val saved = loopThenTail(3_000)
-        navigation.showSaved("Entraînement 1", saved, BikeType.HYBRID, savedId = 12)
+        runBlocking { navigation.showSaved("Entraînement 1", saved, BikeType.HYBRID, savedId = 12) }
         assertEquals(12L, state.savedId)
         assertEquals(11_000.0, state.selectedOption!!.route.distanceM, 30.0)
         assertNotNull(RouteShape.returnToStart(state.selectedOption!!.route))
@@ -126,14 +127,14 @@ class PlannerLoopTest {
     @Test
     fun `un trajet qui ne repasse pas par son depart n est pas touche`() {
         val loop = loopThenTail(0)
-        navigation.showSaved("Boucle", loop, BikeType.ROAD, savedId = 3)
+        runBlocking { navigation.showSaved("Boucle", loop, BikeType.ROAD, savedId = 3) }
         assertNull(navigation.stopAtStart())
         assertEquals(loop, state.selectedOption!!.route)
     }
 
     @Test
     fun `preparer autre chose detache le trajet enregistre`() {
-        navigation.showSaved("Entraînement 1", loopThenTail(3_000), BikeType.HYBRID, savedId = 12)
+        runBlocking { navigation.showSaved("Entraînement 1", loopThenTail(3_000), BikeType.HYBRID, savedId = 12) }
         navigation.setEnd(bouffemont, "Bouffémont")
         assertNull(state.savedId)
         assertNull(state.importedName)

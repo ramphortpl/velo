@@ -69,7 +69,6 @@ fun TrackMap(
             track = rideColors.track.toArgb(),
             trackCasing = Color.White.toArgb(),
             puck = Color(0xFF1A73E8).toArgb(),
-            cycleway = (if (dark) Color(0xFF37D39A) else Color(0xFF0B8A5C)).toArgb(),
             start = Color(0xFF12A150).toArgb(),
             end = Color(0xFFD32F2F).toArgb(),
             route = rideColors.route.toArgb(),

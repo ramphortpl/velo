@@ -24,6 +24,7 @@ import fr.velogo.app.map.PlanMarker
 import fr.velogo.app.nav.GuidanceState
 import fr.velogo.app.nav.NavigationController
 import fr.velogo.app.ui.nav.RouteShareSheet
+import fr.velogo.core.nav.Maneuver
 import fr.velogo.core.nav.Route
 import fr.velogo.core.nav.RouteShape
 import fr.velogo.app.ui.nav.GUIDANCE_BANNER_HEIGHT
@@ -194,10 +195,10 @@ fun RideScreen(
             track = rideColors.track.toArgb(),
             trackCasing = Color.White.toArgb(),
             puck = Color(0xFF1A73E8).toArgb(),
-            cycleway = (if (dark) Color(0xFF37D39A) else Color(0xFF0B8A5C)).toArgb(),
             start = Color(0xFF12A150).toArgb(),
             end = Color(0xFFD32F2F).toArgb(),
             route = rideColors.route.toArgb(),
+            routeDone = (if (dark) Color(0xFF596673) else Color(0xFF9AA8B5)).toArgb(),
         )
     }
 
@@ -242,10 +243,23 @@ fun RideScreen(
                 container.gps.positions.collect { gps ->
                     lastBearing = if (gps.speedMps >= MOVING_MPS) gps.courseDeg else null
                     var shown = gps.location
-                    if (!shown.hasBearing() && !gps.approximate) {
-                        // Guidage lancé à l'arrêt : en attendant de rouler, la flèche montre où part l'itinéraire.
-                        container.navigation.guidance.value?.let { current ->
-                            shown = Location(shown).apply { bearing = current.route.bearingAt(current.nav.progressM).toFloat() }
+                    val guided = container.navigation.guidance.value
+                    if (guided != null && !gps.approximate) {
+                        val accuracy = if (shown.hasAccuracy()) shown.accuracy.toDouble() else null
+                        val snap = container.navigation.snapToRoute(LatLon(shown.latitude, shown.longitude), accuracy)
+                        if (snap != null) {
+                            // On suit l'itinéraire : la flèche se pose sur le tracé et en prend la direction, à l'arrêt
+                            // comme en roulant, et ce qui est derrière elle s'efface. Le GPS d'un téléphone flotte de
+                            // quelques mètres : montré tel quel, il ferait zigzaguer la flèche à côté du trait.
+                            shown = Location(shown).apply {
+                                latitude = snap.position.lat
+                                longitude = snap.position.lon
+                                bearing = snap.bearingDeg.toFloat()
+                            }
+                            mapState.setRouteProgress(snap.segment, snap.position)
+                        } else if (!shown.hasBearing()) {
+                            // Guidage lancé à l'arrêt, à côté du tracé : la flèche montre où part l'itinéraire.
+                            shown = Location(shown).apply { bearing = guided.route.bearingAt(guided.nav.progressM).toFloat() }
                         }
                     }
                     mapState.updateLocation(shown)
@@ -385,7 +399,16 @@ fun RideScreen(
     // Un itinéraire qu'on prépare ou qu'on rouvre (depuis l'onglet « Trajets », par exemple) se regarde sur la carte.
     LaunchedEffect(planner.open, planner.options) { if (planner.open) mode = RideMode.MAP }
     // Guidage : la carte passe en vue de guidage (dans le sens de la marche, inclinée) et suit la position.
-    LaunchedEffect(guidance != null) { mapState.setNavigation(guidance != null) }
+    LaunchedEffect(guidance != null) {
+        mapState.setNavigation(guidance != null)
+        if (guidance == null) mapState.clearRouteProgress()
+    }
+    // La prochaine manœuvre, dessinée en flèche sur le tracé (une trace importée n'a pas de consignes de virage).
+    val nextManeuver = guidance?.takeIf { !it.followOnly && !it.nav.arrived }?.nav?.next?.takeIf { it.maneuver != Maneuver.ARRIVE }
+    LaunchedEffect(guidance?.route, nextManeuver) {
+        val route = guidance?.route
+        mapState.setManeuverArrow(if (route != null && nextManeuver != null) route.arrowFor(nextManeuver) else emptyList())
+    }
     val navTopPx = with(fitDensity) {
         (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + TOP_BAR_HEIGHT + 12.dp + GUIDANCE_BANNER_HEIGHT + 8.dp +
             (if (snapshot.isActive) MAP_STRIP_HEIGHT + 8.dp else 0.dp)).roundToPx()

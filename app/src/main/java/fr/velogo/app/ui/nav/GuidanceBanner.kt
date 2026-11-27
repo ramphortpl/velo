@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -122,7 +123,10 @@ fun GuidanceBanner(guidance: GuidanceState, onStop: () -> Unit, modifier: Modifi
             icon = maneuverIcon(next.maneuver)
             headline = maneuverDistance(nav.distanceToNextM)
             val then = nav.then?.takeIf { it.maneuver != Maneuver.ARRIVE }
-            detail = GuidancePhrases.label(next) + if (then != null) ", puis ${GuidancePhrases.label(then).lowercase()}" else ""
+            // Une consigne seule dit aussi où elle mène (« À gauche · Rue de la Gare ») ; deux consignes enchaînées
+            // tiennent déjà toute la ligne.
+            detail = if (then != null) "${GuidancePhrases.label(next)}, puis ${GuidancePhrases.label(then).lowercase()}"
+            else GuidancePhrases.labelWithStreet(next)
         }
         else -> {
             icon = R.drawable.ic_straight
@@ -154,7 +158,14 @@ fun GuidanceBanner(guidance: GuidanceState, onStop: () -> Unit, modifier: Modifi
                         )
                     }
                 }
-                Text(detail, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // Un nom de rue long rétrécit un peu avant d'être coupé : « Avenue des Chasseurs Alpins » doit tenir.
+                Text(
+                    detail,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = MaterialTheme.typography.titleMedium.fontSize, stepSize = 0.5.sp),
+                )
             }
             IconButton(onClick = onStop) {
                 Icon(painterResource(R.drawable.ic_close), contentDescription = "Arrêter le guidage")

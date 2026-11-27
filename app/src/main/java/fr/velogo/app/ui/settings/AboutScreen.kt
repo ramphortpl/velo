@@ -44,7 +44,7 @@ private val DATA = listOf(
     ),
     Credit(
         "OpenFreeMap",
-        "Fond « Plan » : tuiles vectorielles OpenFreeMap © OpenMapTiles, données OpenStreetMap.",
+        "Fond « Plan » : tuiles vectorielles OpenFreeMap © OpenMapTiles, données OpenStreetMap, dessinées dans le style de VeloGo.",
         "https://openfreemap.org",
     ),
     Credit(
@@ -59,7 +59,7 @@ private val DATA = listOf(
     ),
     Credit(
         "Mapterhorn",
-        "Relief de la carte hors ligne, altitude et pente sans réseau : MNT LiDAR HD et RGE ALTI® de l'IGN (Licence Ouverte 2.0), assemblés par Mapterhorn.",
+        "Relief ombré du plan et de la carte hors ligne, altitude et pente sans réseau : MNT LiDAR HD et RGE ALTI® de l'IGN (Licence Ouverte 2.0), assemblés par Mapterhorn.",
         "https://mapterhorn.com/attribution",
     ),
     Credit(

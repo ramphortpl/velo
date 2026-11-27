@@ -22,6 +22,17 @@ object GuidancePhrases {
         Maneuver.ARRIVE -> "Arrivée"
     }
 
+    /**
+     * Libellé du bandeau avec le nom de la voie qu'on prend, quand il est connu : « À gauche · Rue de la Gare ».
+     * Un point médian plutôt qu'une préposition : « sur », « dans », « vers » changent d'une voie à l'autre.
+     */
+    fun labelWithStreet(instruction: Instruction): String {
+        val street = instruction.street?.takeIf { it.isNotBlank() } ?: return label(instruction)
+        // Au giratoire, l'icône dit déjà « rond-point » : le numéro de sortie et la rue suffisent, et tiennent sur la ligne.
+        val short = if (instruction.maneuver == Maneuver.ROUNDABOUT && instruction.exit > 0) "${ordinal(instruction.exit)} sortie" else label(instruction)
+        return "$short · $street"
+    }
+
     /** La manœuvre telle qu'on la dit : « tourne à gauche », « au rond-point, prends la deuxième sortie »… */
     fun spoken(instruction: Instruction): String = when (instruction.maneuver) {
         Maneuver.CONTINUE -> "continue tout droit"
@@ -39,15 +50,48 @@ object GuidancePhrases {
         Maneuver.ARRIVE -> "tu es à destination"
     }
 
-    /** Annonce faite à l'approche : « Dans 150 mètres, tourne à gauche. » */
+    /** Annonce faite à l'approche : « Dans 150 mètres, tourne à gauche, rue de la Gare. » */
     fun prepare(instruction: Instruction, distanceM: Double): String =
-        "Dans ${spokenDistance(distanceM)}, ${spoken(instruction)}."
+        "Dans ${spokenDistance(distanceM)}, ${spoken(instruction)}${spokenStreet(instruction)}."
 
-    /** Annonce faite au moment d'agir, avec la consigne suivante si elle est toute proche. */
+    /**
+     * Annonce faite au moment d'agir, avec la consigne suivante si elle est toute proche. Le nom de la voie n'est
+     * dit que pour une consigne seule : deux manœuvres enchaînées doivent tenir en une phrase courte.
+     */
     fun now(instruction: Instruction, then: Instruction?): String {
         val first = spoken(instruction).replaceFirstChar { it.uppercase() }
-        return if (then != null && then.maneuver != Maneuver.ARRIVE) "$first, puis ${spoken(then)}." else "$first."
+        return if (then != null && then.maneuver != Maneuver.ARRIVE) "$first, puis ${spoken(then)}."
+        else "$first${spokenStreet(instruction)}."
     }
+
+    /** Le nom de la voie, dit après la manœuvre : « , rue de la Gare ». Vide s'il n'est pas connu. */
+    private fun spokenStreet(instruction: Instruction): String {
+        val street = instruction.street?.takeIf { it.isNotBlank() } ?: return ""
+        return ", ${speakable(street)}"
+    }
+
+    /**
+     * Un nom de voie tel que la synthèse vocale le lira bien : « D 81 » se dit « départementale 81 », et le nom
+     * commence par une minuscule puisqu'il vient au milieu d'une phrase.
+     */
+    fun speakable(street: String): String {
+        val road = ROAD_NUMBER.matchEntire(street.trim())
+        if (road != null) {
+            val kind = when (road.groupValues[1].uppercase()) {
+                "D", "RD" -> "départementale"
+                "N", "RN" -> "nationale"
+                "M", "RM" -> "métropolitaine"
+                "C", "VC" -> "communale"
+                "T", "RT" -> "territoriale"
+                "A" -> "autoroute"
+                else -> "route"
+            }
+            return "$kind ${road.groupValues[2]}"
+        }
+        return street.trim().replaceFirstChar { it.lowercase() }
+    }
+
+    private val ROAD_NUMBER = Regex("""([A-Za-z]{1,2})\s?(\d+[A-Za-z]?)""")
 
     const val OFF_ROUTE = "Tu t'écartes de l'itinéraire."
     const val REROUTED = "Nouvel itinéraire."

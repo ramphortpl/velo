@@ -1,0 +1,3 @@
+Tuiles vectorielles réelles de Corte (zoom 15), extraites du pack « fond-corse.pmtiles » de la Release « cartes »
+(fond Protomaps, données © les contributeurs d'OpenStreetMap, ODbL) et réduites à leur couche « roads » :
+c'est la seule que lit StreetNamer. Nom des fichiers : roads-<zoom>-<x>-<y>.mvt (tuiles décompressées).

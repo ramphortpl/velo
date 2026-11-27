@@ -6,8 +6,10 @@ import fr.velogo.app.elevation.ReliefSource
 import fr.velogo.app.offline.OfflineStore
 import fr.velogo.core.geo.LatLon
 import fr.velogo.core.nav.BikeType
+import fr.velogo.core.nav.RoadTiles
 import fr.velogo.core.nav.Route
 import fr.velogo.core.nav.RoutePreference
+import fr.velogo.core.nav.StreetNamer
 import fr.velogo.core.ride.AscentAccumulator
 import fr.velogo.routing.BRouterPlanner
 import fr.velogo.routing.PlanFailure
@@ -63,6 +65,8 @@ class RouteService(
             ?: return@withContext RouteOptions.Failed(PlanFailure.MISSING_DATA, message(PlanFailure.MISSING_DATA))
         val found = ArrayList<RouteOption>()
         var failure: PlanOutcome.Failed? = null
+        // Les propositions passent par les mêmes rues : un seul lecteur de noms pour toutes.
+        val namer = namer()
         for (preference in RoutePreference.entries) {
             coroutineContext.ensureActive()
             when (val outcome = planner.plan(segments, PlanRequest(waypoints, bike, preference, powerW = powerW))) {
@@ -72,7 +76,7 @@ class RouteService(
                     if (outcome.reason != PlanFailure.TIMEOUT && outcome.reason != PlanFailure.ERROR) break
                 }
                 is PlanOutcome.Found -> {
-                    val route = refine(outcome.route)
+                    val route = named(refine(outcome.route), namer)
                     val same = found.indexOfFirst { it.route.isSameAs(route) }
                     if (same >= 0) found[same] = found[same].copy(preferences = found[same].preferences + preference)
                     else found.add(RouteOption(route, listOf(preference)))
@@ -88,7 +92,7 @@ class RouteService(
             coroutineContext.ensureActive()
             val outcome = planner.plan(segments, PlanRequest(waypoints, bike, RoutePreference.FAST, alternative = alternative, powerW = powerW))
             if (outcome is PlanOutcome.Found) {
-                val route = refine(outcome.route)
+                val route = named(refine(outcome.route), namer)
                 // Une variante n'a d'intérêt que si elle diffère vraiment, sans rallonger déraisonnablement.
                 val shortest = found.minOf { it.route.distanceM }
                 if (found.none { it.route.isSameAs(route) } && route.distanceM <= shortest * MAX_DETOUR) {
@@ -105,8 +109,25 @@ class RouteService(
         withContext(Dispatchers.Default) {
             val segments = store.routingDirectory() ?: return@withContext null
             val outcome = planner.plan(segments, PlanRequest(waypoints, bike, preference, powerW = powerW, timeoutS = REROUTE_TIMEOUT_S))
-            (outcome as? PlanOutcome.Found)?.route?.let { refine(it) }
+            (outcome as? PlanOutcome.Found)?.route?.let { named(refine(it), namer()) }
         }
+
+    /**
+     * Le même itinéraire, avec le nom des rues dans ses consignes quand la carte hors ligne du téléphone les
+     * connaît. Sert aux trajets enregistrés par une version de l'appli qui ne les retenait pas encore.
+     */
+    suspend fun withStreetNames(route: Route): Route = withContext(Dispatchers.Default) { named(route, namer()) }
+
+    /** Lecteur des noms de rue dans le fond de carte hors ligne, ou null s'il n'est pas assez détaillé ici. */
+    private fun namer(): StreetNamer? {
+        val base = store.tiles.base
+        val zoom = minOf(StreetNamer.DEFAULT_ZOOM, base.maxZoom)
+        return if (zoom < MIN_NAMES_ZOOM) null else StreetNamer(RoadTiles { z, x, y -> base.tile(z, x, y) }, zoom)
+    }
+
+    /** Un nom de rue est un confort : si la carte est illisible, l'itinéraire reste bon sans lui. */
+    private fun named(route: Route, namer: StreetNamer?): Route =
+        if (namer == null) route else runCatching { namer.named(route) }.getOrDefault(route)
 
     /**
      * Remplace le profil d'altitude de BRouter (maille de 30 m) par celui du relief hors ligne quand il couvre
@@ -129,6 +150,8 @@ class RouteService(
         private const val MAX_DETOUR = 1.6
         private const val REROUTE_TIMEOUT_S = 25
         private const val RELIEF_ASCENT_THRESHOLD_M = 3.0
+        /** En dessous de ce zoom, le fond de carte ne porte pas le nom des petites rues. */
+        private const val MIN_NAMES_ZOOM = 14
 
         /** Explication à montrer quand le calcul échoue. */
         fun message(reason: PlanFailure): String = when (reason) {
