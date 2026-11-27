@@ -45,6 +45,19 @@ ombre) : quelques rectangles arrondis que le téléphone trace sans effort.
 - **Le guide pas à pas** est dans `docs/PLAY_STORE.md`, avec les réponses toutes prêtes aux formulaires de Google ;
   les textes et les images de la fiche sont dans `docs/play/`.
 
+### Une appli pour tout le monde
+
+VeloGo n'est plus présentée comme une appli personnelle : elle est faite pour être publiée.
+
+- Les conditions de chaque service utilisé (cartes, adresses, altitude, météo, hébergement) ont été relues pour une
+  appli ouverte à tous : toutes le permettent, à trois points près à surveiller si l'appli a du succès
+  (`docs/PLAY_STORE.md`, « Une appli publique »).
+- **Les mentions des sources sont complètes** : « © OpenMapTiles » manquait sur le fond « Plan ». Un appui sur la
+  mention de la carte ouvre la page des droits de ceux qui la fournissent, et la mention de la météo mène au site
+  d'Open-Meteo, comme leurs licences le demandent.
+- **« Sur la route »** (Réglages > Sources et licences) : les cartes et les itinéraires peuvent être incomplets ou
+  dépassés ; sur place, c'est la signalisation qui fait foi.
+
 ### Et aussi
 
 - **Recherche d'adresse plus patiente** : une demande qui échoue (réseau qui hésite, service lent) est retentée

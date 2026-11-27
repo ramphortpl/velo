@@ -1,7 +1,8 @@
 # VeloGo — notes d'architecture
 
-Appli Android native de vélo, usage personnel, **France uniquement**, 100 % gratuite, sans compte. Depuis la
-version 0.7, elle est aussi préparée pour une publication sur Google Play (`docs/PLAY_STORE.md`).
+Appli Android native de vélo, **France uniquement**, 100 % gratuite, sans compte. D'abord faite pour le seul
+usage de son auteur ; depuis le 26/11/2026, elle est **destinée au public** (Google Play et autres magasins,
+`docs/PLAY_STORE.md`) : tout ce qu'elle utilise doit être permis à une appli publique, pas seulement à un particulier.
 Interface en français, unités métriques. Téléphone cible : Samsung Galaxy A05s (Android 15, arm64,
 **ni baromètre, ni boussole, ni gyroscope**, écran LCD 90 Hz peu lumineux).
 
@@ -433,6 +434,47 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   dit. La règle d'un téléchargement déjà demandé ne se change pas : quand « Wi-Fi uniquement » change,
   `applyWifiOnly` redemande ceux qui n'ont encore rien reçu (l'ancien est retiré d'abord, car Android efface son
   fichier, qui porte le même nom) ; ceux qui ont commencé gardent leur règle, pour ne pas perdre ce qui est arrivé.
+- **Appli publique : ce que permettent les services** (conditions relevées sur leurs pages le 26/11/2026, quand
+  l'auteur a décidé de publier). OpenFreeMap : aucune limite, usage commercial admis, mention « © OpenMapTiles »
+  obligatoire (« OpenFreeMap » facultatif). IGN Géoplateforme : les CGU visent les applis « à des fins commerciales
+  ou non », sans clé ; limites par adresse IP et par seconde (géocodage 50, autocomplétion 10, altimétrie 5, tuiles
+  sans limite). Open-Meteo : gratuit pour une appli **sans publicité ni abonnement** ; 10 000 appels par jour,
+  comptés « by IP addresses and application », et leur dépôt demande d'écrire si « your application » les dépasse
+  (une demande pour plusieurs lieux compte plusieurs appels). OSM France (CyclOSM) : applis gratuites, sans but
+  lucratif, User-Agent complet, « trafic modéré » non chiffré, coupure possible sans préavis, mention avec un
+  lien vers osm.org/copyright. GitHub : pas de limite de bande passante publiée pour les Releases, mais une clause
+  contre l'usage « nettement excessif ». Protomaps et Mapterhorn : redistribution permise. Conséquences dans
+  l'appli : `MapLayer.attributionUrl` (un appui sur la mention ouvre la page des droits), lien sous la météo,
+  `ROAD_NOTICE` dans « Sources et licences ». Le tableau pour l'auteur est dans `docs/PLAY_STORE.md`. **Si
+  l'appli devenait payante ou financée par la publicité, Open-Meteo et CyclOSM ne seraient plus permis tels quels.**
+- **Google Maps : demandé par l'auteur le 27/11/2026 (« que la map utilisée soit celle de Google Maps »), rien
+  n'est codé tant qu'il n'a pas choisi et fourni une clé.** Faits relevés sur les pages de Google le 26/11/2026
+  (conditions « EEA », celles d'un compte de facturation en France) :
+  - afficher une carte Google par le Maps SDK for Android est gratuit et sans plafond tant qu'on n'utilise pas
+    de « map ID » (SKU « Maps SDK » ; avec un map ID : 10 000 chargements gratuits par mois, puis 7 $ les 1 000) ;
+    il faut tout de même un projet Google Cloud **avec facturation activée** (carte bancaire) et une clé ;
+    Google Play services est requis sur le téléphone ;
+  - **aucun usage hors ligne** : ni cache ni stockage des tuiles (« No Caching », « No Scraping ») ; le SDK n'a
+    pas de couche vélo sur Android (elle n'existe qu'en JavaScript) et n'accepte que des tuiles en images en
+    surcouche ;
+  - **guidage** : les conditions EEA n'interdisent plus de « recréer » Google Maps, mais imposent des « Safety
+    Requirements » à tout guidage en temps réel sur une carte Google avec un itinéraire qui ne vient pas de
+    Google : tracé aligné à moins de 10 m des routes que dessine la carte Google, contrôle continu, consignes
+    jamais contraires à ce que montre la carte, recalcul toutes les 15 s, mention « Routing provided by … ».
+    Impossible à garantir avec des itinéraires OpenStreetMap (chemins que Google ne dessine pas, pas d'accès à
+    sa géométrie) : **un guidage ne doit pas tourner sur un fond Google** ;
+  - mentions : logo et copyright Google jamais masqués (marge de carte), et les conditions de l'appli doivent
+    renvoyer aux « Google Maps End User Additional Terms » et à la politique de confidentialité de Google ;
+    Google reçoit l'adresse IP, des données de l'appareil, un identifiant pseudonyme du SDK et des coordonnées :
+    la politique de confidentialité et la fiche « Sécurité des données » seraient à refaire ;
+  - Navigation SDK : réservé aux « commercial applications », remplace toute la carte, 1 000 destinations
+    gratuites par mois puis 25 $ les 1 000, pas de hors ligne, itinéraire imposé par Google : écarté ;
+  - Map Tiles API (tuiles Google dans MapLibre) : 100 000 tuiles gratuites par mois (2 500 à 10 000 écrans pour
+    tous les utilisateurs réunis), puis 0,60 $ les 1 000 ; pas de satellite pour un compte EEA : payant dès
+    que l'appli a du public, donc contraire à la règle « aucune API payante » ;
+  - sans compte ni clé : passer la main à l'appli Google Maps (`google.navigation:q=…&mode=b`).
+  Le relevé complet (148 citations, adresses et dates) n'est pas versionné : le refaire avant de s'y fier, les
+  prix et les conditions de Google changent souvent.
 - **Portrait sur téléphone, tout sens sur grand écran** : `screenOrientation="portrait"` reste déclaré, mais à
   partir d'Android 16 visé, Android n'en tient plus compte quand l'écran fait au moins 600 dp de large (tablettes,
   pliables), sans dérogation possible en visant Android 17. L'appli s'y adapte donc : l'écran guidon a sa
@@ -653,8 +695,9 @@ itinéraire refait avec les dalles d'Île-de-France ; à confirmer par ce qu'aff
 
 ## Sources de données et attributions
 
-OpenStreetMap (ODbL) · OpenFreeMap / OpenMapTiles · CyclOSM (serveurs OSM France : en ligne uniquement,
-User-Agent identifiant l'appli, pas de téléchargement en masse) · IGN Géoplateforme (Plan IGN, photos aériennes,
+OpenStreetMap (ODbL) · OpenFreeMap / OpenMapTiles (« © OpenMapTiles » sur la carte) · CyclOSM (serveurs OSM
+France : en ligne uniquement, appli gratuite et sans but lucratif, User-Agent identifiant l'appli, trafic modéré,
+pas de téléchargement en masse) · IGN Géoplateforme (Plan IGN, photos aériennes,
 adresses, altitude ; Licence Ouverte 2.0) · Open-Meteo (CC BY 4.0) · Protomaps (BSD, données OSM) · Mapterhorn
 (MNT LiDAR HD et RGE ALTI® de l'IGN, Licence Ouverte 2.0) · Noto Sans (OFL) · BRouter (MIT).
 Les cartes IGN TOP 25 (SCAN 25) sont interdites aux particuliers : non utilisées.

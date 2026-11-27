@@ -131,6 +131,7 @@ import fr.velogo.app.ui.components.FittedNumber
 import fr.velogo.app.ui.components.GlassControlStack
 import fr.velogo.app.ui.components.GlassIconButton
 import fr.velogo.app.ui.components.GlassPill
+import fr.velogo.app.ui.components.STACK_CELL
 import fr.velogo.app.ui.components.Segmented
 import fr.velogo.app.ui.components.StackControl
 import fr.velogo.app.ui.theme.Corners
@@ -151,6 +152,8 @@ import fr.velogo.core.ride.RideSnapshot
 import fr.velogo.core.ride.RideState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.ui.semantics.Role
+import fr.velogo.app.ui.settings.openUrl
 
 enum class RideMode { MAP, DATA }
 
@@ -564,6 +567,7 @@ fun RideScreen(
             themeMode = settings.themeMode,
             sunlight = sunlight,
             attribution = layer.attribution,
+            onAttribution = { openUrl(context, layer.attributionUrl) },
             following = mapState.isFollowing,
             headingUp = settings.headingUp,
             hasLocationPermission = access != LocationAccess.NONE,
@@ -834,6 +838,7 @@ fun RideScreen(
                     if (route != null) weather.requestRoute(route, progressM, force = true)
                 },
                 onDeparture = { departureChoice = it },
+                onSource = { openUrl(context, "https://open-meteo.com/") },
             )
         }
     }
@@ -986,6 +991,8 @@ fun RideChrome(
     onFitRoute: () -> Unit = {},
     onRoute: () -> Unit = {},
     onStopGuidance: () -> Unit = {},
+    /** Un appui sur la mention des sources de la carte : ouvre la page de leurs droits. */
+    onAttribution: () -> Unit = {},
     /** La météo du moment, si elle est connue : pastille sur la carte, ligne sous les chiffres. */
     weather: WeatherGlance? = null,
     onWeather: () -> Unit = {},
@@ -1001,6 +1008,7 @@ fun RideChrome(
                 MapOverlays(
                     snapshot = snapshot,
                     attribution = attribution,
+                    onAttribution = onAttribution,
                     following = following,
                     headingUp = headingUp,
                     hasLocationPermission = hasLocationPermission,
@@ -1142,6 +1150,7 @@ private val GPS_CHIP_ROOM = 158.dp
 private fun MapOverlays(
     snapshot: RideSnapshot,
     attribution: String,
+    onAttribution: () -> Unit,
     following: Boolean,
     headingUp: Boolean,
     hasLocationPermission: Boolean,
@@ -1221,7 +1230,7 @@ private fun MapOverlays(
             }
         }
 
-        // Mention obligatoire des sources de la carte, toujours visible.
+        // Mention obligatoire des sources de la carte, toujours visible ; un appui ouvre la page de leurs droits.
         Text(
             attribution,
             style = MaterialTheme.typography.labelSmall,
@@ -1230,8 +1239,11 @@ private fun MapOverlays(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .align(Alignment.BottomStart)
+                // Jamais sous les boutons de la carte, à droite : sur un écran étroit, la mention s'abrège avant.
+                .padding(end = STACK_CELL + 12.dp)
                 .clip(CircleShape)
                 .background(glass.regular.fillBottom)
+                .clickable(onClickLabel = "Voir les droits de la carte", role = Role.Button, onClick = onAttribution)
                 .padding(horizontal = 8.dp, vertical = 3.dp),
         )
 

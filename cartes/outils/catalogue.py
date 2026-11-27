@@ -246,7 +246,8 @@ def assembler(dossier):
         f.write("\n".join(lignes) + "\n\n")
         f.write(f"Vue d'ensemble de la France : {mo(sum(x['taille'] for x in catalogue['france']))}. ")
         f.write(f"Données d'itinéraire BRouter : {mo(sum(x['taille'] for x in catalogue['dalles']))} pour toute la France, en {len(catalogue['dalles'])} carrés d'un degré.\n\n")
-        f.write("Données © les contributeurs d'OpenStreetMap (ODbL) ; fond Protomaps ; relief Mapterhorn (IGN, Licence Ouverte) ; BRouter.\n")
+        f.write("Données © les contributeurs d'OpenStreetMap, sous licence ODbL (https://opendatacommons.org/licenses/odbl/1-0/) ; "
+                "fond Protomaps ; relief Mapterhorn (https://mapterhorn.com/attribution : IGN, Licence Ouverte 2.0) ; BRouter.\n")
     print(open("resume.md", encoding="utf-8").read())
 
 

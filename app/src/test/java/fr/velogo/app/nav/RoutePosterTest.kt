@@ -23,6 +23,7 @@ import java.io.File
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+import fr.velogo.app.map.MapLayers
 
 /**
  * L'affiche d'un itinéraire, dessinée pour de bon (moteur graphique d'Android fourni par Robolectric) : les
@@ -101,7 +102,7 @@ class RoutePosterTest {
         val text = PosterText(
             title = "Sortie du club : le grand tour par le col de la Forclaz et Talloires",
             subtitle = "Vers Annecy, quai de la Tournette",
-            attribution = "© OpenStreetMap · OpenFreeMap",
+            attribution = MapLayers.OPENFREEMAP.attribution,
         )
         val poster = RoutePoster.render(context, route, text, PosterMap(map, project))
         save(poster, "affiche.png")

@@ -33,6 +33,10 @@ import fr.velogo.app.ui.theme.LocalRideColors
 import fr.velogo.core.geo.BoundingBox
 import fr.velogo.core.geo.LatLon
 import kotlinx.coroutines.flow.first
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import fr.velogo.app.ui.settings.openUrl
 
 /**
  * Une carte qui montre une trace enregistrée (une sortie, un segment), cadrée sur elle, sur le fond de carte
@@ -51,6 +55,7 @@ fun TrackMap(
     planMarkers: List<PlanMarker> = emptyList(),
 ) {
     val container = LocalContainer.current
+    val context = LocalContext.current
     val mapState = rememberVeloMapState()
     val dark = LocalIsDark.current
     val rideColors = LocalRideColors.current
@@ -82,7 +87,7 @@ fun TrackMap(
     LaunchedEffect(planMarkers) { mapState.setPlanMarkers(planMarkers) }
     Box(modifier) {
         VeloMap(mapState, MapStyleSpec(layer, dark, if (layer.offline) offlineRevision else 0), colors, Modifier.fillMaxSize())
-        // Mention obligatoire des sources de la carte.
+        // Mention obligatoire des sources de la carte ; un appui ouvre la page de leurs droits.
         Text(
             layer.attribution,
             style = MaterialTheme.typography.labelSmall,
@@ -92,6 +97,9 @@ fun TrackMap(
                 .padding(8.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f))
+                .clickable(onClickLabel = "Voir les droits de la carte", role = Role.Button) {
+                    openUrl(context, layer.attributionUrl)
+                }
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         )
     }

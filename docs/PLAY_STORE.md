@@ -47,7 +47,9 @@ Sur [play.google.com/console](https://play.google.com/console), avec ton compte 
 téléphone, et du téléphone Android sur lequel tu installes l'appli « Play Console ».
 
 Google demande aussi, dès la création, si tu es un **professionnel** (« trader ») au sens européen. Pour une appli
-gratuite faite pour soi et ses amis, la réponse honnête est non ; c'est à toi de la donner.
+gratuite, sans publicité ni achat, publiée par un particulier en dehors de toute activité professionnelle, la
+réponse honnête est non ; c'est à toi de la donner. Elle changerait le jour où l'appli rapporterait de l'argent :
+Google afficherait alors ton adresse postale, et ton numéro de téléphone si tu te déclares professionnel.
 
 ### 2. Créer l'appli
 
@@ -195,6 +197,24 @@ médicale. La description de la fiche précise déjà que VeloGo n'est pas un di
   sont pas citées : rien n'indique qu'un compte personnel pose problème, rien ne le garantit non plus.
 - **Ce qui n'a pas pu être vérifié ici** : le workflow « Clé pour Google Play », et tout ce qui se passe dans la
   Play Console elle-même (il faut un compte).
+
+## Une appli publique : ce que demandent les services qu'elle utilise
+
+Tant que VeloGo n'était que pour toi, la question ne se posait pas. Voici ce que disent, pour une appli ouverte à
+tous, les conditions de chaque service (relevées sur leurs pages le 26 novembre 2026). Rien n'empêche de publier ;
+trois points sont à surveiller si l'appli a du succès.
+
+| Service | Appli publique | À surveiller |
+|---|---|---|
+| OpenFreeMap (fond « Plan ») | Autorisée, sans limite ni inscription, même pour un usage commercial | Rien. La mention « © OpenMapTiles » est obligatoire sur la carte : elle y est. |
+| IGN (Plan IGN, photos, adresses, altitude) | Autorisée, « à des fins commerciales ou non », sans clé | Rien : les limites sont comptées par téléphone. |
+| Protomaps et Mapterhorn (cartes hors ligne) | Redistribution permise | Rien. |
+| **Open-Meteo (météo)** | Gratuite pour une appli **sans publicité ni abonnement** | Au-delà de **10 000 demandes par jour pour toute l'appli** (quelques centaines de cyclistes qui roulent le même jour), ils demandent qu'on leur écrive (info@open-meteo.com). Avec de la publicité ou un abonnement, l'offre payante devient obligatoire (29 $ par mois en 2023, prix actuel non vérifié). |
+| **CyclOSM (serveurs d'OpenStreetMap France)** | Tolérée pour une appli gratuite, sans but lucratif, au « trafic modéré » | Aucun chiffre n'est donné, et ils peuvent couper l'accès sans préavis. Si l'appli dépasse quelques centaines d'utilisateurs, leur écrire (openstreetmap.fr) ou retirer ce fond : la carte « Vélo hors ligne » montre les mêmes aménagements sans dépendre d'eux. |
+| **GitHub (cartes hors ligne, APK)** | C'est l'usage prévu des « Releases », sans limite publiée | Une clause leur permet de freiner un dépôt dont le trafic serait « nettement excessif ». Avec des milliers de téléchargements de régions, il faudrait un autre hébergement. |
+
+Deux conséquences si un jour l'appli rapportait de l'argent (publicité, abonnement, version payante) : la météo et
+le fond CyclOSM ne seraient plus permis tels quels, et Google te demanderait de te déclarer professionnel.
 
 ## Sources
 

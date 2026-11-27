@@ -53,6 +53,9 @@ import fr.velogo.core.weather.Wind
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextDecoration
 
 /** Ce que la feuille météo affiche. */
 data class WeatherSheetState(
@@ -92,6 +95,8 @@ fun WeatherContent(
     /** Choix d'une heure de départ pour la météo du trajet ; null = maintenant. */
     onDeparture: (Long?) -> Unit,
     modifier: Modifier = Modifier,
+    /** Un appui sur la mention de la source : ouvre le site d'Open-Meteo. */
+    onSource: () -> Unit = {},
 ) {
     val report = state.report
     val now = report?.now(state.nowMs)
@@ -120,11 +125,17 @@ fun WeatherContent(
 
         state.route?.let { RouteBlock(it, state.nowMs, onDeparture) }
 
+        // Open-Meteo demande un lien à côté de ses données, pas seulement son nom.
         Text(
             "Données météo : Open-Meteo.com (CC BY 4.0), modèles AROME et ARPEGE de Météo-France.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 24.dp).padding(top = 16.dp),
+            textDecoration = TextDecoration.Underline,
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .padding(top = 8.dp)
+                .clickable(onClickLabel = "Ouvrir le site d'Open-Meteo", role = Role.Button, onClick = onSource)
+                .padding(8.dp),
         )
     }
 }

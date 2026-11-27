@@ -10,6 +10,8 @@ data class MapLayer(
     val description: String,
     /** Mention à afficher en permanence dans un coin de la carte. */
     val attribution: String,
+    /** Page qu'ouvre un appui sur la mention : les droits et la licence de ceux qui fournissent la carte. */
+    val attributionUrl: String,
     /** Style vectoriel prêt à l'emploi (thème clair / thème sombre), ou null pour un fond en images. */
     val lightStyleUri: String? = null,
     val darkStyleUri: String? = null,
@@ -36,6 +38,14 @@ data class MapStyleSpec(val layer: MapLayer, val dark: Boolean, val revision: In
  * seules les tuiles affichées sont demandées, puis gardées en cache. Le dernier fonctionne sans réseau.
  */
 object MapLayers {
+    /**
+     * Les mentions sont des liens, comme le demandent ceux qui fournissent les cartes : OpenStreetMap France veut
+     * une mention « avec un lien pointant sur https://osm.org/copyright », la Licence Ouverte de l'IGN se satisfait
+     * d'une adresse qui mène à la donnée et à sa date.
+     */
+    const val OSM_COPYRIGHT = "https://www.openstreetmap.org/copyright"
+    const val IGN_SOURCE = "https://cartes.gouv.fr"
+
     private const val IGN_WMTS = "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0" +
         "&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}"
 
@@ -43,7 +53,9 @@ object MapLayers {
         id = "openfreemap",
         title = "Plan",
         description = "Carte vectorielle nette et rapide, claire ou sombre, pistes cyclables surlignées.",
-        attribution = "© OpenStreetMap · OpenFreeMap",
+        // « © OpenMapTiles » est la partie qu'OpenFreeMap rend obligatoire ; son propre nom ne l'est pas.
+        attribution = "© OpenStreetMap · © OpenMapTiles · OpenFreeMap",
+        attributionUrl = OSM_COPYRIGHT,
         lightStyleUri = "https://tiles.openfreemap.org/styles/liberty",
         darkStyleUri = "https://tiles.openfreemap.org/styles/dark",
         highlightCycleways = true,
@@ -54,6 +66,7 @@ object MapLayers {
         title = "CyclOSM",
         description = "La carte des cyclistes : pistes, bandes, véloroutes, relief, points d'eau.",
         attribution = "© OpenStreetMap · CyclOSM · OSM France",
+        attributionUrl = OSM_COPYRIGHT,
         rasterTiles = listOf("a", "b", "c").map { "https://$it.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png" },
         rasterMaxZoom = 20,
     )
@@ -63,6 +76,7 @@ object MapLayers {
         title = "Plan IGN",
         description = "La carte de l'IGN : chemins, courbes de niveau, toponymes.",
         attribution = "© IGN – Géoplateforme",
+        attributionUrl = IGN_SOURCE,
         rasterTiles = listOf("$IGN_WMTS&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&FORMAT=image/png"),
         rasterMaxZoom = 19,
     )
@@ -72,6 +86,7 @@ object MapLayers {
         title = "Photos aériennes",
         description = "Vues aériennes de l'IGN : pour vérifier un chemin ou un revêtement.",
         attribution = "© IGN – Géoplateforme",
+        attributionUrl = IGN_SOURCE,
         rasterTiles = listOf("$IGN_WMTS&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&FORMAT=image/jpeg"),
         rasterMaxZoom = 19,
     )
@@ -85,6 +100,7 @@ object MapLayers {
         title = "Vélo hors ligne",
         description = "Carte vélo de VeloGo : pistes, revêtements, véloroutes, cols et relief, sans réseau.",
         attribution = "© OpenStreetMap · Protomaps · Mapterhorn (IGN)",
+        attributionUrl = OSM_COPYRIGHT,
         lightStyleUri = "asset://hors-ligne/style-clair.json",
         darkStyleUri = "asset://hors-ligne/style-sombre.json",
         offline = true,

@@ -85,6 +85,11 @@ private val SOFTWARE = listOf(
     Credit("Material Symbols", "Icônes de Google. Licence Apache 2.0.", "https://fonts.google.com/icons"),
 )
 
+/** Ce que valent les itinéraires proposés, dit une fois pour toutes à ceux qui les suivent. */
+internal const val ROAD_NOTICE =
+    "Les cartes et les itinéraires viennent d'OpenStreetMap : ils peuvent être incomplets ou dépassés. Sur place, " +
+        "la signalisation et le code de la route font foi. Ne manipule pas le téléphone en roulant."
+
 /** Sources de données et logiciels utilisés : les mentions obligatoires, en clair. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -117,9 +122,16 @@ fun AboutScreen(onBack: () -> Unit) {
                 )
             }
             Text(
-                "VeloGo ${BuildConfig.VERSION_NAME} — appli personnelle, gratuite et sans compte. Tes sorties restent sur ton téléphone.",
+                "VeloGo ${BuildConfig.VERSION_NAME} — appli gratuite, sans compte et sans publicité. Tes sorties restent sur ton téléphone.",
                 style = MaterialTheme.typography.bodyLarge,
             )
+            // L'appli est publique : ceux qui la suivent sur la route doivent savoir ce que valent ses itinéraires.
+            VeloCard(modifier = Modifier.fillMaxWidth(), corner = Corners.Inner) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("Sur la route", style = MaterialTheme.typography.titleMedium)
+                    Text(ROAD_NOTICE, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             Text("Cartes et données", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
             DATA.forEach { CreditCard(it) { openUrl(context, it.url) } }
             Text("Logiciels", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))

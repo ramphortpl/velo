@@ -56,6 +56,7 @@ TES DONNÉES RESTENT CHEZ TOI
 • VeloGo couvre la France métropolitaine et la Corse.
 • Ton téléphone n'a pas besoin de baromètre ni de boussole : l'altitude vient du relief de l'IGN.
 • VeloGo n'est pas un dispositif médical. Les distances, vitesses et dénivelés sont des mesures de loisir.
+• Cartes et itinéraires viennent d'OpenStreetMap : sur la route, la signalisation fait toujours foi.
 
 Cartes et données : © les contributeurs d'OpenStreetMap, IGN, Open-Meteo, Protomaps, Mapterhorn.
 ```

@@ -134,6 +134,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import kotlin.math.PI
 import kotlin.math.sin
+import fr.velogo.app.map.MapLayers
 
 /**
  * Rend les écrans en image sur l'ordinateur, sans téléphone ni émulateur (Robolectric + Roborazzi).
@@ -179,7 +180,7 @@ class ScreenshotTest {
                 MapBackdrop(dark = theme == ThemeMode.DARK)
                 RideChrome(
                     snapshot = snapshot, mode = mode, onMode = {}, themeMode = theme, sunlight = sunlight,
-                    attribution = "© OpenStreetMap · OpenFreeMap", following = true, headingUp = false,
+                    attribution = MapLayers.OPENFREEMAP.attribution, following = true, headingUp = false,
                     hasLocationPermission = permission, gps = gps,
                     topInset = 28.dp, bottomPadding = 80.dp, snackbar = SnackbarHostState(),
                     onLayers = {}, onRecenter = {}, onToggleHeading = {}, onRequestPermission = {},

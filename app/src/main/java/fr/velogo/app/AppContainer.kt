@@ -157,6 +157,6 @@ class AppContainer(private val app: Application) {
     companion object {
         private const val UPDATE_CHECK_PERIOD_MS = 12 * 60 * 60 * 1000L
         private const val STARTUP_RETRY_DELAY_MS = 20_000L
-        val USER_AGENT = "VeloGo/${BuildConfig.VERSION_NAME} (Android ; application personnelle non commerciale)"
+        val USER_AGENT = "VeloGo/${BuildConfig.VERSION_NAME} (Android ; application gratuite, non commerciale)"
     }
 }
