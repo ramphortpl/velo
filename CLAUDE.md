@@ -748,15 +748,19 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
 8. Carte redessinée (styles « maison » en ligne et hors ligne, relief ombré partout) et guidage complété (noms
    de rue, flèche de manœuvre, position sur le tracé, partie parcourue grisée) *(fait le 27/11/2026)*
 
-Mise à jour du 27/11/2026, jalon 8 (fabrication n° 35, essai réussi, envoyée sans publication pour regarder les
-captures d'abord) : sur l'émulateur Android 15, les deux nouveaux styles s'affichent sans une erreur du moteur de
+Mise à jour du 27/11/2026, jalon 8 (`v0.8.36`, fabrication n° 36, publiée ; la n° 35, identique à l'ombrage du
+relief près, avait été envoyée sans publication pour regarder les captures d'abord) : sur l'émulateur Android 15, les deux nouveaux styles s'affichent sans une erreur du moteur de
 carte dans le journal (plan en ligne avec le relief de Mapterhorn, carte hors ligne, détail d'une sortie, affiche) ;
 le bandeau de guidage a dit « 100 m, À gauche · Route du Cimetière » ; la flèche de manœuvre et la position posée
 sur le tracé se voient sur les captures du guidage hors ligne. Non vu sur l'émulateur : le thème sombre de la carte
 (jugé seulement dans l'aperçu du navigateur), la partie parcourue grisée (le scénario ne suit pas l'itinéraire
 assez longtemps : vue dans l'aperçu seulement), la voix qui dit le nom des rues. Non mesuré : la fluidité de la
 nouvelle carte sur le Galaxy A05s (le plan en ligne a maintenant un ombrage du relief ; l'ancien avait des
-bâtiments en volume, que le nouveau n'a pas).
+bâtiments en volume, que le nouveau n'a pas). À la n° 36, le tracé d'un itinéraire a été trouvé à l'écran en une
+seconde au plus aux quatre endroits vérifiés (de 4 500 à 9 000 points bleus). L'APK et le fichier AAB de la 0.8.36
+ont été contrôlés après téléchargement : certificat habituel, pages de 16 Ko, styles de carte embarqués, pas de
+`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` dans la version Play. Total des tests : 480 (208 `core`, 13 `routing`, 259
+`app`) ; les « 522 » notés auparavant comptaient 64 résultats d'un ancien dossier de fabrication.
 
 Mise à jour du 27/11/2026 (`v0.7.34`, fabrication n° 34) : l'auteur publie l'appli, qui n'est plus présentée
 comme personnelle. Conditions des services relues pour une appli publique (toutes le permettent), mentions des
