@@ -85,12 +85,18 @@ const selonZoom = (paliers, base = 1.5) => ["interpolate", ["exponential", base]
 const parmi = (champ, valeurs) => ["match", ["get", champ], valeurs, true, false];
 const horsDe = (champ, valeurs) => ["match", ["get", champ], valeurs, false, true];
 
-/** Ombrage du relief : le même sur les deux cartes. */
+/**
+ * Ombrage du relief : le même sur les deux cartes. Il s'atténue quand on s'approche : de loin il dessine les
+ * vallées, de près (où le relief, moins détaillé que les rues, n'est plus qu'un dégradé flou) il ne doit pas salir
+ * le plan d'une ville bâtie sur une butte.
+ */
 function ombrage(p) {
+  const force = (k) => +(p.relief * k).toFixed(3);
   return {
     id: "relief_ombrage", type: "hillshade", source: "relief",
     paint: {
-      "hillshade-exaggeration": p.relief, "hillshade-shadow-color": p.ombre,
+      "hillshade-exaggeration": ["interpolate", ["linear"], ["zoom"], 11, force(1), 14, force(0.72), 16.5, force(0.42)],
+      "hillshade-shadow-color": p.ombre,
       "hillshade-highlight-color": p.lumiere, "hillshade-accent-color": p.ombre,
     },
   };

@@ -15,7 +15,7 @@ Créé par **Paul-Louis Ramphort**.
 
 ![Neuf écrans de VeloGo : carte pendant une sortie, écran guidon, guidage avec flèche, itinéraires, affiche à partager, onglet Trajets, météo, statistiques, segment chronométré](docs/apercu.jpg)
 
-*Vrais écrans de l'appli, pris pendant l'essai automatique de la version 0.7 sur un émulateur Android 15 (sortie
+*Vrais écrans de l'appli, pris pendant l'essai automatique de la version 0.8 sur un émulateur Android 15 (sortie
 simulée à Corte).*
 
 ## Ce que fait l'appli

@@ -62,6 +62,40 @@ def fail(message):
     failures.append(message)
 
 
+def route_pixels(top=0.10, bottom=0.62):
+    """Compte, là où l'on voit la carte, les points de la couleur de l'itinéraire choisi (bleu #1565C0)."""
+    screen_pixels = pixels()
+    if screen_pixels is None:
+        return None
+    width, height, data = screen_pixels
+    count = 0
+    for y in range(int(height * top), int(height * bottom), 2):
+        row = y * width * 4
+        for x in range(0, width, 2):
+            r, g, b = data[row + x * 4], data[row + x * 4 + 1], data[row + x * 4 + 2]
+            if abs(r - 0x15) < 26 and abs(g - 0x65) < 26 and abs(b - 0xC0) < 26:
+                count += 1
+    return count
+
+
+def wait_route_drawn(when, timeout=25, needed=150):
+    """Attend que le tracé de l'itinéraire choisi soit dessiné sur la carte, et dit en combien de temps.
+
+    L'émulateur dessine la carte sans carte graphique, parfois une image par seconde : le tracé peut arriver
+    quelques secondes après le panneau qui annonce les itinéraires. S'il n'arrive pas du tout, c'est un échec."""
+    start = time.time()
+    count = None
+    while time.time() - start < timeout:
+        count = route_pixels()
+        if count is not None and count >= needed:
+            log(f"tracé de l'itinéraire {when} : dessiné en {time.time() - start:.0f} s ({count} points bleus)")
+            return True
+        time.sleep(1)
+    shot("itineraire_sans_trace")
+    fail(f"le tracé de l'itinéraire n'est pas dessiné sur la carte {when} ({count} points bleus après {timeout} s)")
+    return False
+
+
 def shot(name):
     step_no[0] += 1
     path = os.path.join(OUT, f"{step_no[0]:02d}_{name}.png")
@@ -661,8 +695,10 @@ def route_by_address(gps):
     time.sleep(1)
     tap("Calculer l'itinéraire")
     found = wait_for_pattern(r"\d itinéraires?", 60)
-    # Le panneau arrive replié : la carte se cadre sur les itinéraires, en grand.
+    # Le panneau arrive replié : la carte se cadre sur les itinéraires, en grand, et le tracé choisi s'y dessine.
     time.sleep(3)
+    if found:
+        wait_route_drawn("vers la gare de Corte")
     shot("itineraire_propositions")
     if not found:
         fail("aucun itinéraire calculé vers la gare de Corte")
@@ -828,6 +864,7 @@ def saved_routes():
     opened = tap(name) if name else tap("Enregistré aujourd'hui", exact=False)
     if opened and wait_for("Démarrer le guidage", 15):
         time.sleep(3)
+        wait_route_drawn("du trajet rouvert")
         shot("trajet_rouvert")
         if name and not find(name):
             fail("le trajet rouvert n'affiche pas son nom dans le panneau d'itinéraire")
@@ -1066,6 +1103,8 @@ def offline_maps(gps):
             if wait_for("Calculer l'itinéraire", 10):
                 tap("Calculer l'itinéraire")
                 found = wait_for_pattern(r"\d itinéraires?", 60)
+                if found:
+                    wait_route_drawn("calculé en mode avion")
                 shot("mode_avion_itineraire")
                 if found:
                     tap("Démarrer le guidage")
@@ -1417,6 +1456,8 @@ def play_route(gps):
         tap("Calculer l'itinéraire")
         found = wait_for_pattern(r"\d itinéraires?", 60)
         time.sleep(3)
+        if found:
+            wait_route_drawn("de la version Play")
         shot("play_itineraire")
         if found:
             log(f"version Play : {found}")

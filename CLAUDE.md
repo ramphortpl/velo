@@ -282,6 +282,12 @@ Il n'y a pas d'émulateur dans l'environnement de développement. Quatre niveaux
    La saisie au clavier y est vérifiée (`type_text` relit le champ, complète ou efface) : envoyées pendant que le
    clavier démarre, les touches d'`adb shell input text` se perdent (fabrication n° 16 : « gare d » au lieu de
    « gare de corte », et tout l'essai de l'itinéraire en ligne sauté).
+   Le tracé d'un itinéraire est **vérifié à l'écran** (`wait_route_drawn` : points de la couleur de l'itinéraire,
+   bleu #1565C0, comptés dans la partie de l'écran où l'on voit la carte ; de 7 000 à 9 000 quand il est dessiné,
+   zéro sinon) : l'émulateur dessine la carte sans carte graphique, parfois une image par seconde, et à la
+   fabrication n° 35 une capture prise trois secondes après le calcul montrait la carte sans le tracé. Le scénario
+   attend donc le tracé (25 s au plus) aux quatre endroits où un itinéraire s'affiche, et échoue s'il n'arrive pas.
+   `note_guidance` relève dans le journal ce que dit le bandeau de guidage (avec ou sans nom de rue) : un constat.
    La pastille ne dit « GPS ± » que tant que le GPS parle : quand le scénario attend un élément lié au GPS, il
    continue d'envoyer la position (`Gps.wait_for`).
    Les captures d'écran sont publiées en artefact. La météo n'y est qu'un constat, jamais un échec : Open-Meteo
@@ -699,8 +705,8 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
 - `docs/apercu.jpg` (neuf écrans) se refait avec `python3 outils/apercu_readme.py <captures> docs/apercu.jpg` à
   partir de l'artefact `essai-emulateur` d'une fabrication réussie : ce sont de vrais écrans, pas des maquettes.
   La capture de la météo manque dans bien des essais (quota d'Open-Meteo sur les machines de GitHub) : on donne
-  alors un second dossier de captures, plus ancien, où elle existe. L'image actuelle vient de la fabrication
-  n° 27 (`v0.7.27`, la première version publiée au nouveau design).
+  alors un second dossier de captures, plus ancien, où elle existe. L'image actuelle et les captures de la fiche
+  viennent de la fabrication n° 35 (27/11/2026, la première à la nouvelle carte ; essai réussi, non publiée).
 - Les captures de la fiche Google Play (`docs/play/ecrans/`, huit écrans en JPEG) se refont de la même façon :
   `python3 outils/captures_play.py <captures>`.
 
@@ -741,6 +747,16 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
 
 8. Carte redessinée (styles « maison » en ligne et hors ligne, relief ombré partout) et guidage complété (noms
    de rue, flèche de manœuvre, position sur le tracé, partie parcourue grisée) *(fait le 27/11/2026)*
+
+Mise à jour du 27/11/2026, jalon 8 (fabrication n° 35, essai réussi, envoyée sans publication pour regarder les
+captures d'abord) : sur l'émulateur Android 15, les deux nouveaux styles s'affichent sans une erreur du moteur de
+carte dans le journal (plan en ligne avec le relief de Mapterhorn, carte hors ligne, détail d'une sortie, affiche) ;
+le bandeau de guidage a dit « 100 m, À gauche · Route du Cimetière » ; la flèche de manœuvre et la position posée
+sur le tracé se voient sur les captures du guidage hors ligne. Non vu sur l'émulateur : le thème sombre de la carte
+(jugé seulement dans l'aperçu du navigateur), la partie parcourue grisée (le scénario ne suit pas l'itinéraire
+assez longtemps : vue dans l'aperçu seulement), la voix qui dit le nom des rues. Non mesuré : la fluidité de la
+nouvelle carte sur le Galaxy A05s (le plan en ligne a maintenant un ombrage du relief ; l'ancien avait des
+bâtiments en volume, que le nouveau n'a pas).
 
 Mise à jour du 27/11/2026 (`v0.7.34`, fabrication n° 34) : l'auteur publie l'appli, qui n'est plus présentée
 comme personnelle. Conditions des services relues pour une appli publique (toutes le permettent), mentions des
