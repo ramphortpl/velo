@@ -20,6 +20,8 @@ data class MapLayer(
     val rasterMaxZoom: Int = 19,
     /** Vrai pour la carte servie depuis les packs du téléphone : elle n'a besoin d'aucun réseau. */
     val offline: Boolean = false,
+    /** Le moteur qui dessine ce fond : MapLibre, ou le kit de Mapbox pour ses propres cartes. */
+    val engine: MapEngine = MapEngine.MAPLIBRE,
 )
 
 /**
@@ -32,8 +34,10 @@ data class MapStyleSpec(val layer: MapLayer, val dark: Boolean, val revision: In
 }
 
 /**
- * Fonds de carte. Ceux en ligne sont tous gratuits et sans clé ; aucun n'est téléchargé en masse :
- * seules les tuiles affichées sont demandées, puis gardées en cache. Le dernier fonctionne sans réseau.
+ * Fonds de carte. Aucun n'est téléchargé en masse : seules les tuiles affichées sont demandées, puis gardées en
+ * cache. Tous sont gratuits et sans clé, sauf les deux de Mapbox, qui passent par le compte Mapbox de l'auteur
+ * (voir [MapboxSupport]) et ne sont proposés que si l'appli a été fabriquée avec son jeton. Le dernier fonctionne
+ * sans réseau.
  */
 object MapLayers {
     /**
@@ -43,6 +47,8 @@ object MapLayers {
      */
     const val OSM_COPYRIGHT = "https://www.openstreetmap.org/copyright"
     const val IGN_SOURCE = "https://cartes.gouv.fr"
+    /** La page que Mapbox demande de lier à sa mention : ses droits, ceux d'OpenStreetMap, « Improve this map ». */
+    const val MAPBOX_ABOUT = "https://www.mapbox.com/about/maps/"
 
     private const val IGN_WMTS = "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0" +
         "&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}"
@@ -60,6 +66,32 @@ object MapLayers {
         attributionUrl = OSM_COPYRIGHT,
         lightStyleUri = "asset://en-ligne/style-clair.json",
         darkStyleUri = "asset://en-ligne/style-sombre.json",
+    )
+
+    /**
+     * La carte de plein air de Mapbox (celle dont part Strava), sur les données d'OpenStreetMap. Les conditions de
+     * Mapbox n'admettent ses cartes que dans son propre kit : ce fond est donc dessiné par lui ([MapEngine.MAPBOX]),
+     * qui affiche lui-même le logo, la mention et le réglage des statistiques d'utilisation.
+     */
+    val MAPBOX = MapLayer(
+        id = "mapbox",
+        title = "Mapbox",
+        description = "La carte de plein air de Mapbox : sentiers, relief, courbes de niveau. En ligne uniquement.",
+        attribution = "© Mapbox · © OpenStreetMap",
+        attributionUrl = MAPBOX_ABOUT,
+        lightStyleUri = "mapbox://styles/mapbox/outdoors-v12",
+        darkStyleUri = "mapbox://styles/mapbox/dark-v11",
+        engine = MapEngine.MAPBOX,
+    )
+
+    val MAPBOX_SATELLITE = MapLayer(
+        id = "mapbox_satellite",
+        title = "Mapbox Satellite",
+        description = "Les images satellite de Mapbox, avec les routes et les noms. En ligne uniquement.",
+        attribution = "© Mapbox · © OpenStreetMap · © Maxar",
+        attributionUrl = MAPBOX_ABOUT,
+        lightStyleUri = "mapbox://styles/mapbox/satellite-streets-v12",
+        engine = MapEngine.MAPBOX,
     )
 
     val CYCLOSM = MapLayer(
@@ -107,18 +139,28 @@ object MapLayers {
         offline = true,
     )
 
-    val ALL = listOf(OPENFREEMAP, CYCLOSM, PLAN_IGN, ORTHO_IGN, OFFLINE)
+    val ALL = listOf(OPENFREEMAP, MAPBOX, MAPBOX_SATELLITE, CYCLOSM, PLAN_IGN, ORTHO_IGN, OFFLINE)
 
     fun byId(id: String?): MapLayer = ALL.firstOrNull { it.id == id } ?: OPENFREEMAP
+
+    /** Les fonds à proposer : ceux de Mapbox seulement si l'appli et l'appareil peuvent les afficher ([mapbox]). */
+    fun offered(mapbox: Boolean): List<MapLayer> = if (mapbox) ALL else ALL.filter { it.engine != MapEngine.MAPBOX }
 
     /**
      * Fond réellement affiché. Si la carte hors ligne est choisie alors qu'aucune région n'est installée
      * (tout a été supprimé), on revient au plan en ligne plutôt que de montrer une carte vide.
      * [offlineRevision] vaut 0 tant que les cartes du téléphone n'ont pas encore été relues au démarrage.
+     *
+     * De même pour un fond Mapbox quand il ne peut pas être affiché ici ([mapbox] faux) : appli fabriquée sans
+     * jeton, accord pas encore donné, ou endroit de l'appli qui ne sait dessiner qu'avec MapLibre.
      */
-    fun effective(id: String?, offlineRevision: Int, offlineInstalled: Boolean): MapLayer {
+    fun effective(id: String?, offlineRevision: Int, offlineInstalled: Boolean, mapbox: Boolean = false): MapLayer {
         val chosen = byId(id)
-        return if (chosen.offline && offlineRevision > 0 && !offlineInstalled) OPENFREEMAP else chosen
+        return when {
+            chosen.offline && offlineRevision > 0 && !offlineInstalled -> OPENFREEMAP
+            chosen.engine == MapEngine.MAPBOX && !mapbox -> OPENFREEMAP
+            else -> chosen
+        }
     }
 
     /** Style MapLibre minimal pour un fond en images. En thème sombre, l'image est assombrie pour ne pas éblouir. */

@@ -2,15 +2,8 @@ package fr.velogo.app.map
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.RectF
-import android.graphics.Typeface
-import androidx.core.graphics.createBitmap
-import kotlin.math.roundToInt
 import android.location.Location
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -97,7 +90,7 @@ data class PlanMarker(
  * doit être affiché et le redessine dès que le nouveau fond est chargé.
  */
 @Stable
-class VeloMapState {
+class VeloMapState : MapPilot {
     private var mapView: MapView? = null
     private var map: MapLibreMap? = null
     private var style: Style? = null
@@ -106,7 +99,7 @@ class VeloMapState {
     private var colors: MapColors? = null
 
     /** Vrai tant que la carte suit la position ; passe à faux dès qu'on la déplace au doigt. */
-    var isFollowing by mutableStateOf(true)
+    override var isFollowing by mutableStateOf(true)
         private set
 
     var isStyleLoaded by mutableStateOf(false)
@@ -134,13 +127,16 @@ class VeloMapState {
     private var pendingFit: Fit? = null
 
     /** Appelé quand on appuie longuement sur la carte (pour y placer un point d'itinéraire). */
-    var onLongPress: ((LatLon) -> Unit)? = null
+    override var onLongPress: ((LatLon) -> Unit)? = null
 
     /** Appelé quand on commence à déplacer, zoomer ou tourner la carte au doigt. */
-    var onUserMove: (() -> Unit)? = null
+    override var onUserMove: (() -> Unit)? = null
 
     /** Appelé quand on touche un des itinéraires proposés, avec son rang. */
-    var onRouteTapped: ((Int) -> Unit)? = null
+    override var onRouteTapped: ((Int) -> Unit)? = null
+
+    /** Vue à reprendre à la prochaine création de la carte (on vient d'un autre moteur de carte), ou null. */
+    private var handover: MapCamera? = null
     private var topInsetPx = 0
 
     /** Guidage : carte dans le sens de la marche, inclinée et rapprochée, position dans le bas de l'écran. */
@@ -188,6 +184,16 @@ class VeloMapState {
         map.setLatLngBoundsForCameraTarget(LatLngBounds.from(f.maxLat + 0.4, f.maxLon + 0.4, f.minLat - 0.4, f.minLon - 0.4))
         map.setMinZoomPreference(MIN_ZOOM)
         map.setMaxZoomPreference(MAX_ZOOM)
+        handover?.let { camera ->
+            runCatching {
+                map.moveCamera(
+                    CameraUpdateFactory.newCameraPosition(
+                        CameraPosition.Builder().target(LatLng(camera.center.lat, camera.center.lon)).zoom(camera.zoom).bearing(0.0).tilt(0.0).build()
+                    )
+                )
+            }
+            handover = null
+        }
         map.addOnMapLongClickListener { point ->
             val listener = onLongPress
             listener?.invoke(LatLon(point.latitude, point.longitude))
@@ -235,7 +241,7 @@ class VeloMapState {
      * Carte masquée par un autre panneau (écran des chiffres) : on arrête son rendu pour économiser la batterie,
      * sans la détruire, afin qu'elle réapparaisse instantanément.
      */
-    fun setVisible(isVisible: Boolean) {
+    override fun setVisible(isVisible: Boolean) {
         if (visible == isVisible) return
         visible = isVisible
         applyRendering()
@@ -395,46 +401,6 @@ class VeloMapState {
         )
     }
 
-    /** Le chiffre d'une étape, en blanc sur fond transparent, à poser sur son repère. */
-    private fun stepNumberImage(ctx: Context, number: Int): Bitmap {
-        val metrics = ctx.resources.displayMetrics
-        val size = (STEP_IMAGE_DP * metrics.density).roundToInt().coerceAtLeast(8)
-        val image = createBitmap(size, size).apply { density = metrics.densityDpi }
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textAlign = Paint.Align.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            textSize = size * 0.72f
-        }
-        Canvas(image).drawText(number.toString(), size / 2f, size / 2f - (paint.descent() + paint.ascent()) / 2f, paint)
-        return image
-    }
-
-    /** La pointe de la flèche de manœuvre : un triangle tourné vers le nord, que la carte oriente ensuite. */
-    private fun arrowHeadImage(ctx: Context, c: MapColors): Bitmap {
-        val metrics = ctx.resources.displayMetrics
-        val size = (ARROW_IMAGE_DP * metrics.density).roundToInt().coerceAtLeast(12)
-        val image = createBitmap(size, size).apply { density = metrics.densityDpi }
-        val s = size.toFloat()
-        val shape = Path().apply {
-            moveTo(s * 0.5f, s * 0.08f)
-            lineTo(s * 0.9f, s * 0.82f)
-            lineTo(s * 0.5f, s * 0.66f)
-            lineTo(s * 0.1f, s * 0.82f)
-            close()
-        }
-        val canvas = Canvas(image)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeJoin = Paint.Join.ROUND }
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = s * 0.14f
-        paint.color = c.arrowCasing
-        canvas.drawPath(shape, paint)
-        paint.style = Paint.Style.FILL
-        paint.color = c.arrow
-        canvas.drawPath(shape, paint)
-        return image
-    }
-
     private fun line(id: String, source: String, color: Int, width: Float): LineLayer =
         LineLayer(id, source).withProperties(
             PropertyFactory.lineColor(color),
@@ -471,7 +437,7 @@ class VeloMapState {
     // --- Ce qu'on dessine -------------------------------------------------------------------------------------
 
     /** Trace de la sortie en cours. */
-    fun setLiveTrack(track: LiveTrack) {
+    override fun setLiveTrack(track: LiveTrack) {
         live = track
         applyLiveTrack()
     }
@@ -517,7 +483,7 @@ class VeloMapState {
     }
 
     /** Itinéraires proposés : celui de rang [selected] est mis en avant, les autres restent en retrait. */
-    fun setRoutes(options: List<List<LatLon>>, selected: Int) {
+    override fun setRoutes(options: List<List<LatLon>>, selected: Int) {
         // Un autre tracé : ce qu'on avait parcouru du précédent ne le concerne plus.
         if (routes.getOrNull(routeSelected) !== options.getOrNull(selected)) {
             routeProgress = null
@@ -537,12 +503,12 @@ class VeloMapState {
      * dernier (quelques centaines de points au plus) à chaque position. Renvoyer tout le tracé chaque seconde
      * ferait travailler le téléphone pour rien sur un long itinéraire.
      */
-    fun setRouteProgress(segment: Int, position: LatLon) {
+    override fun setRouteProgress(segment: Int, position: LatLon) {
         routeProgress = segment to position
         applyRouteProgress()
     }
 
-    fun clearRouteProgress() {
+    override fun clearRouteProgress() {
         if (routeProgress == null) return
         routeProgress = null
         applyRouteProgress()
@@ -582,7 +548,7 @@ class VeloMapState {
      * Guidage : le tracé de la prochaine manœuvre (quelques dizaines de mètres avant et après le carrefour),
      * dessiné en flèche par-dessus l'itinéraire. Une liste vide l'efface.
      */
-    fun setManeuverArrow(points: List<LatLon>) {
+    override fun setManeuverArrow(points: List<LatLon>) {
         if (maneuverArrow == points) return
         maneuverArrow = points
         applyManeuverArrow()
@@ -627,7 +593,7 @@ class VeloMapState {
     }
 
     /** Départ, étapes et arrivée d'un itinéraire en préparation. */
-    fun setPlanMarkers(markers: List<PlanMarker>) {
+    override fun setPlanMarkers(markers: List<PlanMarker>) {
         planMarkers = markers
         applyPlanMarkers()
     }
@@ -644,7 +610,19 @@ class VeloMapState {
     }
 
     /** Centre de la carte affichée (pour chercher une adresse « près d'ici »), ou null si elle n'est pas prête. */
-    fun center(): LatLon? = map?.cameraPosition?.target?.let { LatLon(it.latitude, it.longitude) }
+    override fun center(): LatLon? = map?.cameraPosition?.target?.let { LatLon(it.latitude, it.longitude) }
+
+    /** Où regarde la carte en ce moment, pour qu'un autre moteur de carte reprenne la même vue. */
+    internal fun camera(): MapCamera? = map?.cameraPosition?.let { position ->
+        val target = position.target ?: return@let null
+        MapCamera(LatLon(target.latitude, target.longitude), position.zoom, position.bearing)
+    }
+
+    /** Reprend la vue et le suivi laissés par un autre moteur de carte, à la prochaine création de celle-ci. */
+    internal fun adopt(camera: MapCamera?, following: Boolean) {
+        handover = camera
+        isFollowing = following
+    }
 
     /** Repère mobile (point survolé sur un graphique), ou null pour l'effacer. */
     fun setMarker(position: LatLon?) {
@@ -664,7 +642,7 @@ class VeloMapState {
     // --- Position et caméra -----------------------------------------------------------------------------------
 
     /** Nouvelle position GPS : déplace le repère et, si le suivi est actif, la carte. */
-    fun updateLocation(newLocation: Location) {
+    override fun updateLocation(newLocation: Location) {
         location = newLocation
         if (rendering) {
             pushLocation(newLocation)
@@ -789,7 +767,7 @@ class VeloMapState {
     }
 
     /** Recentre la carte sur la position et reprend le suivi. */
-    fun follow() {
+    override fun follow() {
         isFollowing = true
         val zoom = location?.let { followZoom(it) } ?: FOLLOW_ZOOM
         wideFollow = zoom < FOLLOW_ZOOM
@@ -797,7 +775,7 @@ class VeloMapState {
     }
 
     /** Carte orientée dans le sens de la marche (vrai) ou nord en haut (faux), hors guidage. */
-    fun setHeadingUp(enabled: Boolean) {
+    override fun setHeadingUp(enabled: Boolean) {
         if (headingUp == enabled) return
         headingUp = enabled
         if (isFollowing && !navigation) startTracking(500L, 0.0)
@@ -807,7 +785,7 @@ class VeloMapState {
      * Vue de guidage (vrai) ou vue ordinaire (faux). La vue de guidage suit la position dans le sens de la
      * marche, carte inclinée ; on la quitte en déplaçant la carte, on y revient avec [follow].
      */
-    fun setNavigation(enabled: Boolean) {
+    override fun setNavigation(enabled: Boolean) {
         if (navigation == enabled) return
         navigation = enabled
         // La boussole de la carte ne sert à rien en guidage (la flèche dit tout) et se glisserait sous le bandeau.
@@ -833,7 +811,7 @@ class VeloMapState {
 
     /** Ce qui recouvre la carte en haut et en bas pendant le guidage (bandeau, boutons), en pixels. */
     @SuppressLint("MissingPermission")
-    fun setNavigationInsets(topPx: Int, bottomPx: Int) {
+    override fun setNavigationInsets(topPx: Int, bottomPx: Int) {
         if (navTopPx == topPx && navBottomPx == bottomPx) return
         navTopPx = topPx
         navBottomPx = bottomPx
@@ -846,14 +824,7 @@ class VeloMapState {
      * [bottomPx] et [endPx] réservent la place de ce qui recouvre la carte en haut, en bas et à droite (bandeau,
      * panneau d'itinéraire, colonne de boutons).
      */
-    fun fit(
-        box: BoundingBox,
-        paddingPx: Int,
-        topPx: Int = paddingPx,
-        bottomPx: Int = paddingPx,
-        endPx: Int = paddingPx,
-        animate: Boolean = false,
-    ) {
+    override fun fit(box: BoundingBox, paddingPx: Int, topPx: Int, bottomPx: Int, endPx: Int, animate: Boolean) {
         pendingFit = Fit(box, paddingPx, topPx, bottomPx, endPx)
         val map = map ?: return
         if (style == null) return
@@ -883,11 +854,14 @@ class VeloMapState {
 
     private class Fit(val box: BoundingBox, val paddingPx: Int, val topPx: Int, val bottomPx: Int, val endPx: Int)
 
-    fun setTopInset(px: Int) {
+    override fun setTopInset(px: Int) {
         if (topInsetPx == px) return
         topInsetPx = px
         applyCompassMargins()
     }
+
+    /** MapLibre n'affiche aucune mention de lui-même : c'est l'écran qui écrit celle du fond, en clair. */
+    override fun setOrnamentInsets(startPx: Int, bottomPx: Int) = Unit
 
     private fun applyCompassMargins() {
         val map = map ?: return
@@ -898,7 +872,7 @@ class VeloMapState {
 
     private fun LatLon.toPoint(): Point = Point.fromLngLat(lon, lat)
 
-    private companion object {
+    internal companion object {
         const val SRC_RIDE = "velogo-sortie"
         const val SRC_FROZEN = "velogo-trace"
         const val SRC_TAIL = "velogo-trace-fin"

@@ -24,8 +24,8 @@ simulée à Corte).*
   moyenne, max, pente, dénivelé, altitude), pause automatique, enregistrement écran éteint. La musique n'est
   jamais coupée.
 - **Cartes** : un plan dessiné pour l'appli (clair ou sombre, relief ombré, pistes cyclables en vert), les fonds
-  CyclOSM, Plan IGN et photos aériennes, et une carte vélo **hors ligne** par région, aux mêmes couleurs (pistes,
-  voies vertes, véloroutes, revêtements, relief).
+  CyclOSM, Plan IGN et photos aériennes, les cartes de Mapbox si tu les veux (plein air et satellite), et une
+  carte vélo **hors ligne** par région, aux couleurs du plan (pistes, voies vertes, véloroutes, revêtements, relief).
 - **Itinéraires** : calculés sur le téléphone, même sans réseau : le plus rapide, le plus sûr, le moins de dénivelé,
   pour vélo de route, VTC/gravel ou VTT. La carte se cadre en grand sur le trajet ; un appui sur un tracé le choisit.
 - **Guidage** comme sur un GPS de voiture : ta position est une flèche posée sur le tracé, la carte tourne avec
@@ -45,7 +45,7 @@ Il faut un téléphone Android 8 ou plus récent, à processeur 64 bits (ARM64).
 Samsung Galaxy A05s sous Android 15.
 
 1. Sur le téléphone, ouvre la [dernière version](https://github.com/ramphortpl/velo/releases/latest).
-2. Sous « Assets », touche le fichier `VeloGo-x.y.z.apk` pour le télécharger (16 Mo environ).
+2. Sous « Assets », touche le fichier `VeloGo-x.y.z.apk` pour le télécharger (19 Mo environ).
 3. Ouvre-le et accepte l'installation (la première fois, Android demande d'autoriser le navigateur à installer
    des applis).
 
@@ -85,8 +85,10 @@ Si le téléphone refuse l'installation :
 - Les noms de rue des consignes viennent de la carte hors ligne de la région (celle qu'il faut pour calculer un
   itinéraire) : là où elle ne connaît pas le nom d'une voie, la consigne s'en passe.
 - La carte et les itinéraires viennent d'OpenStreetMap, comme ceux de Strava, et la carte est dessinée par
-  MapLibre, le moteur libre issu de celui de Mapbox. Les cartes de Mapbox elles-mêmes ne sont pas dans l'appli :
-  elles demandent un compte, deviennent payantes avec le succès et ne fonctionnent pas hors ligne.
+  MapLibre, le moteur libre issu de celui de Mapbox.
+- Les cartes de Mapbox (celles qu'affiche Strava) sont proposées en plus, dans les fonds de carte : « Mapbox » et
+  « Mapbox Satellite ». Elles demandent du réseau et ton accord, car Mapbox voit alors la zone de carte que tu
+  regardes et compte les appareils qui affichent ses cartes ; les autres fonds ne lui envoient rien.
 - Un trajet enregistré se suit tel quel, avec ses consignes : si tu t'en écartes, l'appli te prévient sans le
   recalculer.
 - L'affiche a besoin du réseau pour son fond de carte, sauf si le fond choisi est la carte « Vélo hors ligne » ;
@@ -98,12 +100,13 @@ Si le téléphone refuse l'installation :
 ## Tes données
 
 Tes sorties, tes trajets et tes réglages ne sont enregistrés que sur le téléphone : pas de compte, pas de
-publicité, pas de mesure d'audience, aucun serveur propre à l'appli. Pour fonctionner, elle interroge tout de même
-quelques services publics, sans compte ni identifiant :
+publicité, aucun serveur propre à l'appli, et son auteur ne mesure rien de ce que tu y fais. Pour fonctionner,
+elle interroge tout de même quelques services, sans compte :
 
 | Pour | À qui | Ce qui est envoyé |
 |---|---|---|
 | Les fonds de carte en ligne | OpenFreeMap et Mapterhorn (plan et son relief), OpenStreetMap France (CyclOSM), IGN | la zone de carte affichée |
+| Les fonds « Mapbox », seulement si tu les choisis | Mapbox | la zone de carte affichée, un identifiant technique de l'appli sur ce téléphone (pour compter ses utilisateurs) et, si tu l'acceptes, des statistiques d'utilisation qui contiennent ta position |
 | La recherche d'adresses | IGN (Géoplateforme) | le texte cherché et ta position (pour proposer d'abord les lieux proches) ; le point que tu touches sur la carte, pour lui donner un nom |
 | Le recalage de l'altitude en fin de sortie (désactivable) | IGN (Géoplateforme) | les positions de la trace |
 | La météo (désactivable) | Open-Meteo | ta position et, pour un itinéraire, quelques points du trajet, arrondis à un kilomètre environ |

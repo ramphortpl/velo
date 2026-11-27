@@ -25,6 +25,13 @@
     <!-- Guidage : vibration à chaque consigne. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Les fonds de carte Mapbox demandent OpenGL ES 3, que leur kit déclare obligatoire. Tout le reste de l'appli
+         s'en passe : cette exigence est retirée, pour que l'appli reste proposée aux mêmes appareils qu'avant. Sur
+         ceux qui n'ont pas OpenGL ES 3, les fonds Mapbox ne sont simplement pas proposés (voir MapboxSupport). -->
+    <uses-feature
+        android:glEsVersion="0x00030000"
+        tools:node="remove" />
+
     <!-- Guidage vocal : permet de trouver la synthèse vocale installée sur le téléphone. -->
     <queries>
         <intent>
@@ -73,6 +80,21 @@
                 <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
             </intent-filter>
         </receiver>
+
+        <!-- Le kit de Mapbox ne démarre pas avec l'appli, seulement quand un de ses fonds de carte est choisi
+             (MapboxSupport.ensure) : qui ne s'en sert pas n'échange rien avec Mapbox. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="com.mapbox.maps.loader.MapboxMapsInitializer"
+                tools:node="remove" />
+            <meta-data
+                android:name="com.mapbox.common.MapboxSDKCommonInitializer"
+                tools:node="remove" />
+        </provider>
 
         <provider
             android:name="androidx.core.content.FileProvider"

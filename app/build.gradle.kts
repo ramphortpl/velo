@@ -23,6 +23,14 @@ val keystorePassword = providers.environmentVariable("VELOGO_KEYSTORE_PASSWORD")
     ?.filterNot { it.isWhitespace() }
     ?.takeIf { it.isNotEmpty() }
 
+// Jeton public de Mapbox (« pk.… ») : il n'existe que dans le secret GitHub MAPBOX_ACCESS_TOKEN et entre dans l'appli
+// à la fabrication. Sans lui (fabrication locale, autre dépôt), les fonds Mapbox ne sont pas proposés. Seul un jeton
+// public est accepté : un jeton secret (« sk.… ») collé par erreur ne doit jamais partir dans une appli.
+val mapboxToken = providers.environmentVariable("MAPBOX_ACCESS_TOKEN").orNull
+    ?.filterNot { it.isWhitespace() }
+    ?.takeIf { token -> token.startsWith("pk.") && token.all { it.isLetterOrDigit() || it in "._-" } }
+    ?: ""
+
 android {
     namespace = "fr.velogo.app"
     // Compose 1.13 exige le SDK 37.1 au minimum.
@@ -38,6 +46,8 @@ android {
         versionName = appVersionName
         // Dépôt GitHub où l'appli cherche ses mises à jour et ses packs de cartes.
         buildConfigField("String", "GITHUB_REPO", "\"${providers.gradleProperty("velogo.githubRepo").getOrElse("ramphortpl/velo")}\"")
+        // Vide quand la fabrication n'a pas de jeton : l'appli ne propose alors pas les fonds Mapbox.
+        buildConfigField("String", "MAPBOX_TOKEN", "\"$mapboxToken\"")
         ndk {
             // Le Galaxy A05s (comme tous les téléphones récents) est en arm64.
             abiFilters += "arm64-v8a"
@@ -141,6 +151,18 @@ android {
         abortOnError = true
         warningsAsErrors = false
         disable += setOf("MissingTranslation", "GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion", "ChromeOsAbiSupport", "ObsoleteSdkInt")
+        // Règle apportée par une bibliothèque dont dépend le kit de Mapbox (Timber) : elle voudrait qu'on écrive le
+        // journal avec elle. L'appli n'écrit que quelques lignes de diagnostic, avec le journal d'Android.
+        disable += "LogNotTimber"
+    }
+}
+
+// L'APK des Releases GitHub est téléchargé tel quel : ses bibliothèques natives y sont compressées (le moteur de
+// Mapbox pèse à lui seul 23 Mo, contre 9 une fois compressé), et Android les déplie à l'installation. Dans le
+// fichier de Google Play elles restent telles quelles : le magasin compresse lui-même ce qu'il envoie.
+androidComponents {
+    onVariants(selector().withFlavor("distribution" to "github")) { variant ->
+        variant.packaging.jniLibs.useLegacyPackaging.set(true)
     }
 }
 
@@ -219,6 +241,10 @@ dependencies {
     implementation(libs.serialization.json)
     implementation(libs.okhttp)
     implementation(libs.maplibre)
+    // Second moteur de carte, pour les seuls fonds « Mapbox » : ses conditions n'admettent ses cartes que dans
+    // son propre kit. Il ne démarre que si l'un de ces fonds est choisi (voir MapboxSupport).
+    implementation(libs.mapbox.maps)
+    implementation(libs.mapbox.telemetry)
 
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)

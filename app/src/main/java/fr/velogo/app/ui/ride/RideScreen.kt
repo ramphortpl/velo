@@ -19,7 +19,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalWindowInfo
-import fr.velogo.app.data.SavedRouteRepository
 import fr.velogo.app.map.PlanMarker
 import fr.velogo.app.nav.GuidanceState
 import fr.velogo.app.nav.NavigationController
@@ -75,7 +74,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -83,7 +81,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -121,10 +118,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import fr.velogo.app.R
 import fr.velogo.app.map.MapColors
+import fr.velogo.app.map.MapEngine
+import fr.velogo.app.map.MapLayer
 import fr.velogo.app.map.MapLayers
 import fr.velogo.app.map.MapStyleSpec
-import fr.velogo.app.map.VeloMap
-import fr.velogo.app.map.rememberVeloMapState
+import fr.velogo.app.map.MapboxSupport
+import fr.velogo.app.map.RideMap
+import fr.velogo.app.map.rememberRideMapState
 import fr.velogo.app.recording.RecorderEvent
 import fr.velogo.app.recording.RecordingService
 import fr.velogo.app.ui.LocalContainer
@@ -139,7 +139,6 @@ import fr.velogo.app.ui.theme.Corners
 import fr.velogo.app.ui.theme.GlassBox
 import fr.velogo.app.ui.theme.GlassDefaults
 import fr.velogo.app.ui.theme.LocalGlass
-import androidx.compose.ui.text.style.TextAlign
 import fr.velogo.app.ui.findActivity
 import fr.velogo.app.ui.theme.LabelCapsStyle
 import fr.velogo.app.ui.theme.LocalIsDark
@@ -176,7 +175,8 @@ fun RideScreen(
     val container = LocalContainer.current
     val vm = veloViewModel { RideViewModel(it) }
     val snapshot by vm.snapshot.collectAsStateWithLifecycle()
-    val settings by vm.settings.collectAsStateWithLifecycle()
+    val storedSettings by vm.storedSettings.collectAsStateWithLifecycle()
+    val settings = storedSettings ?: DEFAULT_SETTINGS
     val interrupted by vm.interrupted.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -187,7 +187,7 @@ fun RideScreen(
     /** Sens de la marche, tant qu'on roule : sert à dire si le vent est de face ou de dos. */
     var lastBearing by remember { mutableStateOf<Double?>(null) }
 
-    val mapState = rememberVeloMapState()
+    val mapState = rememberRideMapState()
     val dark = LocalIsDark.current
     val rideColors = LocalRideColors.current
     val mapColors = remember(dark, rideColors) {
@@ -224,8 +224,23 @@ fun RideScreen(
     val offlineRevision by container.offline.store.epoch.collectAsStateWithLifecycle()
     val offlineFiles by container.offline.store.installed.collectAsStateWithLifecycle()
     val offlineInstalled = offlineFiles.keys.any { it.startsWith("fond-") }
-    val layer = MapLayers.effective(settings.mapLayer, offlineRevision, offlineInstalled)
+    // Cartes de Mapbox : proposées si l'appli a été fabriquée avec un jeton, affichées seulement après l'accord de
+    // l'utilisateur, et mises de côté si elles ont fait planter l'appli (le « fusible » de MapboxSupport).
+    val mapboxOffered = remember { MapboxSupport.isAvailable(context) }
+    val mapboxWanted = MapLayers.byId(settings.mapLayer).engine == MapEngine.MAPBOX
+    val mapboxBlown = mapboxOffered && mapboxWanted && MapboxSupport.isBlown(context)
+    val mapboxShown = mapboxOffered && mapboxWanted && settings.mapboxConsent && !mapboxBlown && MapboxSupport.ensure(context)
+    val layer = MapLayers.effective(settings.mapLayer, offlineRevision, offlineInstalled, mapbox = mapboxShown)
     val spec = remember(layer, dark, offlineRevision) { MapStyleSpec(layer, dark, if (layer.offline) offlineRevision else 0) }
+    /** Le fond Mapbox qu'on vient de choisir sans avoir encore donné son accord : la question est posée. */
+    var mapboxAsked by remember { mutableStateOf<MapLayer?>(null) }
+    LaunchedEffect(mapboxBlown) {
+        if (mapboxBlown) {
+            // Le plan devient le fond choisi : sans cela, le même message reviendrait à chaque lancement.
+            vm.setMapLayer(MapLayers.OPENFREEMAP.id)
+            snackbar.showSnackbar("La carte Mapbox n'a pas pu s'afficher : retour au plan de VeloGo. Tu peux la rechoisir dans les fonds de carte.")
+        }
+    }
 
     val startRide = rememberStartRide(
         batteryHintShown = settings.batteryHintShown,
@@ -526,6 +541,12 @@ fun RideScreen(
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val density = LocalDensity.current
     LaunchedEffect(topInset) { mapState.setTopInset(with(density) { (topInset + TOP_BAR_HEIGHT + 8.dp).roundToPx() }) }
+    // Le logo et le bouton d'information qu'un fond Mapbox affiche lui-même se posent là où est la mention des autres.
+    val ornamentBottomPx = with(density) {
+        (bottomPadding + (if (planner.open) panelHeightPx.toDp() + 12.dp else CONTROLS_HEIGHT + 24.dp)).roundToPx()
+    }
+    val ornamentStartPx = with(density) { 12.dp.roundToPx() }
+    LaunchedEffect(ornamentStartPx, ornamentBottomPx) { mapState.setOrnamentInsets(ornamentStartPx, ornamentBottomPx) }
 
     val plannerActions = object : PlannerActions {
         override fun close() = navigation.closePlanner()
@@ -581,7 +602,8 @@ fun RideScreen(
     }
 
     Box(Modifier.fillMaxSize()) {
-        VeloMap(mapState, spec, mapColors, Modifier.fillMaxSize())
+        // La carte attend que les réglages soient relus : le fond choisi décide du moteur qui la dessine.
+        if (storedSettings != null) RideMap(mapState, spec, mapColors, Modifier.fillMaxSize())
       Box(Modifier.fillMaxSize().drawWithContent { if (chromeDrawn) drawContent() }) {
         RideChrome(
             snapshot = snapshot,
@@ -589,7 +611,8 @@ fun RideScreen(
             onMode = { mode = it },
             themeMode = settings.themeMode,
             sunlight = sunlight,
-            attribution = layer.attribution,
+            // Un fond Mapbox affiche lui-même son logo et ses mentions, comme ses conditions le demandent.
+            attribution = if (layer.engine == MapEngine.MAPBOX) "" else layer.attribution,
             onAttribution = { openUrl(context, layer.attributionUrl) },
             following = mapState.isFollowing,
             headingUp = settings.headingUp,
@@ -889,45 +912,48 @@ fun RideScreen(
 
     if (showLayers) {
         ModalBottomSheet(onDismissRequest = { showLayers = false }) {
-            Text("Fond de carte", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-            for (candidate in MapLayers.ALL) {
-                // La carte hors ligne ne peut être choisie qu'une fois une région téléchargée.
-                val needsDownload = candidate.offline && !offlineInstalled
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showLayers = false
-                            if (needsDownload) onOpenOfflineMaps() else vm.setMapLayer(candidate.id)
+            MapLayersContent(
+                layers = MapLayers.offered(mapboxOffered),
+                selectedId = layer.id,
+                offlineInstalled = offlineInstalled,
+                onPick = { candidate ->
+                    showLayers = false
+                    when {
+                        // Une carte de Mapbox : la première fois, on dit ce que Mapbox reçoit et on demande.
+                        candidate.engine == MapEngine.MAPBOX && !settings.mapboxConsent -> mapboxAsked = candidate
+                        else -> {
+                            // La rechoisir après deux arrêts de l'appli, c'est demander un nouvel essai.
+                            if (candidate.engine == MapEngine.MAPBOX) MapboxSupport.rearm(context)
+                            vm.setMapLayer(candidate.id)
                         }
-                        .padding(horizontal = 24.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(candidate.title, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            if (needsDownload) "Télécharge d'abord une région pour rouler sans réseau." else candidate.description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                     }
-                    Spacer(Modifier.width(12.dp))
-                    if (needsDownload) {
-                        Icon(painterResource(R.drawable.ic_download), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    } else {
-                        RadioButton(selected = candidate.id == layer.id, onClick = null)
-                    }
-                }
-            }
-            TextButton(
-                onClick = {
+                },
+                onOfflineMaps = {
                     showLayers = false
                     onOpenOfflineMaps()
                 },
-                modifier = Modifier.padding(horizontal = 12.dp),
-            ) { Text("Gérer les cartes hors ligne") }
-            Spacer(Modifier.height(16.dp))
+            )
         }
+    }
+
+    mapboxAsked?.let { asked ->
+        MapboxConsentDialog(
+            onAccept = { statistics ->
+                mapboxAsked = null
+                MapboxSupport.rearm(context)
+                // Le choix des statistiques est donné au kit de Mapbox, et pris en compte par lui, avant qu'aucune
+                // de ses cartes ne s'affiche : l'accord n'est retenu qu'ensuite.
+                MapboxSupport.setStatistics(context, statistics) { applied ->
+                    if (applied) vm.acceptMapbox(asked.id)
+                    else scope.launch { snackbar.showSnackbar("La carte Mapbox n'a pas pu être préparée sur ce téléphone : le fond de carte n'a pas changé.") }
+                }
+            },
+            onDismiss = { mapboxAsked = null },
+            onPrivacy = {
+                mapboxAsked = null
+                onOpenPrivacy()
+            },
+        )
     }
 
     interrupted?.let { ride ->
@@ -954,6 +980,9 @@ fun RideScreen(
 
 /** Un itinéraire à partager, avec ce que son affiche annonce au départ (l'utilisateur peut le changer). */
 private class ShareTarget(val route: Route, val title: String, val subtitle: String)
+
+/** Les réglages d'une première installation, le temps que ceux du téléphone soient relus. */
+private val DEFAULT_SETTINGS = fr.velogo.app.data.Settings()
 
 /** Deux repères à moins de cette distance (m) l'un de l'autre désignent le même endroit. */
 private const val SAME_PLACE_M = 40.0
@@ -1254,21 +1283,24 @@ private fun MapOverlays(
         }
 
         // Mention obligatoire des sources de la carte, toujours visible ; un appui ouvre la page de leurs droits.
-        Text(
-            attribution,
-            style = MaterialTheme.typography.labelSmall,
-            color = glass.regular.content,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                // Jamais sous les boutons de la carte, à droite : sur un écran étroit, la mention s'abrège avant.
-                .padding(end = STACK_CELL + 12.dp)
-                .clip(CircleShape)
-                .background(glass.regular.fillBottom)
-                .clickable(onClickLabel = "Voir les droits de la carte", role = Role.Button, onClick = onAttribution)
-                .padding(horizontal = 8.dp, vertical = 3.dp),
-        )
+        // Vide pour un fond Mapbox, qui pose lui-même son logo et son bouton d'information au même endroit.
+        if (attribution.isNotBlank()) {
+            Text(
+                attribution,
+                style = MaterialTheme.typography.labelSmall,
+                color = glass.regular.content,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    // Jamais sous les boutons de la carte, à droite : sur un écran étroit, la mention s'abrège avant.
+                    .padding(end = STACK_CELL + 12.dp)
+                    .clip(CircleShape)
+                    .background(glass.regular.fillBottom)
+                    .clickable(onClickLabel = "Voir les droits de la carte", role = Role.Button, onClick = onAttribution)
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+            )
+        }
 
         if (!hasLocationPermission) {
             // En haut de la carte et aussi compacte que possible : au milieu, ou plus haute, la fiche recouvrait

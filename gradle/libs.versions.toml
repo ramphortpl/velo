@@ -20,6 +20,10 @@ serialization = "1.13.0"
 okhttp = "4.12.0"
 # Variante OpenGL ES : la variante Vulkan par défaut reçoit encore des correctifs pour les GPU Adreno 6xx.
 maplibre = "13.7.1"
+# Kit de cartes de Mapbox (fonds « Mapbox », à côté de MapLibre). Variante « ndk27 » : bibliothèques natives
+# alignées sur des pages mémoire de 16 Ko, exigées par Google Play. Version donnée par le guide d'installation de
+# Mapbox le 27/11/2026 ; ses conditions demandent une version de moins de douze mois.
+mapbox = "11.35.2"
 junit = "4.13.2"
 robolectric = "4.18.1"
 roborazzi = "1.79.0"
@@ -58,6 +62,10 @@ coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", ve
 serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 maplibre = { module = "org.maplibre.gl:android-sdk-opengl", version.ref = "maplibre" }
+mapbox-maps = { module = "com.mapbox.maps:android-ndk27", version.ref = "mapbox" }
+# La brique du kit qui tient le réglage des statistiques d'utilisation. Le kit l'embarque déjà ; elle est nommée ici
+# pour que l'appli puisse donner ce réglage avant de créer sa première carte Mapbox (MapboxSupport.setStatistics).
+mapbox-telemetry = { module = "com.mapbox.module:maps-telemetry-ndk27", version.ref = "mapbox" }
 junit = { module = "junit:junit", version.ref = "junit" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version.ref = "roborazzi" }

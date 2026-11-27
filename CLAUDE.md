@@ -22,6 +22,8 @@ Ce fichier résume l'architecture et les décisions. Il est tenu à jour à chaq
 ./gradlew :app:assembleGithubSmoke :app:packagePlaySmokeUniversalApk  # APK d'essai pour émulateur (code minifié, clé de test) ;
                                # celui de la version Play est tiré de son fichier AAB (app/build/outputs/apk_from_bundle/)
 python3 outils/fiche_play.py   # longueurs des textes de la fiche Google Play (docs/play/fiche.md)
+python3 outils/controle_apk.py pages <apk|aab>         # chaque bibliothèque native accepte-t-elle les pages de 16 Ko ?
+python3 outils/controle_apk.py mapbox <apk|aab> <oui|non>  # le jeton Mapbox est-il dans l'appli quand il doit y être, et seulement alors ?
 cd cartes/style && npm install && npm run generer   # régénère les styles de la carte (assets/en-ligne, assets/hors-ligne)
 cd cartes/style && npm run controler                # les contrôle : spécification MapLibre, et ce qu'Android ne sait pas lire
 ```
@@ -38,7 +40,7 @@ variantes sans tests unitaires (toutes sauf `githubDebug`). Les tâches utiles s
 | `core` | Kotlin pur, aucune dépendance Android : géodésie, moteur de sortie, altitude/pente/dénivelé, GPX, mise en forme, lecture des fichiers PMTiles, des tuiles vectorielles et du relief, suivi d'itinéraire et noms de rue, météo, statistiques, segments. Tout calcul y vit pour être testé sur JVM. |
 | `brouter` | Sources Java du moteur d'itinéraire BRouter 1.7.10 (MIT), copiées telles quelles : il n'existe pas sur Maven. Deux écarts avec l'original, décrits dans `brouter/README.md`. |
 | `routing` | Kotlin pur : habillage de BRouter (`BRouterPlanner`), choix des profils selon le vélo et la préférence (`RoutingProfiles`), classement des voies. Profils et `lookups.dat` en ressources. |
-| `app` | Android : Compose, service d'enregistrement, carte MapLibre, base Room, réglages, itinéraires et guidage. |
+| `app` | Android : Compose, service d'enregistrement, carte MapLibre (et le kit de Mapbox pour ses propres fonds), base Room, réglages, itinéraires et guidage. |
 
 Paquets de `app` (`fr.velogo.app`) : `ui/` (écrans Compose ; `ui/theme` : couleurs, verre, formes ; `ui/components` :
 cartes, sélecteur, interrupteur, boutons de verre, barres à grand titre), `recording/` (service de premier plan,
@@ -87,6 +89,24 @@ pour l'envoi de la clé à Google, manuel).
   (`followZoom`) ; la carte se resserre à la première position fine. Itinéraires et traces sont glissés **sous
   les noms** du fond (`firstLabelLayerId`) ; repères, étapes et flèche de manœuvre restent par-dessus. Pendant un
   guidage : `setRouteProgress` grise ce qui est parcouru, `setManeuverArrow` dessine la prochaine manœuvre.
+- **Deux moteurs de carte** (depuis la 0.9). `MapLayer.engine` dit qui dessine un fond : MapLibre (tous les fonds
+  de toujours) ou le kit de Mapbox (`MapEngine.MAPBOX` : fonds « Mapbox » et « Mapbox Satellite », styles
+  `mapbox://styles/mapbox/outdoors-v12`, `dark-v11` en thème sombre, `satellite-streets-v12`). Les conditions de
+  Mapbox n'admettent ses cartes que dans son propre kit : il n'y a donc pas de tuiles Mapbox dans MapLibre.
+  `MapPilot` est ce que l'écran « Rouler » demande à sa carte ; `VeloMapState` (MapLibre) et `MapboxMapState`
+  (`map/MapboxMap.kt`) le remplissent tous deux, avec les mêmes noms de sources et de couches, les mêmes couleurs
+  et les mêmes épaisseurs. `RideMapState` (`map/RideMap.kt`) les réunit : ce qu'il faut tracer et les réglages de
+  la vue vont aux deux pilotes, qui les gardent en mémoire ; ce qui commande la caméra à un instant donné
+  (`follow`, `fit`, `center`) ne va qu'à celui qui est affiché. Le composable `RideMap` crée la carte du moteur que
+  demande le fond et, au changement, passe la vue et le suivi de l'un à l'autre (`camera()`, `adopt()`). Un seul
+  moteur existe à la fois. `MapboxSupport` tient le kit à l'écart : il n'est pas démarré avec l'appli (ses deux
+  « initializers » androidx.startup sont retirés du manifeste), seulement quand un fond Mapbox va s'afficher
+  (`ensure`). Les fonds Mapbox ne sont proposés que si l'appli a été fabriquée avec le jeton public
+  (`BuildConfig.MAPBOX_TOKEN`, donné par le secret `MAPBOX_ACCESS_TOKEN`) et que l'appareil annonce OpenGL ES 3
+  (`isAvailable`) ; ils ne s'affichent qu'après l'accord de l'utilisateur (`Settings.mapboxConsent`,
+  `MapboxConsentDialog`), et un fusible (`MapboxFuse`) les met de côté après deux affichages interrompus.
+  Le détail d'une sortie (`TrackMap`) et l'affiche (`RouteSnapshot`) restent dessinés par MapLibre : pour un fond
+  Mapbox, `MapLayers.effective` leur rend le plan de VeloGo.
 - **Styles de carte** : le fond « Plan » (en ligne) et le fond « Vélo hors ligne » sont deux styles MapLibre
   fabriqués par `cartes/style/generer.mjs` à partir d'une même palette (`THEMES`, clair et sombre) et embarqués
   dans l'appli (`assets/en-ligne/style-*.json`, `assets/hors-ligne/style-*.json`). En ligne : tuiles vectorielles
@@ -183,7 +203,8 @@ pour l'envoi de la clé à Google, manuel).
 - **Écrans testables** : chaque écran a un composable « contenu » sans accès aux données (`RideChrome`,
   `HistoryContent`, `RideDetailBody`, `SettingsContent`, `OfflineMapsContent`, `PlannerPanel`, `PlaceSearchContent`,
   `SavedRoutesList`, `SavedRoutesContent`, `ShareRouteContent`, `WeatherContent`, `StatsContent`,
-  `SegmentsContent`, `SegmentDetailBody`, `SegmentEditor`, `GpsSheetContent`, `PrivacyContent`) rendu en image par
+  `SegmentsContent`, `SegmentDetailBody`, `SegmentEditor`, `GpsSheetContent`, `PrivacyContent`, `MapLayersContent`,
+  `MapboxConsentContent`) rendu en image par
   `ScreenshotTest`. L'habillage de la carte y est rendu sur un vrai morceau de carte (`fond_carte.jpg` et
   `fond_carte_sombre.jpg` : le style « Plan » rendu à Corte par `cartes/style/apercu.mjs`, `TAILLE=360x800`) avec la barre d'onglets, pour juger les surfaces translucides ; trois écrans le sont aux
   tailles d'une tablette. `RoutePosterTest` dessine l'affiche
@@ -305,7 +326,9 @@ validé que par l'utilisateur.
 
 Kotlin 2.4.21 · AGP 9.5.1 (Kotlin intégré, pas de plugin `kotlin-android`) · Gradle 9.9.2 · Compose BOM 2026.11.01
 (Material 3 1.5) · Navigation 3 · Room 3.0 (KSP, `androidx.room3`, pilote SQLite embarqué) · DataStore ·
-MapLibre Native Android 13.7.1 **variante OpenGL ES** · OkHttp 4.12 (la version qu'embarque MapLibre) · minSdk 26, targetSdk 37, compileSdk 37.1
+MapLibre Native Android 13.7.1 **variante OpenGL ES** · Mapbox Maps SDK for Android 11.35.2, variante `ndk27`
+(pages de 16 Ko ; relevée le 27/11/2026 sur son dépôt Maven `api.mapbox.com/downloads/v2/releases/maven`, lisible
+sans identifiant) · OkHttp 4.12 (la version qu'embarque MapLibre) · minSdk 26, targetSdk 37, compileSdk 37.1
 (exigé par Compose 1.13).
 
 Les versions sont centralisées dans `gradle/libs.versions.toml`.
@@ -500,28 +523,86 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   l'appli : `MapLayer.attributionUrl` (un appui sur la mention ouvre la page des droits), lien sous la météo,
   `ROAD_NOTICE` dans « Sources et licences ». Le tableau pour l'auteur est dans `docs/PLAY_STORE.md`. **Si
   l'appli devenait payante ou financée par la publicité, Open-Meteo et CyclOSM ne seraient plus permis tels quels.**
-- **Mapbox : non retenu, décision laissée à l'auteur (27/11/2026).** Il a demandé une carte « exactement comme
-  Strava, les mêmes fournisseurs, donc OpenStreetMap et Mapbox ». Relevé sur les pages de Strava et de Mapbox le
-  jour même :
+- **Mapbox : d'abord écarté, puis ajouté à la demande de l'auteur (27/11/2026).** Il avait demandé une carte
+  « exactement comme Strava, les mêmes fournisseurs, donc OpenStreetMap et Mapbox » ; devant ce que cela impose,
+  la 0.8 a d'abord redessiné la carte sur les mêmes données. Le même jour : « Je veux que tu ajoute mapbox j'ai
+  créé un compte ». Mapbox est donc dans l'appli depuis la 0.9, **en plus** du reste et sans rien lui retirer.
+  Faits relevés sur les pages de Strava et de Mapbox ce jour-là (le relevé, pages et PDF, n'est pas versionné : le
+  refaire avant de s'y fier) :
   - Strava : « maps … are provided by Mapbox, with the data … sourced from OpenStreetMap », et ses itinéraires
-    sont les siens (OpenStreetMap + ses données de fréquentation), pas ceux de Mapbox. VeloGo a déjà les mêmes
-    données et calcule aussi ses itinéraires lui-même ; MapLibre est le moteur libre issu de celui de Mapbox ;
+    sont les siens (OpenStreetMap + ses données de fréquentation), pas ceux de Mapbox ;
   - compte Mapbox obligatoire, jeton public `pk.…` dans l'appli ; sans moyen de paiement, essai limité à 100
     utilisateurs actifs par mois (20 pour le guidage) ; avec carte bancaire, carte gratuite jusqu'à 25 000
     utilisateurs actifs par mois puis 4 $ les 1 000 ; Navigation SDK gratuit jusqu'à 100 utilisateurs puis 0,30 $
-    par utilisateur et 0,08 $ par trajet au-delà de 1 000 ;
+    par utilisateur et 0,08 $ par trajet au-delà de 1 000 : **le Navigation SDK n'est pas utilisé**, le guidage
+    reste celui de VeloGo (BRouter) ;
   - Product Terms du 20/10/2026 : le SDK mobile de Mapbox est le **seul** accès permis depuis une appli mobile
     (§ 2.9.1 : pas de tuiles ni de styles Mapbox dans MapLibre ; § 2.11 : un style fait dans Studio ne s'affiche
-    que sur une carte Mapbox), il envoie « location and usage data » à Mapbox et on ne doit pas l'en empêcher
-    (désinscription à offrir à l'utilisateur) ; hors ligne limité aux tuiles hébergées par Mapbox, 750 paquets
+    que sur une carte Mapbox), il envoie « location and usage data » à Mapbox et on ne doit pas l'en empêcher,
+    sauf à mettre en œuvre le refus de l'utilisateur (§ 2.9.5 : recueillir son accord là où la loi l'exige et lui
+    laisser refuser le partage de sa position) ; hors ligne limité aux tuiles hébergées par Mapbox, 750 paquets
     au plus ; logo Mapbox, « © Mapbox », « © OpenStreetMap » et « Improve this map » obligatoires ; interdit de
-    multiplier les comptes pour rester gratuit ; SDK de moins de douze mois exigé.
-  Conséquence : le vrai Mapbox voudrait le compte et la carte bancaire de l'auteur, remplacerait MapLibre,
-  retirerait les cartes hors ligne du fond principal, ferait refaire la politique de confidentialité, et
-  deviendrait payant avec le succès : contraire à « aucune API payante » et à « préviens-moi avant toute clé ».
-  Fait à la place (0.8) : une carte redessinée sur les mêmes données et un guidage complété. **Ne pas ajouter
-  Mapbox sans que l'auteur le redemande en connaissance de cause** ; le relevé (pages et PDF) n'est pas versionné :
-  le refaire avant de s'y fier.
+    multiplier les comptes pour rester gratuit ; SDK de moins de douze mois exigé (11.35.2 : à renouveler avant
+    novembre 2027) ; un « MAU » est une installation qui utilise un SDK Mapbox dans le mois (§ 3.49) ;
+  - **§ 1.2.2, non tranché** : une licence supplémentaire payante est exigée si l'appli est « related to vehicle
+    usage » (« Vehicles include ground, aerial, manned and unmanned vehicles », « applications primarily
+    intended for use within vehicles »). Le texte vise l'automobile, mais ne dit pas si une appli de vélo est
+    concernée. L'auteur en est prévenu (guide `docs/PLAY_STORE.md`) : c'est à Mapbox de répondre.
+  Ce que cela a décidé dans l'appli :
+  - **fonds en plus, jamais par défaut** : le plan de VeloGo reste le fond de départ ; seuls les appareils qui
+    affichent un fond Mapbox comptent dans le quota de l'auteur, et les cartes hors ligne ne dépendent pas de Mapbox.
+    Ne pas faire de Mapbox le fond par défaut sans que l'auteur le demande : c'est le seul service de l'appli qui
+    peut devenir payant ;
+  - **jeton** : seulement dans le secret GitHub `MAPBOX_ACCESS_TOKEN`, lu à la fabrication (`app/build.gradle.kts`),
+    jamais dans le dépôt ni dans les tests (`MapboxSupportTest` vérifie que `BuildConfig.MAPBOX_TOKEN` y est vide).
+    Seul un jeton `pk.` est accepté ; un `sk.` collé par erreur est ignoré par Gradle, signalé par le workflow, et
+    `outils/controle_apk.py mapbox` échoue s'il en trouve un dans un APK ;
+  - **accord avant la première carte** (`MapboxConsentDialog`) : ce que Mapbox reçoit, et un interrupteur pour les
+    statistiques d'utilisation, éteint au départ. Le choix est donné au kit **avant** qu'aucune carte ne soit
+    créée (`MapboxSupport.setStatistics`), et l'accord n'est retenu qu'une fois ce choix relu dans le kit. Le
+    réglage se change ensuite par le bouton d'information de Mapbox sur sa carte : le kit le garde lui-même ;
+  - **ce que le kit envoie**, lu dans son code (`MapTelemetryImpl`, `MapLoadEvent`, `PhoneState`) : toujours, à
+    la création d'une carte, un événement de décompte (« turnstile ») avec un identifiant d'installation tiré au
+    hasard ; seulement si les statistiques sont acceptées, un événement « map load » (modèle, opérateur, type de
+    réseau, batterie, branchement, Wi-Fi ou non, écran, taille de police) et les positions. `TelemetryUtils`
+    est réservé aux bibliothèques de Mapbox (`@RestrictTo`, erreur de lint `RestrictedApi`) : l'appli passe par la
+    brique publique `MapTelemetryImpl` (module `com.mapbox.module:maps-telemetry-ndk27`, nommé pour cela dans les
+    dépendances), celle dont se sert le bouton d'information ;
+  - **la position ne vient jamais de Mapbox** : `MapboxMapState.Provider` donne au kit les positions de l'appli
+    (`setLocationProvider`), comme à MapLibre. Le kit n'écoute ni le GPS ni les services de localisation ;
+  - **logo et bouton d'information de Mapbox toujours affichés**, à la place de la mention que l'écran écrit pour
+    les autres fonds (`MapPilot.setOrnamentInsets`, `RideChrome` reçoit alors une mention vide) ;
+  - **tracés sous le bloc de noms final** (`MapboxMapState.labelsAnchor`) et non sous la première couche de texte :
+    les fonds de Mapbox ont du texte au milieu des routes (flèches de sens unique, cotes des courbes de niveau) ;
+  - **suivi** : un « état » de caméra (`FollowPuckViewportState`). Le zoom n'est imposé que pour arriver sur la
+    position ; ensuite on zoome au doigt sans quitter le suivi (le point de zoom est la position :
+    `gestures.focalPoint`), et faire glisser la carte l'arrête (`transitionsToIdleUponUserInteraction(false)`,
+    `OnMoveListener`). Carte à plat (les fonds Mapbox s'ouvrent en globe vus de loin : projection Mercator
+    forcée), noms en français (`localizeLabels`) ;
+  - **fusible** (`MapboxFuse`) : le moteur de Mapbox est du code natif jamais essayé sur le téléphone de l'auteur.
+    S'il plantait à l'affichage, l'appli se fermerait à chaque ouverture (elle rouvre le dernier fond) et il ne
+    resterait qu'à effacer ses données, sorties comprises. On compte donc les affichages commencés et jamais
+    terminés normalement ; au deuxième d'affilée, retour au plan (avec un message), jusqu'à ce qu'un fond Mapbox
+    soit rechoisi. Une carte qui ne peut pas être créée le fait sauter tout de suite ;
+  - **la carte attend les réglages** (`RideViewModel.storedSettings`, null tant qu'ils ne sont pas relus) : sinon
+    une carte MapLibre serait créée puis détruite à chaque lancement pour qui a choisi un fond Mapbox ;
+  - **APK des Releases aux bibliothèques compressées** (`useLegacyPackaging` pour la distribution `github`) : avec
+    le moteur de Mapbox (23 Mo de bibliothèques) l'APK serait passé de 16 à 40 Mo ; compressé, il en fait 19.
+    Android les déplie à l'installation. Le fichier de Google Play les garde telles quelles (le magasin compresse
+    lui-même). `zipalign` ne contrôle plus les pages de 16 Ko d'une bibliothèque compressée : d'où
+    `outils/controle_apk.py pages`, qui lit l'en-tête de chacune ;
+  - **manifeste inchangé pour les magasins** : aucune autorisation nouvelle (`ACCESS_WIFI_STATE` était déjà
+    demandée par MapLibre), et l'exigence d'OpenGL ES 3 que déclare le kit est retirée (`tools:node="remove"`) :
+    elle aurait fermé le Play Store aux appareils sans lui. `MapboxSupport.isAvailable` le vérifie à l'exécution.
+  - **ce que le kit apporte avec lui** : la bibliothèque cliente des services Google Play pour la localisation
+    (`play-services-location`, d'où `GoogleApiActivity` dans le manifeste fusionné) et un récepteur
+    `LocationUpdatesReceiver`. L'appli ne s'en sert pas : sa position vient toujours du `LocationManager`
+    (`GpsSource`), et le kit reçoit la sienne de l'appli. Ne pas l'exclure sans pouvoir l'essayer : le kit y fait
+    référence, et une classe manquante ne se verrait qu'à l'exécution ;
+  **Jamais vu tourner au moment de l'écriture** : ni jeton ni émulateur dans l'environnement de développement.
+  Tout ce qui précède vient de la lecture du kit (`javap`), de la compilation, des tests et des images ; l'essai
+  sur émulateur (`[essai mapbox]`) et le téléphone de l'auteur diront le reste. Voir « Jalons » pour ce qui a été
+  vérifié depuis.
 - **Relief en ligne par Mapterhorn** (`tiles.mapterhorn.com`, tuiles terrarium WebP de 512 points, de 45 à 180 Ko
   pièce ; le style s'arrête au zoom 11, où une tuile couvre quatorze kilomètres, pour ménager les forfaits) : leur FAQ ouvre le serveur à tous les usages (« for commercial and non-commercial purposes »),
   sans limite de débit annoncée, cache permis ; mention des sources demandée (pour la France : l'IGN), d'où
@@ -638,6 +719,17 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   téléphone a tourné sur un vrai Android. `versionCode` = numéro de build GitHub, donc chaque APK s'installe
   par-dessus le précédent. Le mineur de `version.properties` suit les jalons.
 - Les notes de version viennent de la première section de `docs/NOUVEAUTES.md`.
+- **Jeton Mapbox** : secret GitHub `MAPBOX_ACCESS_TOKEN` (le jeton public du compte Mapbox de l'auteur). Le job
+  `apk` dit s'il est là et s'il a la bonne forme, sans l'écrire ; il n'est donné à Gradle que pour la fabrication
+  finale (après l'écriture de la mémoire des téléchargements, comme le mot de passe de la clé) et pour l'APK
+  d'essai. Les tests tournent sans lui. Sans ce secret, tout se fabrique et se publie comme avant, sans les fonds
+  Mapbox. `outils/controle_apk.py mapbox` vérifie dans l'APK et l'AAB que le jeton y est quand il doit y être, et
+  seulement alors.
+- **`[essai mapbox]`** dans le message du dernier commit poussé : l'essai sur émulateur va jusqu'à afficher une
+  carte Mapbox (tracé, guidage, satellite). Sans cela il vérifie seulement que les fonds sont proposés et que
+  l'accord est demandé, puis annule : Mapbox compte chaque appareil qui affiche une de ses cartes dans le mois, et
+  chaque émulateur neuf en est un de plus (100 par mois sans carte bancaire dans le compte). À ne mettre que
+  quand le moteur Mapbox a changé.
 - **`[sans publication]`** dans le message du dernier commit poussé : toute la fabrication est déroulée (tests,
   APK signé, essai sur émulateur) mais le job `publication` est sauté. Pour ce qui ne change pas l'appli (essai
   sur émulateur, outils, workflow) : une version identique à la précédente ne ferait que proposer une mise à
@@ -748,6 +840,9 @@ pour cela (basemap Protomaps, Mapterhorn, extraits OSM).
 8. Carte redessinée (styles « maison » en ligne et hors ligne, relief ombré partout) et guidage complété (noms
    de rue, flèche de manœuvre, position sur le tracé, partie parcourue grisée) *(fait le 27/11/2026)*
 
+9. Cartes de Mapbox, en plus des autres : second moteur de carte, accord de l'utilisateur, fusible *(écrit le
+   27/11/2026 ; voir la mise à jour ci-dessous pour ce qui a été vérifié)*
+
 Mise à jour du 27/11/2026, jalon 8 (`v0.8.36`, fabrication n° 36, publiée ; la n° 35, identique à l'ombrage du
 relief près, avait été envoyée sans publication pour regarder les captures d'abord) : sur l'émulateur Android 15, les deux nouveaux styles s'affichent sans une erreur du moteur de
 carte dans le journal (plan en ligne avec le relief de Mapterhorn, carte hors ligne, détail d'une sortie, affiche) ;
@@ -808,7 +903,8 @@ itinéraire refait avec les dalles d'Île-de-France ; à confirmer par ce qu'aff
 
 ## Sources de données et attributions
 
-OpenStreetMap (ODbL) · OpenFreeMap / OpenMapTiles (tuiles du fond « Plan », « © OpenMapTiles » sur la carte) · CyclOSM (serveurs OSM
+OpenStreetMap (ODbL) · OpenFreeMap / OpenMapTiles (tuiles du fond « Plan », « © OpenMapTiles » sur la carte) · Mapbox (fonds
+« Mapbox » et « Mapbox Satellite », par son kit et le compte de l'auteur ; logo et mentions affichés par le kit) · CyclOSM (serveurs OSM
 France : en ligne uniquement, appli gratuite et sans but lucratif, User-Agent identifiant l'appli, trafic modéré,
 pas de téléchargement en masse) · IGN Géoplateforme (Plan IGN, photos aériennes,
 adresses, altitude ; Licence Ouverte 2.0) · Open-Meteo (CC BY 4.0) · Protomaps (BSD, données OSM) · Mapterhorn

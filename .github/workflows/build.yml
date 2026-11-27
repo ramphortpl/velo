@@ -93,6 +93,42 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # Les cartes de Mapbox ne sont dans l'appli que si le jeton public du compte Mapbox de l'auteur est rangé dans
+      # le secret MAPBOX_ACCESS_TOKEN. On dit ici s'il est là et s'il a la bonne forme, sans jamais l'écrire.
+      - name: Jeton Mapbox
+        id: mapbox
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+        run: |
+          JETON="$(printf '%s' "$MAPBOX_ACCESS_TOKEN" | tr -d '[:space:]')"
+          if [ -z "$JETON" ]; then
+            echo "present=non" >> "$GITHUB_OUTPUT"
+            echo "::notice::Secret MAPBOX_ACCESS_TOKEN absent : l'appli est fabriquée sans les cartes de Mapbox."
+            {
+              echo "### Sans les cartes de Mapbox"
+              echo "Le secret \`MAPBOX_ACCESS_TOKEN\` n'existe pas dans ce dépôt : l'appli est fabriquée sans les fonds « Mapbox »."
+              echo "Pour les ajouter : copie le jeton public (« Default public token », il commence par \`pk.\`) de ton compte Mapbox"
+              echo "dans **Settings > Secrets and variables > Actions > New repository secret**, sous le nom \`MAPBOX_ACCESS_TOKEN\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          elif printf '%s' "$JETON" | grep -Eq '^pk\.[A-Za-z0-9._-]+$'; then
+            echo "present=oui" >> "$GITHUB_OUTPUT"
+            echo "Le jeton Mapbox est un jeton public : les cartes de Mapbox seront dans l'appli."
+          else
+            echo "present=faux" >> "$GITHUB_OUTPUT"
+            case "$JETON" in
+              sk.*) QUOI="c'est un jeton secret (il commence par « sk. »), qui ne doit jamais être mis dans une appli : supprime-le dans ton compte Mapbox, il n'est plus sûr" ;;
+              *) QUOI="il ne commence pas par « pk. » ou contient des caractères inattendus" ;;
+            esac
+            echo "::warning::Le secret MAPBOX_ACCESS_TOKEN n'est pas un jeton public de Mapbox : $QUOI. L'appli est fabriquée sans les cartes de Mapbox."
+            {
+              echo "### Le jeton Mapbox n'est pas le bon"
+              echo "Le secret \`MAPBOX_ACCESS_TOKEN\` existe, mais $QUOI."
+              echo "Il faut le jeton public de ton compte Mapbox (« Default public token », il commence par \`pk.\`) :"
+              echo "**Settings > Secrets and variables > Actions**, le crayon à côté de \`MAPBOX_ACCESS_TOKEN\`, puis **Update secret**."
+              echo "En attendant, l'appli est fabriquée sans les fonds « Mapbox »."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       # Ce qu'une fabrication précédente a déjà téléchargé. Sans cela tout dépend, à chaque fois, de dépôts de
       # bibliothèques qui refusent parfois de répondre aux machines de GitHub (« Plugin … was not found »).
       # « v2 » : les tests de la source GPS tournent aussi sur Android 8 et 11 simulés, deux images à télécharger
@@ -112,6 +148,7 @@ jobs:
         run: bash outils/ci_outils_de_construction.sh
 
       # Les vérifications Android portent sur les deux versions : celle des Releases GitHub et celle de Google Play.
+      # Le jeton Mapbox n'est pas donné ici : les tests vérifient au passage qu'il n'est pas dans le dépôt.
       - name: Tests et vérifications
         run: |
           ./gradlew test :app:lintGithubDebug :app:lintPlayRelease --console=plain
@@ -167,6 +204,8 @@ jobs:
         if: steps.cle.outputs.presente == 'oui'
         env:
           VELOGO_KEYSTORE_PASSWORD: ${{ secrets.VELOGO_KEYSTORE_PASSWORD }}
+          # Comme le mot de passe de la clé, le jeton Mapbox n'arrive à Gradle qu'après l'écriture de la mémoire.
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
         run: |
           ./gradlew :app:assembleGithubRelease :app:bundlePlayRelease --console=plain \
             -Pvelogo.buildNumber=${{ github.run_number }} \
@@ -178,8 +217,14 @@ jobs:
           test -f "$AAB" || { echo "::error::Fichier pour Google Play introuvable"; ls -R app/build/outputs/bundle; exit 1; }
           BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
           "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | grep -i "SHA-256"
-          # Les bibliothèques natives doivent accepter les pages mémoire de 16 Ko (exigence de Google Play).
+          # Les bibliothèques natives doivent accepter les pages mémoire de 16 Ko (exigence de Google Play). Dans
+          # cet APK elles sont compressées : on regarde donc chacune d'elles, et pas seulement leur place dans le fichier.
           "$BUILD_TOOLS/zipalign" -c -P 16 4 "$APK"
+          python3 outils/controle_apk.py pages "$APK"
+          python3 outils/controle_apk.py pages "$AAB"
+          # Le jeton Mapbox est-il dans l'appli quand il doit y être, et seulement alors ? (Il n'est écrit nulle part.)
+          python3 outils/controle_apk.py mapbox "$APK" "${{ steps.mapbox.outputs.present }}"
+          python3 outils/controle_apk.py mapbox "$AAB" "${{ steps.mapbox.outputs.present }}"
           # Le fichier pour Google Play doit porter la même signature que l'APK.
           jarsigner -verify "$AAB" | grep -q "jar verified" || { echo "::error::Le fichier pour Google Play n'est pas signé"; exit 1; }
           EMPREINTE_APK="$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | grep -i 'SHA-256' | head -n 1 | sed 's/.*: //' | tr -d ':' | tr 'A-F' 'a-f')"
@@ -240,7 +285,21 @@ jobs:
       # La version Play n'est pas construite directement en APK : on fabrique son fichier AAB, puis l'outil de
       # Google (bundletool, que le plugin Android embarque) en tire un APK, comme le fait le Play Store. C'est ce
       # chemin-là que l'émulateur essaie.
+      # Le jeton public de Mapbox est-il là ? (L'autre job dit ce qui ne va pas s'il n'a pas la bonne forme.)
+      - name: Jeton Mapbox
+        id: mapbox
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+        run: |
+          if printf '%s' "$MAPBOX_ACCESS_TOKEN" | tr -d '[:space:]' | grep -Eq '^pk\.[A-Za-z0-9._-]+$'; then
+            echo "present=oui" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=non" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: APK d'essai des deux versions (même code minifié que les versions publiées)
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
         run: |
           ./gradlew :app:assembleGithubSmoke :app:packagePlaySmokeUniversalApk --console=plain -Pvelogo.buildNumber=${{ github.run_number }}
           APK_PLAY=app/build/outputs/apk_from_bundle/playSmoke/app-play-smoke-universal.apk
@@ -248,6 +307,8 @@ jobs:
           BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
           # Google Play exige des bibliothèques natives alignées sur 16 Ko dans les APK qu'il distribue.
           "$BUILD_TOOLS/zipalign" -c -P 16 4 "$APK_PLAY"
+          python3 outils/controle_apk.py pages "$APK_PLAY"
+          python3 outils/controle_apk.py mapbox app/build/outputs/apk/github/smoke/app-github-smoke.apk "${{ steps.mapbox.outputs.present }}"
 
       - name: Accélération matérielle pour l'émulateur
         run: |
@@ -258,10 +319,16 @@ jobs:
       # L'émulateur démarre parfois sans réseau utilisable (fabrications n° 30 et 31 : son Wi-Fi ne résolvait
       # aucun nom). L'essai le constate avant de commencer, l'écrit dans essai/sans_reseau.txt et s'arrête : on
       # recommence alors une fois, sur un émulateur neuf. Un échec de l'appli, lui, n'est jamais rejoué.
+      # Cartes de Mapbox : l'essai vérifie toujours qu'elles sont proposées (si le jeton est là) et que l'accord est
+      # demandé. Il n'en affiche une que si le message du dernier commit contient « [essai mapbox] » : Mapbox compte
+      # chaque appareil qui affiche une de ses cartes dans le mois, et chaque émulateur neuf en est un de plus.
       - name: Sortie simulée sur émulateur
         id: essai
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          VELOGO_MAPBOX_JETON: ${{ steps.mapbox.outputs.present }}
+          VELOGO_MAPBOX_AFFICHER: ${{ contains(github.event.head_commit.message, '[essai mapbox]') && 'oui' || 'non' }}
         with:
           api-level: 35
           arch: x86_64
@@ -277,6 +344,9 @@ jobs:
         id: essai2
         if: steps.essai.outcome == 'failure' && hashFiles('essai/sans_reseau.txt') != ''
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          VELOGO_MAPBOX_JETON: ${{ steps.mapbox.outputs.present }}
+          VELOGO_MAPBOX_AFFICHER: ${{ contains(github.event.head_commit.message, '[essai mapbox]') && 'oui' || 'non' }}
         with:
           api-level: 35
           arch: x86_64

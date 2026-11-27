@@ -27,6 +27,11 @@ data class Settings(
     val autoPause: Boolean = true,
     /** Identifiant du fond de carte choisi (voir MapLayers). */
     val mapLayer: String = "openfreemap",
+    /**
+     * L'utilisateur a accepté d'afficher les cartes de Mapbox, après avoir lu ce que Mapbox reçoit alors. Sans
+     * cet accord, aucun fond Mapbox n'est affiché et le kit de Mapbox ne démarre pas.
+     */
+    val mapboxConsent: Boolean = false,
     /** Carte orientée dans le sens de la marche (sinon nord en haut). */
     val headingUp: Boolean = false,
     /** Recaler l'altitude sur le relief IGN à la fin d'une sortie (demande du réseau). */
@@ -67,6 +72,7 @@ class SettingsRepository(context: Context) {
                 maxBrightness = p[MAX_BRIGHTNESS] ?: d.maxBrightness,
                 autoPause = p[AUTO_PAUSE] ?: d.autoPause,
                 mapLayer = p[MAP_LAYER] ?: d.mapLayer,
+                mapboxConsent = p[MAPBOX_CONSENT] ?: d.mapboxConsent,
                 headingUp = p[HEADING_UP] ?: d.headingUp,
                 ignAltitudeCorrection = p[IGN_CORRECTION] ?: d.ignAltitudeCorrection,
                 batteryHintShown = p[BATTERY_HINT] ?: d.batteryHintShown,
@@ -89,6 +95,12 @@ class SettingsRepository(context: Context) {
     suspend fun setMaxBrightness(value: Boolean) = store.edit { it[MAX_BRIGHTNESS] = value }.let { }
     suspend fun setAutoPause(value: Boolean) = store.edit { it[AUTO_PAUSE] = value }.let { }
     suspend fun setMapLayer(id: String) = store.edit { it[MAP_LAYER] = id }.let { }
+
+    /** Accord donné pour les cartes de Mapbox, et le fond Mapbox choisi : écrits ensemble. */
+    suspend fun acceptMapbox(layerId: String) = store.edit {
+        it[MAPBOX_CONSENT] = true
+        it[MAP_LAYER] = layerId
+    }.let { }
     suspend fun setHeadingUp(value: Boolean) = store.edit { it[HEADING_UP] = value }.let { }
     suspend fun setIgnAltitudeCorrection(value: Boolean) = store.edit { it[IGN_CORRECTION] = value }.let { }
     suspend fun setBatteryHintShown(value: Boolean) = store.edit { it[BATTERY_HINT] = value }.let { }
@@ -110,6 +122,7 @@ class SettingsRepository(context: Context) {
         val MAX_BRIGHTNESS = booleanPreferencesKey("luminosite_max")
         val AUTO_PAUSE = booleanPreferencesKey("pause_auto")
         val MAP_LAYER = stringPreferencesKey("fond_de_carte")
+        val MAPBOX_CONSENT = booleanPreferencesKey("accord_mapbox")
         val HEADING_UP = booleanPreferencesKey("cap_en_haut")
         val IGN_CORRECTION = booleanPreferencesKey("recalage_ign")
         val BATTERY_HINT = booleanPreferencesKey("conseil_batterie_vu")

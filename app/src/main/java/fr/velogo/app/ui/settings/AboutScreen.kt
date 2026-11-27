@@ -39,13 +39,18 @@ private class Credit(val title: String, val text: String, val url: String)
 private val DATA = listOf(
     Credit(
         "OpenStreetMap",
-        "Données cartographiques © les contributeurs d'OpenStreetMap, sous licence ODbL. Toutes les cartes de VeloGo en dérivent, sauf les fonds de l'IGN.",
+        "Données cartographiques © les contributeurs d'OpenStreetMap, sous licence ODbL. Toutes les cartes de VeloGo en dérivent, sauf les fonds de l'IGN et les images satellite.",
         "https://www.openstreetmap.org/copyright",
     ),
     Credit(
         "OpenFreeMap",
         "Fond « Plan » : tuiles vectorielles OpenFreeMap © OpenMapTiles, données OpenStreetMap, dessinées dans le style de VeloGo.",
         "https://openfreemap.org",
+    ),
+    Credit(
+        "Mapbox",
+        "Fonds « Mapbox » et « Mapbox Satellite », quand ils sont proposés : cartes © Mapbox sur les données © OpenStreetMap, images satellite © Maxar. Ils ne s'affichent qu'après ton accord ; le bouton d'information posé sur ces cartes détaille leurs droits.",
+        "https://www.mapbox.com/about/maps/",
     ),
     Credit(
         "CyclOSM",
@@ -76,6 +81,7 @@ private val DATA = listOf(
 
 private val SOFTWARE = listOf(
     Credit("MapLibre Native", "Moteur d'affichage des cartes. Licence BSD à 2 clauses.", "https://maplibre.org"),
+    Credit("Mapbox Maps SDK", "Moteur d'affichage des fonds de Mapbox, les seuls qu'il dessine. Logiciel de Mapbox, utilisé selon ses conditions d'utilisation.", "https://www.mapbox.com/legal/tos"),
     Credit("Android Jetpack et Kotlin", "Jetpack Compose, Room, DataStore, Navigation ; langage Kotlin. Licence Apache 2.0.", "https://developer.android.com/jetpack"),
     Credit("OkHttp", "Client HTTP de Square. Licence Apache 2.0.", "https://square.github.io/okhttp/"),
     Credit("BRouter", "Calcul des itinéraires vélo, embarqué dans l'appli : il fonctionne sans réseau à partir des données OpenStreetMap des régions téléchargées. Licence MIT.", "https://brouter.de"),

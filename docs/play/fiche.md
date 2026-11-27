@@ -30,7 +30,7 @@ ROULER
 CARTES
 • Carte vélo claire ou sombre, relief ombré : pistes cyclables, véloroutes, revêtements, cols, points d'eau.
 • Cartes hors ligne par région, avec le relief : tout marche en montagne, sans réseau.
-• Plan IGN, photos aériennes et CyclOSM quand tu as du réseau.
+• Plan IGN, photos aériennes, CyclOSM et cartes Mapbox quand tu as du réseau.
 
 ITINÉRAIRES ET GUIDAGE
 • Itinéraires calculés sur le téléphone, même en mode avion : le plus rapide, le plus sûr, le moins de dénivelé.

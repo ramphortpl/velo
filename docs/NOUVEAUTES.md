@@ -1,5 +1,41 @@
 # Nouveautés de VeloGo
 
+## Version 0.9 — Les cartes de Mapbox
+
+### Deux nouveaux fonds de carte
+
+- **« Mapbox »** : la carte de plein air de Mapbox, celle dont part Strava. Sentiers, relief, courbes de niveau ;
+  en thème sombre, sa carte sombre.
+- **« Mapbox Satellite »** : les images satellite de Mapbox, avec les routes et les noms.
+
+Ils se choisissent avec le bouton des fonds de carte, comme les autres. Tout s'y dessine de la même façon : ta
+position, la trace de la sortie, les itinéraires proposés, les étapes numérotées, le guidage avec sa flèche de
+manœuvre et la partie parcourue en gris.
+
+### Ce qu'il faut savoir
+
+- **L'appli te demande d'abord ton accord.** La première fois, elle dit ce que Mapbox reçoit quand sa carte est
+  affichée (l'adresse internet du téléphone, la zone de carte regardée, de quoi compter les utilisateurs) et te
+  laisse ajouter, ou non, des statistiques d'utilisation qui contiennent ta position. Elles sont refusées tant que
+  tu ne les acceptes pas ; tu changes d'avis quand tu veux avec le bouton ⓘ posé sur la carte de Mapbox.
+- **Il faut du réseau.** Les cartes de Mapbox ne se téléchargent pas pour rouler sans réseau : la carte « Vélo
+  hors ligne » reste là pour ça.
+- **Rien ne change si tu n'en veux pas** : le plan de VeloGo reste le fond de départ, et les autres fonds
+  n'envoient rien à Mapbox. La politique de confidentialité a une partie sur Mapbox.
+- Le détail d'une sortie et l'affiche à partager gardent le plan de VeloGo, même quand un fond Mapbox est choisi.
+- Sur la carte de Mapbox, zoomer avec deux doigts laisse la carte suivre ta position ; la faire glisser arrête le
+  suivi, et le bouton de position (ou « Recentrer » pendant un guidage) y ramène.
+- Si une carte Mapbox ne pouvait pas s'afficher sur un téléphone, l'appli reviendrait d'elle-même à son plan, sans
+  rien perdre.
+- L'APK passe de 16 à 19 Mo : il contient maintenant le moteur de carte de Mapbox.
+
+### Bon à savoir
+
+- Les fonds Mapbox passent par le compte Mapbox de l'auteur de l'appli. Une appli fabriquée sans sa clé ne les
+  propose pas ; tout le reste fonctionne à l'identique.
+- Vérifié en images et sur un émulateur Android 15, pas sur un vrai téléphone : la fluidité des cartes Mapbox sur
+  le Galaxy A05s reste à juger sur place.
+
 ## Version 0.8 — Une carte redessinée, et un guidage qui nomme les rues
 
 ### Une nouvelle carte
@@ -36,10 +72,11 @@ Strava affiche des cartes dessinées par Mapbox à partir des données d'OpenStr
 itinéraires sur ces données. VeloGo part des mêmes données OpenStreetMap, calcule aussi ses itinéraires lui-même,
 et dessine sa carte avec MapLibre, le moteur libre issu de celui de Mapbox.
 
-Les cartes de Mapbox elles-mêmes ne sont pas dans l'appli. Elles demandent un compte et une clé, une carte
-bancaire au-delà de 100 utilisateurs par mois, deviennent payantes au-delà de 25 000 (et dès 100 pour le guidage
-de Mapbox), envoient la position des utilisateurs à Mapbox et ne permettent pas les cartes hors ligne de VeloGo.
-L'appli reste donc gratuite, sans compte, et utilisable sans réseau.
+Les cartes de Mapbox elles-mêmes n'étaient pas dans cette version (elles arrivent dans la 0.9, en plus des
+autres). Elles demandent un compte et une clé, une carte bancaire au-delà de 100 utilisateurs par mois, deviennent
+payantes au-delà de 25 000 (et dès 100 pour le guidage de Mapbox), peuvent recevoir la position des utilisateurs et
+ne permettent pas les cartes hors ligne de VeloGo. Le plan de VeloGo, gratuit, sans compte et utilisable sans
+réseau, reste donc la carte de départ.
 
 ### Bon à savoir
 

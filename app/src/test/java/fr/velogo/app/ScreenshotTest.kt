@@ -28,6 +28,7 @@ import org.robolectric.RuntimeEnvironment
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,6 +45,8 @@ import fr.velogo.app.location.LocationAccess
 import fr.velogo.app.ui.ride.GpsChipModel
 import fr.velogo.app.ui.ride.GpsSheetContent
 import fr.velogo.app.ui.ride.GpsTone
+import fr.velogo.app.ui.ride.MapLayersContent
+import fr.velogo.app.ui.ride.MapboxConsentContent
 import fr.velogo.app.ui.ride.RideChrome
 import fr.velogo.app.ui.ride.RideMode
 import fr.velogo.app.ui.ride.gpsChip
@@ -134,6 +137,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import kotlin.math.PI
 import kotlin.math.sin
+import fr.velogo.app.map.MapLayer
 import fr.velogo.app.map.MapLayers
 
 /**
@@ -174,13 +178,14 @@ class ScreenshotTest {
         permission: Boolean = true,
         weather: WeatherGlance? = null,
         gps: GpsChipModel = gpsOk,
+        attribution: String = MapLayers.OPENFREEMAP.attribution,
     ): @Composable () -> Unit = {
         VeloGoTheme(mode = theme) {
             Box(Modifier.fillMaxSize()) {
                 MapBackdrop(dark = theme == ThemeMode.DARK)
                 RideChrome(
                     snapshot = snapshot, mode = mode, onMode = {}, themeMode = theme, sunlight = sunlight,
-                    attribution = MapLayers.OPENFREEMAP.attribution, following = true, headingUp = false,
+                    attribution = attribution, following = true, headingUp = false,
                     hasLocationPermission = permission, gps = gps,
                     topInset = 28.dp, bottomPadding = 80.dp, snackbar = SnackbarHostState(),
                     onLayers = {}, onRecenter = {}, onToggleHeading = {}, onRequestPermission = {},
@@ -661,6 +666,56 @@ class ScreenshotTest {
         override fun setStorage(index: Int) = Unit
         override fun useOfflineLayer() = Unit
     }
+
+    // --- Fonds de carte ---------------------------------------------------------------------------------------
+
+    private fun layersImage(name: String, layers: List<MapLayer>, selected: MapLayer, offlineInstalled: Boolean, theme: ThemeMode = ThemeMode.LIGHT) =
+        captureRoboImage("$OUT/$name.png") {
+            VeloGoTheme(mode = theme) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Column(Modifier.padding(top = 28.dp)) {
+                        MapLayersContent(layers, selected.id, offlineInstalled, onPick = {}, onOfflineMaps = {})
+                    }
+                }
+            }
+        }
+
+    /** Le choix du fond dans une appli fabriquée sans jeton Mapbox : les cinq fonds de toujours. */
+    @Test
+    fun fonds_de_carte() = layersImage("fonds_de_carte", MapLayers.offered(mapbox = false), MapLayers.OPENFREEMAP, offlineInstalled = false)
+
+    /** Avec le jeton : les deux fonds de Mapbox s'ajoutent sous le plan de VeloGo, et la liste tient encore dans l'écran. */
+    @Test
+    fun fonds_de_carte_avec_mapbox() = layersImage("fonds_de_carte_mapbox", MapLayers.offered(mapbox = true), MapLayers.MAPBOX, offlineInstalled = true)
+
+    @Test
+    fun fonds_de_carte_avec_mapbox_sombre() =
+        layersImage("fonds_de_carte_mapbox_sombre", MapLayers.offered(mapbox = true), MapLayers.MAPBOX_SATELLITE, offlineInstalled = false, ThemeMode.DARK)
+
+    private fun mapboxConsentImage(name: String, statistics: Boolean, theme: ThemeMode = ThemeMode.LIGHT) = captureRoboImage("$OUT/$name.png") {
+        VeloGoTheme(mode = theme) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                // La fenêtre elle-même est dessinée par Android : on vérifie ici ce qu'elle contient, à sa largeur.
+                Column(Modifier.padding(24.dp)) {
+                    Text("La carte Mapbox", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 16.dp))
+                    MapboxConsentContent(statistics, onStatistics = {}, onPrivacy = {})
+                }
+            }
+        }
+    }
+
+    /** Ce qui est dit avant la première carte Mapbox : les statistiques sont refusées tant qu'on ne les accepte pas. */
+    @Test
+    @Config(sdk = [35], qualifiers = "w312dp-h520dp-420dpi")
+    fun accord_mapbox() = mapboxConsentImage("accord_mapbox", statistics = false)
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w312dp-h520dp-420dpi")
+    fun accord_mapbox_statistiques_acceptees_sombre() = mapboxConsentImage("accord_mapbox_sombre", statistics = true, ThemeMode.DARK)
+
+    /** Un fond Mapbox pose lui-même son logo et sa mention : l'écran n'écrit rien à cet endroit. */
+    @Test
+    fun carte_sans_mention_pour_mapbox() = captureRoboImage("$OUT/carte_mapbox_sans_mention.png", content = chrome(recording, RideMode.MAP, attribution = ""))
 
     /** « Sources et licences » : le logo en tête, sur sa plaque blanche, en clair comme en sombre. */
     @Test

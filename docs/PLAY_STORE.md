@@ -130,15 +130,27 @@ téléphone, et comme « partagé » ce qui part chez un tiers.
 
 | Type de données | Collectée | Partagée | Finalité | Obligatoire ? |
 |---|---|---|---|---|
-| Position approximative | Oui | Oui | Fonctionnement de l'appli | Facultative |
-| Position précise | Oui | Oui | Fonctionnement de l'appli | Facultative |
+| Position approximative | Oui | Oui | Fonctionnement de l'appli ; Analyse (statistiques de Mapbox, si l'utilisateur les accepte) | Facultative |
+| Position précise | Oui | Oui | Fonctionnement de l'appli ; Analyse (statistiques de Mapbox, si l'utilisateur les accepte) | Facultative |
 | Historique des recherches dans l'appli | Oui | Oui | Fonctionnement de l'appli | Facultative |
+| Identifiants de l'appareil ou autres (depuis la 0.9, cartes de Mapbox) | Oui | Oui | Fonctionnement de l'appli ; Analyse | Facultative |
+| Diagnostics (depuis la 0.9, statistiques de Mapbox) | Oui | Oui | Analyse | Facultative |
 
 Pourquoi : la météo envoie la position arrondie à un kilomètre à Open-Meteo (Google appelle « précise » toute
 position connue à moins de 3 km² près) ; la correction d'altitude envoie les points des sorties à l'IGN ; la
 recherche d'adresse envoie le texte tapé et le centre de la carte à l'IGN. Chacune se coupe ou s'évite (réglages
 Météo et Altitude, carte hors ligne), d'où « facultative ». Aucune autre donnée : ni nom, ni contacts, ni photos,
 ni identifiant d'appareil, ni données de santé (les sorties restent sur le téléphone).
+
+Depuis la version 0.9, les cartes de Mapbox ajoutent deux lignes. Quand un fond Mapbox est affiché (jamais sans
+l'accord donné dans l'appli), le logiciel de Mapbox envoie à Mapbox un identifiant tiré au hasard, propre à
+l'appli sur ce téléphone, pour compter ses utilisateurs : c'est la ligne « Identifiants ». Si l'utilisateur
+accepte en plus les statistiques, Mapbox reçoit des positions et des données sur l'appareil (modèle, opérateur,
+type de réseau, niveau de batterie, écran) : d'où « Analyse » pour la position, et la ligne « Diagnostics ». Tout
+cela se lit dans le code du logiciel de Mapbox embarqué (version 11.35.2). Aucune page de Mapbox disant quoi
+répondre à ce formulaire n'a été trouvée : le classement dans les cases de Google reste donc une interprétation.
+Le formulaire demande aussi si l'appli contient des logiciels de tiers qui collectent des données : **oui, celui
+de Mapbox**.
 
 « Partagée » est la réponse prudente. Le formulaire dispense de la cocher quand l'utilisateur a été prévenu et a
 donné son accord, ce que fait l'écran qui précède la demande de position ; savoir si cela suffit pour des services
@@ -212,12 +224,39 @@ trois points sont à surveiller si l'appli a du succès.
 | IGN (Plan IGN, photos, adresses, altitude) | Autorisée, « à des fins commerciales ou non », sans clé | Rien : les limites sont comptées par téléphone. |
 | Protomaps et Mapterhorn (cartes hors ligne) | Redistribution permise | Rien. |
 | Mapterhorn (relief du fond « Plan », depuis la version 0.8) | Leur serveur de tuiles est ouvert à tous, « for commercial and non-commercial purposes », sans limite annoncée (relevé le 27 novembre 2026) | Rien pour l'instant : c'est un projet bénévole hébergé gracieusement. S'il fermait son serveur, le plan s'afficherait sans ses ombres, rien de plus. |
+| **Mapbox (fonds « Mapbox » et « Mapbox Satellite », depuis la version 0.9)** | Autorisée avec ton compte Mapbox et son jeton public. **Sans moyen de paiement dans le compte : 100 appareils par mois** ; avec une carte bancaire : gratuit jusqu'à 25 000 appareils par mois, puis 4 $ les 1 000 (prix relevés le 27 novembre 2026) | **C'est le seul service de l'appli qui peut devenir payant.** Seuls comptent les appareils qui affichent un fond Mapbox dans le mois (le plan de VeloGo reste le fond de départ). À surveiller dans ton compte Mapbox (page « Statistics ») ; au-delà de 100, il faut y mettre une carte bancaire ou retirer le secret `MAPBOX_ACCESS_TOKEN`, et les fonds Mapbox disparaissent de la version suivante. Interdit par Mapbox : ouvrir plusieurs comptes pour rester sous les seuils. |
 | **Open-Meteo (météo)** | Gratuite pour une appli **sans publicité ni abonnement** | Au-delà de **10 000 demandes par jour pour toute l'appli** (quelques centaines de cyclistes qui roulent le même jour), ils demandent qu'on leur écrive (info@open-meteo.com). Avec de la publicité ou un abonnement, l'offre payante devient obligatoire (29 $ par mois en 2023, prix actuel non vérifié). |
 | **CyclOSM (serveurs d'OpenStreetMap France)** | Tolérée pour une appli gratuite, sans but lucratif, au « trafic modéré » | Aucun chiffre n'est donné, et ils peuvent couper l'accès sans préavis. Si l'appli dépasse quelques centaines d'utilisateurs, leur écrire (openstreetmap.fr) ou retirer ce fond : la carte « Vélo hors ligne » montre les mêmes aménagements sans dépendre d'eux. |
 | **GitHub (cartes hors ligne, APK)** | C'est l'usage prévu des « Releases », sans limite publiée | Une clause leur permet de freiner un dépôt dont le trafic serait « nettement excessif ». Avec des milliers de téléchargements de régions, il faudrait un autre hébergement. |
 
 Deux conséquences si un jour l'appli rapportait de l'argent (publicité, abonnement, version payante) : la météo et
 le fond CyclOSM ne seraient plus permis tels quels, et Google te demanderait de te déclarer professionnel.
+
+### Les cartes de Mapbox : ce qui te revient
+
+- **Le jeton.** Seul le jeton public de ton compte (il commence par `pk.`) va dans l'appli, par le secret GitHub
+  `MAPBOX_ACCESS_TOKEN`. Il n'est écrit ni dans le dépôt ni dans les journaux de fabrication. Un jeton public se
+  retrouve forcément dans une appli publiée : c'est prévu par Mapbox, et il ne donne accès qu'à l'affichage des
+  cartes. Ne mets jamais un jeton secret (`sk.`) dans ce secret : la fabrication le refuse et te prévient.
+- **L'accord des utilisateurs.** Les conditions de Mapbox demandent de recueillir l'accord des utilisateurs là où
+  la loi l'exige pour la position, et de leur laisser refuser les statistiques. L'appli le fait : une fenêtre
+  avant la première carte Mapbox, statistiques refusées au départ, et le bouton d'information de Mapbox sur sa
+  carte pour changer d'avis.
+- **Les mentions.** Le logo de Mapbox et son bouton d'information restent affichés sur ses cartes : ne demande pas
+  à les retirer, ses conditions l'interdisent.
+- **La version du logiciel.** Mapbox exige une version de son logiciel de moins de douze mois. Celle de l'appli
+  (11.35.2) est celle de novembre 2026 : à renouveler avant novembre 2027.
+- **Aucune autorisation nouvelle** : l'appli demande les mêmes qu'avant. Elle reste aussi proposée aux mêmes
+  appareils : sur les rares téléphones sans OpenGL ES 3, les fonds Mapbox ne sont simplement pas proposés.
+- **Un point à faire confirmer par Mapbox avant d'ouvrir l'appli au public avec ses cartes.** Ses conditions
+  (« Product Terms », article 1.2.2) exigent l'achat d'une licence supplémentaire quand l'appli est « related to
+  vehicle usage » : « Vehicles include ground, aerial, manned and unmanned vehicles, and vehicle usage includes
+  (i) applications primarily intended for use within vehicles or (ii) use in any vehicle system or component ».
+  Le texte vise à l'évidence l'automobile (« within vehicles », systèmes embarqués), mais il ne dit pas si une
+  appli de vélo, posée sur un guidon, est concernée. Seul Mapbox peut répondre : écris à son assistance (depuis
+  ton compte, « Contact support ») en décrivant l'appli, et garde la réponse. Tant que tu n'as pas de réponse,
+  le plus prudent est de garder ces fonds pour toi et tes testeurs ; pour les retirer de l'appli, il suffit de
+  supprimer le secret `MAPBOX_ACCESS_TOKEN`.
 
 ## Sources
 

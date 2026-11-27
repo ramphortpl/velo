@@ -34,6 +34,14 @@ SPEED_MPS = 7.0
 # Sur Android 12 et suivants, l'appli demande la position approchée du téléphone au fournisseur « fused ».
 APPROXIMATE_PROVIDER = "fused"
 APPROXIMATE_ACCURACY_M = 40
+# Cartes de Mapbox. « JETON » : l'appli a été fabriquée avec le jeton public du compte Mapbox (la fabrication le
+# contrôle dans l'APK) : ses fonds doivent alors être proposés, et l'accord demandé avant d'en afficher un.
+# « AFFICHER » : l'essai va jusqu'à afficher une carte Mapbox (itinéraire, guidage, satellite). Seulement sur
+# demande (« [essai mapbox] » dans le message du commit) : Mapbox compte chaque appareil qui affiche une de ses
+# cartes dans le mois, et chaque émulateur neuf en est un de plus.
+MAPBOX_TOKEN = os.environ.get("VELOGO_MAPBOX_JETON", "non") == "oui"
+MAPBOX_SHOW = MAPBOX_TOKEN and os.environ.get("VELOGO_MAPBOX_AFFICHER", "non") == "oui"
+MAPBOX_LOG_TAG = "VeloGoMapbox"
 
 failures = []
 step_no = [0]
@@ -661,6 +669,149 @@ def statistics():
     check_alive("après les statistiques")
 
 
+def mapbox_log():
+    """Ce que l'appli a écrit dans le journal du téléphone à propos des cartes de Mapbox."""
+    return [line for line in adb("logcat", "-d", "-v", "brief", "-s", f"{MAPBOX_LOG_TAG}:V").splitlines() if MAPBOX_LOG_TAG in line]
+
+
+def mapbox_offer():
+    """Les fonds de Mapbox sont proposés si l'appli a son jeton, et seulement alors ; l'accord est demandé avant
+    d'en afficher un. On s'arrête là (« Annuler ») : aucune carte Mapbox n'est affichée ici."""
+    log("cartes de Mapbox : proposées ou non, accord demandé")
+    if not tap("Changer de fond de carte"):
+        return
+    time.sleep(1.5)
+    shot("fonds_de_carte")
+    offered = find("Mapbox") is not None
+    if not MAPBOX_TOKEN:
+        if offered:
+            fail("un fond « Mapbox » est proposé alors que l'appli a été fabriquée sans jeton Mapbox")
+        else:
+            log("constat : appli fabriquée sans jeton Mapbox, aucun fond Mapbox proposé (c'est ce qui est attendu)")
+        shell("input keyevent KEYCODE_BACK")
+        time.sleep(1)
+        return
+    if not offered:
+        # Le jeton est bien dans l'APK (la fabrication le contrôle) : reste l'appareil, qui doit annoncer OpenGL ES 3.
+        said = [line for line in mapbox_log() if "Cartes Mapbox" in line]
+        fail(f"l'appli a son jeton Mapbox mais ne propose pas ses fonds ({said[-1] if said else 'rien dans le journal'})")
+        shell("input keyevent KEYCODE_BACK")
+        time.sleep(1)
+        return
+    if not find("Mapbox Satellite"):
+        fail("le fond « Mapbox Satellite » n'est pas proposé à côté de « Mapbox »")
+    tap("Mapbox")
+    if not wait_for("La carte Mapbox", 10):
+        shot("mapbox_sans_accord")
+        fail("l'accord n'est pas demandé avant d'afficher une carte Mapbox pour la première fois")
+        return
+    shot("accord_mapbox")
+    for text in ("Envoyer mes statistiques à Mapbox", "Afficher Mapbox", "Annuler"):
+        if not find(text):
+            fail(f"la fenêtre d'accord pour Mapbox ne montre pas « {text} »")
+    if not find("Mapbox reçoit", exact=False):
+        fail("la fenêtre d'accord ne dit pas ce que Mapbox reçoit")
+    tap("Annuler")
+    time.sleep(1.5)
+    if find("La carte Mapbox"):
+        fail("la fenêtre d'accord pour Mapbox ne se ferme pas avec « Annuler »")
+    check_alive("après le refus de la carte Mapbox")
+    if not MAPBOX_SHOW:
+        log("constat : aucune carte Mapbox affichée pendant cet essai (il faut « [essai mapbox] » dans le message du commit)")
+
+
+def mapbox_display(gps, restore):
+    """Une carte Mapbox, pour de bon : affichée par-dessus un trajet ouvert (le tracé doit s'y redessiner), puis
+    guidage, carte déplacée et recentrée, images satellite, et retour au fond [restore].
+
+    Le panneau d'itinéraire est ouvert sur un trajet, replié. À la fin, le guidage est arrêté."""
+    log("carte Mapbox : affichage, tracé, guidage, satellite")
+    # Ce que l'appli avait déjà écrit sur Mapbox avant cette étape ne la concerne pas.
+    already = len(mapbox_log())
+    if not tap("Changer de fond de carte"):
+        return
+    time.sleep(1.5)
+    if not tap("Mapbox", timeout=6, required=False):
+        fail("le fond « Mapbox » n'est pas proposé")
+        shell("input keyevent KEYCODE_BACK")
+        return
+    if not wait_for("La carte Mapbox", 10):
+        fail("l'accord n'est pas demandé avant la première carte Mapbox")
+        return
+    # Les statistiques restent refusées (l'interrupteur n'est pas touché) : seul l'affichage est accepté.
+    tap("Afficher Mapbox")
+    # Démarrage du kit, puis chargement du fond et de ses tuiles, sur un émulateur sans carte graphique.
+    time.sleep(20)
+    if not check_alive("à l'affichage de la carte Mapbox"):
+        shot("mapbox_arret")
+        return
+    gps.stand(6)
+    shot("mapbox_trajet")
+    # Le trajet ouvert a été confié aux deux moteurs de carte : celui de Mapbox doit l'avoir redessiné.
+    wait_route_drawn("sur la carte Mapbox", timeout=45)
+    said = mapbox_log()[already:]
+    for line in said:
+        log(f"journal : {line.strip()[:260]}")
+    errors = [line for line in said if "Carte Mapbox :" in line]
+    if any("Carte Mapbox : STYLE" in line for line in errors):
+        fail("le fond de carte Mapbox ne se charge pas (jeton refusé ? voir les lignes « journal » ci-dessus)")
+    elif errors:
+        log(f"constat : {len(errors)} élément(s) de la carte Mapbox non chargé(s) (tuiles, polices) : voir le journal")
+    # La mention des sources qu'écrit l'appli sur ses autres fonds commence toujours par « © » ; Mapbox pose la
+    # sienne lui-même (son logo et son bouton d'information, qu'on vérifie sur les captures).
+    if find("© OpenStreetMap", exact=False):
+        fail("la mention de l'appli est affichée sur un fond Mapbox, qui doit montrer la sienne (logo et bouton ⓘ)")
+
+    # Guidage sur la carte Mapbox : vue de guidage, carte déplacée puis recentrée.
+    if tap("Démarrer le guidage", timeout=8, required=False):
+        if wait_for("Pas maintenant", 6):
+            tap("Pas maintenant")
+        if not wait_for("Guidage :", 10, exact=False):
+            fail("le bandeau de guidage n'apparaît pas sur la carte Mapbox")
+        gps.stand(6)
+        note_guidance("sur la carte Mapbox, au départ")
+        shot("mapbox_guidage_au_depart")
+        gps.ride(12, bearing_deg=200.0)
+        shot("mapbox_guidage_en_roulant")
+        check_alive("pendant le guidage sur la carte Mapbox")
+        shell("input swipe 540 1100 300 800 400")
+        time.sleep(1)
+        if wait_for("Recentrer", 6):
+            shot("mapbox_guidage_carte_deplacee")
+            tap("Recentrer")
+            gps.ride(5, bearing_deg=200.0)
+            if find("Recentrer"):
+                fail("sur la carte Mapbox, « Recentrer » reste affiché après avoir recentré")
+            shot("mapbox_guidage_recentre")
+        else:
+            shot("mapbox_guidage_sans_recentrer")
+            fail("sur la carte Mapbox, « Recentrer » n'apparaît pas quand on déplace la carte pendant le guidage")
+        tap("Arrêter le guidage")
+        time.sleep(2)
+    else:
+        fail("le trajet n'est plus prêt à être suivi après le passage à la carte Mapbox")
+    check_alive("après le guidage sur la carte Mapbox")
+
+    # Les images satellite, puis retour au fond d'avant : la suite de l'essai se fait sans Mapbox.
+    if tap("Changer de fond de carte"):
+        tap("Mapbox Satellite")
+        time.sleep(15)
+        gps.stand(3)
+        shot("mapbox_satellite")
+        check_alive("avec le fond Mapbox Satellite")
+    if tap("Changer de fond de carte"):
+        tap(restore)
+        time.sleep(8)
+        gps.stand(3)
+        shot("retour_apres_mapbox")
+        if not check_alive(f"au retour sur le fond {restore}"):
+            return
+        if not find("© OpenStreetMap", exact=False):
+            fail(f"de retour sur le fond {restore}, la mention des sources de la carte n'est plus affichée")
+    for line in mapbox_log()[already + len(said):]:
+        log(f"journal : {line.strip()[:260]}")
+
+
 def route_by_address(gps):
     """Itinéraire vers une adresse cherchée en ligne, calculé sur le téléphone, affiche à partager, puis guidage."""
     log("itinéraire : recherche d'adresse, calcul, guidage")
@@ -872,6 +1023,9 @@ def saved_routes():
             fail("la liste des trajets n'affiche pas la distance du trajet")
         elif not find(distance):
             fail(f"le trajet rouvert n'annonce pas la distance de la liste ({distance})")
+        # Le trajet est ouvert, la carte hors ligne affichée : c'est le moment d'essayer une carte de Mapbox.
+        if MAPBOX_SHOW:
+            mapbox_display(gps, restore="Vélo hors ligne")
     else:
         shot("trajet_non_rouvert")
         fail("un appui sur un trajet enregistré ne le rouvre pas sur la carte")
@@ -1314,6 +1468,7 @@ def main():
             time.sleep(9)
             shot(f"fond_{name}")
             check_alive(f"avec le fond {layer}")
+    mapbox_offer()
 
     offline_maps(gps)
 

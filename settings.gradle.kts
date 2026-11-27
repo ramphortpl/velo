@@ -17,6 +17,14 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Le kit de cartes de Mapbox n'est publié que sur son propre dépôt (sans identifiant depuis la version 11).
+        // Rien d'autre n'y est cherché.
+        maven {
+            url = uri("https://api.mapbox.com/downloads/v2/releases/maven")
+            content {
+                includeGroupByRegex("com\\.mapbox.*")
+            }
+        }
     }
 }
 
