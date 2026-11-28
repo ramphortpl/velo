@@ -923,7 +923,7 @@ def route_by_address(gps):
     time.sleep(2)
     shot("carte_apres_guidage")
     check_alive("après le guidage")
-    saved_routes()
+    saved_routes(gps)
 
 
 def loop_route():
@@ -985,7 +985,7 @@ def save_route():
     check_alive("après l'enregistrement d'un itinéraire")
 
 
-def saved_routes():
+def saved_routes(gps):
     """L'onglet « Trajets » : l'itinéraire enregistré s'y retrouve, se renomme et se rouvre sur la carte."""
     log("onglet « Trajets » : retrouver, renommer et rouvrir l'itinéraire enregistré")
     if not tap("Trajets", timeout=8, required=False):
