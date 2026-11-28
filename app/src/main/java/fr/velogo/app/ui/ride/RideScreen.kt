@@ -911,7 +911,8 @@ fun RideScreen(
     }
 
     if (showLayers) {
-        ModalBottomSheet(onDismissRequest = { showLayers = false }) {
+        // Ouverte en entier : à mi-hauteur, la liste s'arrêtait au quatrième fond et cachait les suivants.
+        ModalBottomSheet(onDismissRequest = { showLayers = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             MapLayersContent(
                 layers = MapLayers.offered(mapboxOffered),
                 selectedId = layer.id,

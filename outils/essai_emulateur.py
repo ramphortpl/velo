@@ -344,6 +344,30 @@ def tap(label, timeout=20, exact=True, required=True):
     return True
 
 
+def pick_layer(layer):
+    """Ouvre la liste des fonds de carte et y choisit [layer], en la faisant défiler s'il n'est pas à l'écran.
+
+    Si le fond n'y est pas, c'est un échec, et la liste est refermée pour que la suite de l'essai ne bute pas dessus."""
+    if not tap("Changer de fond de carte"):
+        return False
+    return tap_in_layer_list(layer)
+
+
+def tap_in_layer_list(layer):
+    """La liste des fonds est ouverte : touche [layer], après l'avoir fait défiler si besoin."""
+    for attempt in range(4):
+        if tap(layer, timeout=5 if attempt == 0 else 2, required=False):
+            return True
+        # Un glissement vers le haut déplie la feuille, puis fait défiler la liste.
+        shell("input swipe 540 1900 540 1000 350")
+        time.sleep(1)
+    shot("fond_introuvable")
+    fail(f"fond de carte introuvable dans la liste : « {layer} »")
+    shell("input keyevent KEYCODE_BACK")
+    time.sleep(1.5)
+    return False
+
+
 def long_press(label, millis=1800):
     bounds = wait_for(label)
     if not bounds:
@@ -700,7 +724,11 @@ def mapbox_offer():
         return
     if not find("Mapbox Satellite"):
         fail("le fond « Mapbox Satellite » n'est pas proposé à côté de « Mapbox »")
-    tap("Mapbox")
+    # Tous les fonds doivent se voir d'un coup sur cet écran : la liste s'ouvre en entier.
+    if not find("Vélo hors ligne"):
+        log("constat : le dernier fond de la liste (« Vélo hors ligne ») n'est pas à l'écran sans la faire défiler")
+    if not tap_in_layer_list("Mapbox"):
+        return
     if not wait_for("La carte Mapbox", 10):
         shot("mapbox_sans_accord")
         fail("l'accord n'est pas demandé avant d'afficher une carte Mapbox pour la première fois")
@@ -728,12 +756,7 @@ def mapbox_display(gps, restore):
     log("carte Mapbox : affichage, tracé, guidage, satellite")
     # Ce que l'appli avait déjà écrit sur Mapbox avant cette étape ne la concerne pas.
     already = len(mapbox_log())
-    if not tap("Changer de fond de carte"):
-        return
-    time.sleep(1.5)
-    if not tap("Mapbox", timeout=6, required=False):
-        fail("le fond « Mapbox » n'est pas proposé")
-        shell("input keyevent KEYCODE_BACK")
+    if not pick_layer("Mapbox"):
         return
     if not wait_for("La carte Mapbox", 10):
         fail("l'accord n'est pas demandé avant la première carte Mapbox")
@@ -793,14 +816,12 @@ def mapbox_display(gps, restore):
     check_alive("après le guidage sur la carte Mapbox")
 
     # Les images satellite, puis retour au fond d'avant : la suite de l'essai se fait sans Mapbox.
-    if tap("Changer de fond de carte"):
-        tap("Mapbox Satellite")
+    if pick_layer("Mapbox Satellite"):
         time.sleep(15)
         gps.stand(3)
         shot("mapbox_satellite")
         check_alive("avec le fond Mapbox Satellite")
-    if tap("Changer de fond de carte"):
-        tap(restore)
+    if pick_layer(restore):
         time.sleep(8)
         gps.stand(3)
         shot("retour_apres_mapbox")
@@ -1463,8 +1484,7 @@ def main():
     tap("Rouler")
     time.sleep(2)
     for layer, name in (("CyclOSM", "cyclosm"), ("Plan IGN", "plan_ign"), ("Photos aériennes", "photos_aeriennes"), ("Plan", "plan")):
-        if tap("Changer de fond de carte"):
-            tap(layer)
+        if pick_layer(layer):
             time.sleep(9)
             shot(f"fond_{name}")
             check_alive(f"avec le fond {layer}")
