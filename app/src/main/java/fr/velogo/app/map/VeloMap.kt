@@ -188,7 +188,9 @@ class VeloMapState : MapPilot {
             runCatching {
                 map.moveCamera(
                     CameraUpdateFactory.newCameraPosition(
-                        CameraPosition.Builder().target(LatLng(camera.center.lat, camera.center.lon)).zoom(camera.zoom).bearing(0.0).tilt(0.0).build()
+                        CameraPosition.Builder().target(LatLng(camera.center.lat, camera.center.lon)).zoom(camera.zoom).bearing(0.0).tilt(0.0)
+                            .padding(camera.padding.left, camera.padding.top, camera.padding.right, camera.padding.bottom)
+                            .build()
                     )
                 )
             }
@@ -615,7 +617,9 @@ class VeloMapState : MapPilot {
     /** Où regarde la carte en ce moment, pour qu'un autre moteur de carte reprenne la même vue. */
     internal fun camera(): MapCamera? = map?.cameraPosition?.let { position ->
         val target = position.target ?: return@let null
-        MapCamera(LatLon(target.latitude, target.longitude), position.zoom, position.bearing)
+        // Les marges de MapLibre : gauche, haut, droite, bas.
+        val padding = position.padding?.takeIf { it.size == 4 }?.let { MapPadding(it[0], it[1], it[2], it[3]) } ?: MapPadding.NONE
+        MapCamera(LatLon(target.latitude, target.longitude), position.zoom, position.bearing, padding)
     }
 
     /** Reprend la vue et le suivi laissés par un autre moteur de carte, à la prochaine création de celle-ci. */

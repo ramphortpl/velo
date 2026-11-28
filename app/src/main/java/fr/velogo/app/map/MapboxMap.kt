@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.location.Location
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
 import androidx.compose.foundation.layout.Box
@@ -40,12 +41,14 @@ import com.mapbox.maps.EdgeInsets
 import com.mapbox.maps.ImageHolder
 import com.mapbox.maps.LayerPosition
 import com.mapbox.maps.MapInitOptions
+import com.mapbox.maps.MapLoadingErrorType
 import com.mapbox.maps.MapView
 import com.mapbox.maps.MapboxMap
 import com.mapbox.maps.RenderedQueryGeometry
 import com.mapbox.maps.RenderedQueryOptions
 import com.mapbox.maps.ScreenBox
 import com.mapbox.maps.ScreenCoordinate
+import com.mapbox.maps.SourceDataLoadedType
 import com.mapbox.maps.Style
 import com.mapbox.maps.extension.localization.localizeLabels
 import com.mapbox.maps.extension.style.expressions.generated.Expression
@@ -149,6 +152,23 @@ class MapboxMapState : MapPilot {
     override var onUserMove: (() -> Unit)? = null
     override var onRouteTapped: ((Int) -> Unit)? = null
 
+    /**
+     * Appelé quand Mapbox refuse d'envoyer le fond affiché : limite du compte de l'appli atteinte, service auquel
+     * ce compte n'a pas droit (ses images satellite, sans moyen de paiement), jeton retiré. L'écran revient alors
+     * à une carte qui marche et le dit, au lieu de laisser une carte noire.
+     */
+    var onRefused: (() -> Unit)? = null
+
+    /** Les refus de Mapbox pour le fond affiché ; n'est touché que sur le fil principal. */
+    private val refusals = RefusalWatch()
+    private var refusalReported = false
+
+    /** Marque les vérifications de refus programmées, pour les annuler quand le fond change ou que la carte s'en va. */
+    private val refusalChecks = Any()
+
+    /** Sources du fond affiché dont une tuile au moins est arrivée (pour ne le noter qu'une fois dans le journal). */
+    private val servedOnce = HashSet<String>()
+
     /** Vue à reprendre à la prochaine création de la carte (on vient de l'autre moteur), ou null. */
     private var handover: MapCamera? = null
     private var topInsetPx = 0
@@ -160,6 +180,7 @@ class MapboxMapState : MapPilot {
     private var navBottomPx = 0
 
     private var errors: Cancelable? = null
+    private var tileLoads: Cancelable? = null
     private val main = Handler(Looper.getMainLooper())
 
     /**
@@ -245,12 +266,9 @@ class MapboxMapState : MapPilot {
                     .build()
             )
         }
-        handover?.let { camera ->
-            runCatching {
-                map.setCamera(CameraOptions.Builder().center(camera.center.toPoint()).zoom(camera.zoom).bearing(0.0).pitch(0.0).build())
-            }
-            handover = null
-        }
+        // La vue laissée par l'autre moteur : tout de suite pour le centre et le zoom, et de nouveau avec ses marges
+        // dès que la carte connaît sa taille (avant, des marges n'ont pas de sens pour elle).
+        applyHandover(final = view.width > 0 && view.height > 0)
         val gestures = view.gestures
         gestures.updateSettings { pitchEnabled = false }
         gestures.addOnMapLongClickListener { point ->
@@ -285,6 +303,18 @@ class MapboxMapState : MapPilot {
         applyOrnaments()
         errors = map.subscribeMapLoadingError { error ->
             Log.w(TAG, "Carte Mapbox : ${error.type} ${error.message}")
+            if (RefusalWatch.isRefusal(error.message)) {
+                val type = error.type
+                val source = error.sourceId
+                main.post { noteRefusal(map, type, source) }
+            }
+        }
+        // Le kit n'annonce une tuile que lorsqu'elle est arrivée et lue : c'est la preuve que Mapbox sert cette source.
+        tileLoads = map.subscribeSourceDataLoaded { event ->
+            if (event.type == SourceDataLoadedType.TILE) {
+                val source = event.sourceId
+                main.post { if (this.map === map) noteServed(source) }
+            }
         }
         applyRendering()
         // La création s'est bien passée ; l'affichage ne compte pour le fusible que pendant que la carte est dessinée.
@@ -300,7 +330,11 @@ class MapboxMapState : MapPilot {
 
     internal fun detach() {
         runCatching { errors?.cancel() }
+        runCatching { tileLoads?.cancel() }
         errors = null
+        tileLoads = null
+        main.removeCallbacksAndMessages(refusalChecks)
+        refusals.reset()
         context?.let { closeDisplay(it) }
         rendering = false
         followState = null
@@ -367,6 +401,10 @@ class MapboxMapState : MapPilot {
         isStyleLoaded = false
         appliedChunks = -1
         appliedDoneChunks = -1
+        main.removeCallbacksAndMessages(refusalChecks)
+        refusals.reset()
+        servedOnce.clear()
+        refusalReported = false
         map.loadStyle(uri) { loaded ->
             // Un autre fond a pu être demandé entre-temps, ou la carte détruite : seul le dernier compte.
             if (this.spec != spec || this.map !== map) return@loadStyle
@@ -385,6 +423,49 @@ class MapboxMapState : MapPilot {
             if (rendering) location?.let { pushLocation(it) }
             pendingFit?.let { fit(it.box, it.paddingPx, it.topPx, it.bottomPx, it.endPx, animate = false) }
         }
+    }
+
+    /**
+     * Mapbox a refusé quelque chose du fond affiché (voir [RefusalWatch]). Le fond lui-même : rien ne s'affichera,
+     * l'écran est prévenu tout de suite. Une tuile, ou la description d'une source : on compte, et si la source
+     * atteint le seuil on vérifie un instant plus tard que rien n'est arrivé d'elle. Polices et icônes refusées
+     * laissent une carte lisible : on ne s'en occupe pas.
+     */
+    private fun noteRefusal(from: MapboxMap, type: MapLoadingErrorType, sourceId: String?) {
+        if (map !== from || refusalReported) return
+        when (type) {
+            MapLoadingErrorType.STYLE -> reportRefusal("le fond lui-même")
+            MapLoadingErrorType.TILE, MapLoadingErrorType.SOURCE -> {
+                // Le kit nomme la source d'une tuile refusée ; s'il ne le faisait pas, les refus seraient comptés ensemble.
+                val source = sourceId.orEmpty()
+                val whole = type == MapLoadingErrorType.SOURCE
+                if (!refusals.refused(source, SystemClock.uptimeMillis(), whole)) return
+                val check = Runnable {
+                    // Un refus arrivé en retard pour le fond précédent ne dit rien de celui-ci : la source doit en faire partie.
+                    val known = source.isEmpty() || runCatching { from.styleSourceExists(source) }.getOrDefault(false)
+                    if (map === from && known && refusals.isHopeless(source, SystemClock.uptimeMillis())) reportRefusal("la source « $source »")
+                }
+                main.postAtTime(check, refusalChecks, SystemClock.uptimeMillis() + RefusalWatch.GRACE_MS + 50)
+            }
+            else -> Unit
+        }
+    }
+
+    /** Une tuile de [source] est arrivée. La première de chaque source du fond est notée dans le journal. */
+    private fun noteServed(source: String) {
+        // Nos propres tracés ne viennent pas de Mapbox : ils ne prouvent rien.
+        if (source in SOURCES) return
+        refusals.served(source)
+        // Des refus sans nom de source ne peuvent être attribués à aucune : toute tuile arrivée les efface.
+        refusals.served("")
+        if (servedOnce.add(source)) Log.d(TAG, "Carte Mapbox : la source « $source » envoie ses tuiles")
+    }
+
+    private fun reportRefusal(what: String) {
+        if (refusalReported) return
+        refusalReported = true
+        Log.w(TAG, "Carte Mapbox refusée par Mapbox : $what")
+        onRefused?.invoke()
     }
 
     private fun installOverlays(style: Style) {
@@ -624,7 +705,7 @@ class MapboxMapState : MapPilot {
 
     /** Où regarde la carte en ce moment, pour que l'autre moteur reprenne la même vue. */
     internal fun camera(): MapCamera? = map?.let { m -> runCatching { m.cameraState }.getOrNull() }?.let { state ->
-        MapCamera(LatLon(state.center.latitude(), state.center.longitude()), state.zoom, state.bearing)
+        MapCamera(LatLon(state.center.latitude(), state.center.longitude()), state.zoom, state.bearing, state.padding.toMapPadding())
     }
 
     /** Reprend la vue et le suivi laissés par l'autre moteur, à la prochaine création de cette carte. */
@@ -785,8 +866,26 @@ class MapboxMapState : MapPilot {
         }
     }
 
+    /**
+     * Reprend la vue laissée par l'autre moteur. [final] : la carte connaît sa taille, les marges peuvent être
+     * données et la reprise est terminée ; sinon seuls le centre et le zoom sont posés, en attendant.
+     */
+    private fun applyHandover(final: Boolean) {
+        val camera = handover ?: return
+        val map = map ?: return
+        val options = CameraOptions.Builder().center(camera.center.toPoint()).zoom(camera.zoom).bearing(0.0).pitch(0.0)
+        if (final) {
+            options.padding(camera.padding.toEdgeInsets())
+            handover = null
+        }
+        // Si la carte suit déjà la position, c'est le suivi qui commande : la vue reprise ne sert qu'à en partir.
+        if (final && followState != null) return
+        runCatching { map.setCamera(options.build()) }
+    }
+
     /** La carte a changé de taille (écran tourné, fenêtre redimensionnée) : marges et point de zoom sont à refaire. */
     private fun onResized() {
+        if ((mapView?.width ?: 0) > 0) applyHandover(final = true)
         val state = followState
         if (state != null && navigation && isFollowing) {
             runCatching { state.options = state.options.toBuilder().padding(trackingPadding()).build() }
@@ -944,6 +1043,11 @@ class MapboxMapState : MapPilot {
     }
 
     private fun LatLon.toPoint(): Point = Point.fromLngLat(lon, lat)
+
+    // Les marges du kit de Mapbox se donnent dans l'ordre haut, gauche, bas, droite ; les nôtres, gauche, haut, droite, bas.
+    private fun MapPadding.toEdgeInsets(): EdgeInsets = EdgeInsets(top, left, bottom, right)
+
+    private fun EdgeInsets.toMapPadding(): MapPadding = MapPadding(left = left, top = top, right = right, bottom = bottom)
 
     internal companion object {
         private const val TAG = "VeloGoMapbox"

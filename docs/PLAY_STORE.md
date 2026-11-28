@@ -224,7 +224,7 @@ trois points sont à surveiller si l'appli a du succès.
 | IGN (Plan IGN, photos, adresses, altitude) | Autorisée, « à des fins commerciales ou non », sans clé | Rien : les limites sont comptées par téléphone. |
 | Protomaps et Mapterhorn (cartes hors ligne) | Redistribution permise | Rien. |
 | Mapterhorn (relief du fond « Plan », depuis la version 0.8) | Leur serveur de tuiles est ouvert à tous, « for commercial and non-commercial purposes », sans limite annoncée (relevé le 27 novembre 2026) | Rien pour l'instant : c'est un projet bénévole hébergé gracieusement. S'il fermait son serveur, le plan s'afficherait sans ses ombres, rien de plus. |
-| **Mapbox (fonds « Mapbox » et « Mapbox Satellite », depuis la version 0.9)** | Autorisée avec ton compte Mapbox et son jeton public. **Sans moyen de paiement dans le compte : 100 appareils par mois** ; avec une carte bancaire : gratuit jusqu'à 25 000 appareils par mois, puis 4 $ les 1 000 (prix relevés le 27 novembre 2026) | **C'est le seul service de l'appli qui peut devenir payant.** Seuls comptent les appareils qui affichent un fond Mapbox dans le mois (le plan de VeloGo reste le fond de départ). À surveiller dans ton compte Mapbox (page « Statistics ») ; au-delà de 100, il faut y mettre une carte bancaire ou retirer le secret `MAPBOX_ACCESS_TOKEN`, et les fonds Mapbox disparaissent de la version suivante. Interdit par Mapbox : ouvrir plusieurs comptes pour rester sous les seuils. |
+| **Mapbox (fond « Mapbox », et « Mapbox Satellite » si ton compte y donne droit, depuis la version 0.9)** | Autorisée avec ton compte Mapbox et son jeton public. **Sans moyen de paiement, ton compte est un compte d'essai : 100 appareils par mois, pas d'images satellite, et une fin d'essai dont Mapbox ne donne pas la date** ; avec un moyen de paiement : gratuit jusqu'à 25 000 appareils par mois, puis 4 $ les 1 000 (relevé les 27 et 28 novembre 2026) | **C'est le seul service de l'appli qui peut devenir payant.** Seuls comptent les appareils qui affichent un fond Mapbox dans le mois (le plan de VeloGo reste le fond de départ). À surveiller dans ton compte Mapbox ; quand une limite est atteinte, Mapbox te prévient par e-mail et refuse d'envoyer ses cartes : l'appli le dit alors à l'utilisateur et revient d'elle-même à son plan. Pour aller plus loin, il faut un moyen de paiement dans le compte (voir plus bas ce qu'il faut répondre pour le jeton), ou retirer le secret `MAPBOX_ACCESS_TOKEN` : les fonds Mapbox disparaissent alors de la version suivante. Interdit par Mapbox : ouvrir plusieurs comptes pour rester sous les seuils. |
 | **Open-Meteo (météo)** | Gratuite pour une appli **sans publicité ni abonnement** | Au-delà de **10 000 demandes par jour pour toute l'appli** (quelques centaines de cyclistes qui roulent le même jour), ils demandent qu'on leur écrive (info@open-meteo.com). Avec de la publicité ou un abonnement, l'offre payante devient obligatoire (29 $ par mois en 2023, prix actuel non vérifié). |
 | **CyclOSM (serveurs d'OpenStreetMap France)** | Tolérée pour une appli gratuite, sans but lucratif, au « trafic modéré » | Aucun chiffre n'est donné, et ils peuvent couper l'accès sans préavis. Si l'appli dépasse quelques centaines d'utilisateurs, leur écrire (openstreetmap.fr) ou retirer ce fond : la carte « Vélo hors ligne » montre les mêmes aménagements sans dépendre d'eux. |
 | **GitHub (cartes hors ligne, APK)** | C'est l'usage prévu des « Releases », sans limite publiée | Une clause leur permet de freiner un dépôt dont le trafic serait « nettement excessif ». Avec des milliers de téléchargements de régions, il faudrait un autre hébergement. |
@@ -238,6 +238,25 @@ le fond CyclOSM ne seraient plus permis tels quels, et Google te demanderait de 
   `MAPBOX_ACCESS_TOKEN`. Il n'est écrit ni dans le dépôt ni dans les journaux de fabrication. Un jeton public se
   retrouve forcément dans une appli publiée : c'est prévu par Mapbox, et il ne donne accès qu'à l'affichage des
   cartes. Ne mets jamais un jeton secret (`sk.`) dans ce secret : la fabrication le refuse et te prévient.
+- **Ton compte est un compte d'essai tant qu'il n'a pas de moyen de paiement** (page d'inscription de Mapbox,
+  relevée le 28 novembre 2026). Ses limites « peuvent changer » : 100 appareils par mois pour les cartes sur
+  mobile ; 20 000 demandes par mois à son service de tuiles (Mapbox ne dit pas si celles de son logiciel pour
+  mobile y sont comptées) ; des débits plus bas ; pas d'images satellite ; un seul jeton, qu'on ne peut ni
+  recréer ni supprimer ; et une « fin de l'essai » dont la page ne donne pas la durée. Quand une limite ou la fin
+  de l'essai est atteinte, Mapbox envoie un e-mail, affiche une alerte dans sa console et cesse d'envoyer ses
+  cartes. Dans l'appli, rien ne casse : elle affiche « Mapbox n'envoie pas cette carte… » et revient à son plan.
+- **Les images satellite.** Mapbox ne les envoie qu'aux comptes qui ont un moyen de paiement (« Adding a payment
+  method unlocks the Raster Tiles API »). Vu sur l'émulateur avec ton jeton : chaque image est refusée. Le fond
+  « Mapbox Satellite » n'est donc pas proposé. Pour l'ajouter le jour où ton compte y a droit : dans le dépôt,
+  **Settings > Secrets and variables > Actions**, onglet **Variables**, **New repository variable**, nom
+  `MAPBOX_SATELLITE`, valeur `oui` ; il sera dans la version suivante. En attendant, l'appli a les photos
+  aériennes de l'IGN.
+- **Si tu ajoutes un moyen de paiement, garde le jeton.** Mapbox demande alors quoi faire du jeton d'essai.
+  « Rotate token », qu'il recommande, le remplace : l'ancien cesse de marcher, et toutes les applis déjà
+  installées perdent les cartes Mapbox (elles reviennent à leur plan) jusqu'à ce qu'une nouvelle version, fabriquée
+  avec le nouveau jeton, soit installée. « Keep token » ne casse rien. Si tu veux tout de même changer de jeton
+  plus tard : mets le nouveau dans le secret `MAPBOX_ACCESS_TOKEN`, publie une version, et ne supprime l'ancien
+  que lorsque plus personne n'utilise les versions d'avant.
 - **L'accord des utilisateurs.** Les conditions de Mapbox demandent de recueillir l'accord des utilisateurs là où
   la loi l'exige pour la position, et de leur laisser refuser les statistiques. L'appli le fait : une fenêtre
   avant la première carte Mapbox, statistiques refusées au départ, et le bouton d'information de Mapbox sur sa

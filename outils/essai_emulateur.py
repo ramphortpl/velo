@@ -41,6 +41,9 @@ APPROXIMATE_ACCURACY_M = 40
 # cartes dans le mois, et chaque émulateur neuf en est un de plus.
 MAPBOX_TOKEN = os.environ.get("VELOGO_MAPBOX_JETON", "non") == "oui"
 MAPBOX_SHOW = MAPBOX_TOKEN and os.environ.get("VELOGO_MAPBOX_AFFICHER", "non") == "oui"
+# Le fond « Mapbox Satellite » n'est dans l'appli que si la fabrication l'a demandé : Mapbox n'envoie ses images
+# satellite qu'aux comptes qui ont un moyen de paiement.
+MAPBOX_SATELLITE = MAPBOX_TOKEN and os.environ.get("VELOGO_MAPBOX_SATELLITE", "non") == "oui"
 MAPBOX_LOG_TAG = "VeloGoMapbox"
 
 failures = []
@@ -722,8 +725,13 @@ def mapbox_offer():
         shell("input keyevent KEYCODE_BACK")
         time.sleep(1)
         return
-    if not find("Mapbox Satellite"):
-        fail("le fond « Mapbox Satellite » n'est pas proposé à côté de « Mapbox »")
+    satellite = find("Mapbox Satellite") is not None
+    if MAPBOX_SATELLITE and not satellite:
+        fail("le fond « Mapbox Satellite » n'est pas proposé alors que la fabrication l'a demandé")
+    elif satellite and not MAPBOX_SATELLITE:
+        fail("le fond « Mapbox Satellite » est proposé alors que la fabrication ne l'a pas demandé")
+    elif not satellite:
+        log("constat : « Mapbox Satellite » n'est pas proposé (c'est ce qui est attendu sans la variable MAPBOX_SATELLITE)")
     # Tous les fonds doivent se voir d'un coup sur cet écran : la liste s'ouvre en entier.
     if not find("Vélo hors ligne"):
         log("constat : le dernier fond de la liste (« Vélo hors ligne ») n'est pas à l'écran sans la faire défiler")
@@ -776,10 +784,16 @@ def mapbox_display(gps, restore):
     for line in said:
         log(f"journal : {line.strip()[:260]}")
     errors = [line for line in said if "Carte Mapbox :" in line]
-    if any("Carte Mapbox : STYLE" in line for line in errors):
+    # Le kit nomme ses erreurs « Style », « Tile », « Source »… (relevé à la fabrication n° 39).
+    if any("carte mapbox : style" in line.lower() for line in errors):
         fail("le fond de carte Mapbox ne se charge pas (jeton refusé ? voir les lignes « journal » ci-dessus)")
     elif errors:
         log(f"constat : {len(errors)} élément(s) de la carte Mapbox non chargé(s) (tuiles, polices) : voir le journal")
+    if any("refusée par Mapbox" in line for line in said) or find("Mapbox n'envoie pas", exact=False):
+        fail("Mapbox refuse d'envoyer sa carte de plein air à l'appli (limite du compte atteinte ?) : la suite de l'essai Mapbox est abandonnée")
+        shot("mapbox_refusee")
+        pick_layer(restore)
+        return
     # La mention des sources qu'écrit l'appli sur ses autres fonds commence toujours par « © » ; Mapbox pose la
     # sienne lui-même (son logo et son bouton d'information, qu'on vérifie sur les captures).
     if find("© OpenStreetMap", exact=False):
@@ -815,12 +829,11 @@ def mapbox_display(gps, restore):
         fail("le trajet n'est plus prêt à être suivi après le passage à la carte Mapbox")
     check_alive("après le guidage sur la carte Mapbox")
 
-    # Les images satellite, puis retour au fond d'avant : la suite de l'essai se fait sans Mapbox.
-    if pick_layer("Mapbox Satellite"):
-        time.sleep(15)
-        gps.stand(3)
-        shot("mapbox_satellite")
-        check_alive("avec le fond Mapbox Satellite")
+    # Les images satellite, quand l'appli les propose. Mapbox ne les envoie qu'aux comptes qui ont un moyen de
+    # paiement : s'il les refuse, l'appli doit le dire et revenir d'elle-même à son plan, pas rester sur une carte noire.
+    if MAPBOX_SATELLITE:
+        mapbox_satellite(gps)
+    # Retour au fond d'avant : la suite de l'essai se fait sans Mapbox.
     if pick_layer(restore):
         time.sleep(8)
         gps.stand(3)
@@ -831,6 +844,44 @@ def mapbox_display(gps, restore):
             fail(f"de retour sur le fond {restore}, la mention des sources de la carte n'est plus affichée")
     for line in mapbox_log()[already + len(said):]:
         log(f"journal : {line.strip()[:260]}")
+
+
+def mapbox_satellite(gps):
+    """Le fond « Mapbox Satellite » : ou bien Mapbox envoie ses images, ou bien il les refuse (compte sans moyen de
+    paiement) et l'appli doit alors le dire et revenir à son plan. Les deux issues sont bonnes ; une carte laissée
+    noire ne l'est pas."""
+    before = len(mapbox_log())
+    if not pick_layer("Mapbox Satellite"):
+        return
+    # Le message de l'appli ne reste qu'une dizaine de secondes : on le guette dès maintenant.
+    told = wait_for("Mapbox n'envoie pas", 30, exact=False)
+    shot("mapbox_satellite")
+    said = mapbox_log()[before:]
+    refusals = [line for line in said if "status code 4" in line]
+    gave_up = any("refusée par Mapbox" in line for line in said)
+    for line in said[:6] + [line for line in said[6:] if "refusée par Mapbox" in line]:
+        log(f"journal : {line.strip()[:260]}")
+    if not check_alive("avec le fond Mapbox Satellite"):
+        return
+    if told or gave_up:
+        log(f"constat : Mapbox refuse ses images satellite à ce compte ({len(refusals)} refus dans le journal) ; l'appli l'a dit et a quitté ce fond")
+        if not told:
+            log("constat : le message « Mapbox n'envoie pas cette carte » n'a pas été vu à l'écran (il ne reste que dix secondes)")
+        if not gave_up:
+            fail("l'appli annonce le refus de Mapbox sans l'avoir noté dans son journal")
+        time.sleep(4)
+        gps.stand(3)
+        shot("mapbox_satellite_refuse")
+        # Revenue à son plan, l'appli écrit de nouveau la mention des sources de la carte.
+        if not find("© OpenMapTiles", exact=False):
+            fail("après le refus de Mapbox, l'appli n'est pas revenue à son plan (mention « © OpenMapTiles » absente)")
+    elif len(refusals) >= 4:
+        fail(f"Mapbox refuse les images satellite ({len(refusals)} refus dans le journal) et l'appli reste sur ce fond sans rien dire")
+    else:
+        time.sleep(8)
+        gps.stand(3)
+        shot("mapbox_satellite_images")
+        log("constat : Mapbox envoie ses images satellite à ce compte, le fond s'affiche")
 
 
 def route_by_address(gps):

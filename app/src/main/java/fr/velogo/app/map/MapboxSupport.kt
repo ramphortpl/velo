@@ -32,6 +32,12 @@ object MapboxSupport {
      */
     val token: String get() = BuildConfig.MAPBOX_TOKEN
 
+    /**
+     * Vrai si le fond satellite de Mapbox est proposé : la fabrication l'a demandé (`MAPBOX_SATELLITE=oui`), parce
+     * que le compte Mapbox de l'appli a un moyen de paiement. Sans cela, Mapbox refuse ses images satellite.
+     */
+    val satellite: Boolean get() = BuildConfig.MAPBOX_SATELLITE
+
     @Volatile
     private var ready = false
 

@@ -2,15 +2,18 @@
 
 ## Version 0.9 — Les cartes de Mapbox
 
-### Deux nouveaux fonds de carte
+### Un nouveau fond de carte
 
 - **« Mapbox »** : la carte de plein air de Mapbox, celle dont part Strava. Sentiers, relief, courbes de niveau ;
   en thème sombre, sa carte sombre.
-- **« Mapbox Satellite »** : les images satellite de Mapbox, avec les routes et les noms.
 
-Ils se choisissent avec le bouton des fonds de carte, comme les autres. Tout s'y dessine de la même façon : ta
+Il se choisit avec le bouton des fonds de carte, comme les autres. Tout s'y dessine de la même façon : ta
 position, la trace de la sortie, les itinéraires proposés, les étapes numérotées, le guidage avec sa flèche de
 manœuvre et la partie parcourue en gris.
+
+**« Mapbox Satellite » attendra.** Le fond est prêt (les images satellite de Mapbox, avec les routes et les noms),
+mais Mapbox n'envoie ses images satellite qu'aux comptes qui ont un moyen de paiement, et celui de l'appli n'en a
+pas : il n'est donc pas proposé pour l'instant. Les photos aériennes de l'IGN, elles, sont toujours là.
 
 ### Ce qu'il faut savoir
 
@@ -25,8 +28,13 @@ manœuvre et la partie parcourue en gris.
 - Le détail d'une sortie et l'affiche à partager gardent le plan de VeloGo, même quand un fond Mapbox est choisi.
 - Sur la carte de Mapbox, zoomer avec deux doigts laisse la carte suivre ta position ; la faire glisser arrête le
   suivi, et le bouton de position (ou « Recentrer » pendant un guidage) y ramène.
-- Si une carte Mapbox ne pouvait pas s'afficher sur un téléphone, l'appli reviendrait d'elle-même à son plan, sans
+- **Si Mapbox refuse d'envoyer sa carte**, l'appli le dit et revient d'elle-même à son plan, au lieu de rester
+  sur une carte vide. Cela peut arriver : le compte Mapbox de l'appli a une limite d'utilisation chaque mois. Tu
+  peux rechoisir « Mapbox » plus tard.
+- Si une carte Mapbox ne pouvait pas s'afficher sur un téléphone, l'appli reviendrait de même à son plan, sans
   rien perdre.
+- Changer de fond garde la vue : un trajet cadré au-dessus du panneau d'itinéraire le reste en passant à Mapbox
+  ou en en revenant.
 - L'APK passe de 16 à 19 Mo : il contient maintenant le moteur de carte de Mapbox.
 
 ### Bon à savoir

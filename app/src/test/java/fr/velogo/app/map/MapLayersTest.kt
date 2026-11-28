@@ -69,10 +69,12 @@ class MapLayersTest {
 
     @Test
     fun `les fonds de mapbox ne sont proposes que si l'appli peut les afficher`() {
-        assertEquals(MapLayers.ALL, MapLayers.offered(mapbox = true))
+        assertEquals(MapLayers.ALL, MapLayers.offered(mapbox = true, satellite = true))
         val without = MapLayers.offered(mapbox = false)
         assertTrue(without.none { it.engine == MapEngine.MAPBOX })
         assertEquals(MapLayers.ALL.size - 2, without.size)
+        // Le fond satellite ne vient jamais seul : sans les cartes de Mapbox, il n'est pas proposé non plus.
+        assertEquals(without, MapLayers.offered(mapbox = false, satellite = true))
         // Le plan de VeloGo reste le premier de la liste, et le fond d'une première installation.
         assertEquals(MapLayers.OPENFREEMAP, without.first())
         assertEquals(MapLayers.OPENFREEMAP, MapLayers.offered(mapbox = true).first())
@@ -85,11 +87,28 @@ class MapLayersTest {
         assertEquals(MapLayers.OPENFREEMAP, MapLayers.effective("mapbox", 1, offlineInstalled = true))
         assertEquals(MapLayers.OPENFREEMAP, MapLayers.effective("mapbox_satellite", 1, offlineInstalled = false, mapbox = false))
         assertEquals(MapLayers.MAPBOX, MapLayers.effective("mapbox", 1, offlineInstalled = false, mapbox = true))
-        assertEquals(MapLayers.MAPBOX_SATELLITE, MapLayers.effective("mapbox_satellite", 0, offlineInstalled = false, mapbox = true))
+        assertEquals(MapLayers.MAPBOX_SATELLITE, MapLayers.effective("mapbox_satellite", 0, offlineInstalled = false, mapbox = true, satellite = true))
         // Les autres fonds ne sont pas concernés.
         assertEquals(MapLayers.CYCLOSM, MapLayers.effective("cyclosm", 1, offlineInstalled = false, mapbox = true))
         assertEquals(MapLayers.OPENFREEMAP, MapLayers.effective("hors_ligne", 1, offlineInstalled = false, mapbox = true))
         assertEquals(MapLayers.OFFLINE, MapLayers.effective("hors_ligne", 1, offlineInstalled = true))
+    }
+
+    @Test
+    fun `le fond satellite de mapbox n'est propose que si la fabrication l'a demande`() {
+        // Mapbox n'envoie ses images satellite qu'aux comptes qui ont un moyen de paiement : sans cela, pas de fond.
+        val trial = MapLayers.offered(mapbox = true)
+        assertTrue(MapLayers.MAPBOX in trial)
+        assertFalse(MapLayers.MAPBOX_SATELLITE in trial)
+        assertEquals(MapLayers.ALL.size - 1, trial.size)
+        assertTrue(MapLayers.MAPBOX_SATELLITE in MapLayers.offered(mapbox = true, satellite = true))
+        // Choisi dans une version qui le proposait, puis plus proposé : la carte de plein air de Mapbox le remplace.
+        assertEquals(MapLayers.MAPBOX, MapLayers.effective("mapbox_satellite", 1, offlineInstalled = false, mapbox = true))
+        assertEquals(MapLayers.MAPBOX_SATELLITE, MapLayers.effective("mapbox_satellite", 1, offlineInstalled = false, mapbox = true, satellite = true))
+        // Sans les cartes de Mapbox, c'est le plan de VeloGo, fond satellite demandé ou non.
+        assertEquals(MapLayers.OPENFREEMAP, MapLayers.effective("mapbox_satellite", 1, offlineInstalled = false, mapbox = false, satellite = true))
+        // Les tests tournent sans jeton et sans cette demande : rien de Mapbox n'y est proposé.
+        assertFalse(MapboxSupport.satellite)
     }
 
     @Test

@@ -81,6 +81,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -230,7 +231,7 @@ fun RideScreen(
     val mapboxWanted = MapLayers.byId(settings.mapLayer).engine == MapEngine.MAPBOX
     val mapboxBlown = mapboxOffered && mapboxWanted && MapboxSupport.isBlown(context)
     val mapboxShown = mapboxOffered && mapboxWanted && settings.mapboxConsent && !mapboxBlown && MapboxSupport.ensure(context)
-    val layer = MapLayers.effective(settings.mapLayer, offlineRevision, offlineInstalled, mapbox = mapboxShown)
+    val layer = MapLayers.effective(settings.mapLayer, offlineRevision, offlineInstalled, mapbox = mapboxShown, satellite = MapboxSupport.satellite)
     val spec = remember(layer, dark, offlineRevision) { MapStyleSpec(layer, dark, if (layer.offline) offlineRevision else 0) }
     /** Le fond Mapbox qu'on vient de choisir sans avoir encore donné son accord : la question est posée. */
     var mapboxAsked by remember { mutableStateOf<MapLayer?>(null) }
@@ -435,9 +436,19 @@ fun RideScreen(
     DisposableEffect(mapState) {
         mapState.onUserMove = { if (planner.open && planner.options.isNotEmpty() && plannerExpanded) plannerExpanded = false }
         mapState.onRouteTapped = { index -> if (planner.open) navigation.select(index) }
+        // Mapbox refuse d'envoyer sa carte (limite du compte de l'appli, service auquel il n'a pas droit) : plutôt
+        // qu'une carte noire, on revient au plan et on le dit, assez longtemps pour être lu.
+        mapState.onMapboxRefused = {
+            vm.setMapLayer(MapLayers.OPENFREEMAP.id)
+            scope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                snackbar.showSnackbar(MAPBOX_REFUSED, duration = SnackbarDuration.Long)
+            }
+        }
         onDispose {
             mapState.onUserMove = null
             mapState.onRouteTapped = null
+            mapState.onMapboxRefused = null
         }
     }
     // Un appui long sur la carte place un point d'itinéraire.
@@ -914,7 +925,7 @@ fun RideScreen(
         // Ouverte en entier : à mi-hauteur, la liste s'arrêtait au quatrième fond et cachait les suivants.
         ModalBottomSheet(onDismissRequest = { showLayers = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             MapLayersContent(
-                layers = MapLayers.offered(mapboxOffered),
+                layers = MapLayers.offered(mapboxOffered, MapboxSupport.satellite),
                 selectedId = layer.id,
                 offlineInstalled = offlineInstalled,
                 onPick = { candidate ->
@@ -981,6 +992,9 @@ fun RideScreen(
 
 /** Un itinéraire à partager, avec ce que son affiche annonce au départ (l'utilisateur peut le changer). */
 private class ShareTarget(val route: Route, val title: String, val subtitle: String)
+
+/** Dit quand Mapbox refuse d'envoyer sa carte et que l'appli revient à son plan. */
+const val MAPBOX_REFUSED = "Mapbox n'envoie pas cette carte : la limite du compte de l'appli est sans doute atteinte. Retour au plan de VeloGo."
 
 /** Les réglages d'une première installation, le temps que ceux du téléphone soient relus. */
 private val DEFAULT_SETTINGS = fr.velogo.app.data.Settings()

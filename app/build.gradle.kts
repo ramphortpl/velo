@@ -31,6 +31,11 @@ val mapboxToken = providers.environmentVariable("MAPBOX_ACCESS_TOKEN").orNull
     ?.takeIf { token -> token.startsWith("pk.") && token.all { it.isLetterOrDigit() || it in "._-" } }
     ?: ""
 
+// Images satellite de Mapbox : son service de tuiles en images n'est ouvert qu'aux comptes Mapbox qui ont un moyen
+// de paiement (avec un compte d'essai, chaque tuile est refusée et la carte reste noire). Le fond « Mapbox Satellite »
+// n'est donc proposé que si la fabrication le demande : MAPBOX_SATELLITE=oui (variable du dépôt GitHub).
+val mapboxSatellite = providers.environmentVariable("MAPBOX_SATELLITE").orNull?.trim()?.lowercase() in setOf("oui", "true", "1", "yes")
+
 android {
     namespace = "fr.velogo.app"
     // Compose 1.13 exige le SDK 37.1 au minimum.
@@ -48,6 +53,7 @@ android {
         buildConfigField("String", "GITHUB_REPO", "\"${providers.gradleProperty("velogo.githubRepo").getOrElse("ramphortpl/velo")}\"")
         // Vide quand la fabrication n'a pas de jeton : l'appli ne propose alors pas les fonds Mapbox.
         buildConfigField("String", "MAPBOX_TOKEN", "\"$mapboxToken\"")
+        buildConfigField("boolean", "MAPBOX_SATELLITE", "$mapboxSatellite")
         ndk {
             // Le Galaxy A05s (comme tous les téléphones récents) est en arm64.
             abiFilters += "arm64-v8a"

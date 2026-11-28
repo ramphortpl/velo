@@ -84,6 +84,12 @@ object MapLayers {
         engine = MapEngine.MAPBOX,
     )
 
+    /**
+     * Les images satellite de Mapbox passent par son service de tuiles en images, que Mapbox n'ouvre qu'aux comptes
+     * qui ont un moyen de paiement : avec un compte d'essai, chaque tuile est refusée (« 429 », vu sur l'émulateur à
+     * la fabrication n° 39) et la carte reste noire. Ce fond n'est donc proposé que si la fabrication l'a demandé
+     * (`MAPBOX_SATELLITE`, voir [MapboxSupport.satellite]).
+     */
     val MAPBOX_SATELLITE = MapLayer(
         id = "mapbox_satellite",
         title = "Mapbox Satellite",
@@ -143,8 +149,17 @@ object MapLayers {
 
     fun byId(id: String?): MapLayer = ALL.firstOrNull { it.id == id } ?: OPENFREEMAP
 
-    /** Les fonds à proposer : ceux de Mapbox seulement si l'appli et l'appareil peuvent les afficher ([mapbox]). */
-    fun offered(mapbox: Boolean): List<MapLayer> = if (mapbox) ALL else ALL.filter { it.engine != MapEngine.MAPBOX }
+    /**
+     * Les fonds à proposer : ceux de Mapbox seulement si l'appli et l'appareil peuvent les afficher ([mapbox]), et
+     * son fond satellite seulement si le compte Mapbox de l'appli y donne droit ([satellite]).
+     */
+    fun offered(mapbox: Boolean, satellite: Boolean = false): List<MapLayer> = ALL.filter { shown(it, mapbox, satellite) }
+
+    private fun shown(layer: MapLayer, mapbox: Boolean, satellite: Boolean): Boolean = when {
+        layer.engine != MapEngine.MAPBOX -> true
+        layer == MAPBOX_SATELLITE -> mapbox && satellite
+        else -> mapbox
+    }
 
     /**
      * Fond réellement affiché. Si la carte hors ligne est choisie alors qu'aucune région n'est installée
@@ -152,13 +167,15 @@ object MapLayers {
      * [offlineRevision] vaut 0 tant que les cartes du téléphone n'ont pas encore été relues au démarrage.
      *
      * De même pour un fond Mapbox quand il ne peut pas être affiché ici ([mapbox] faux) : appli fabriquée sans
-     * jeton, accord pas encore donné, ou endroit de l'appli qui ne sait dessiner qu'avec MapLibre.
+     * jeton, accord pas encore donné, ou endroit de l'appli qui ne sait dessiner qu'avec MapLibre. Le fond satellite
+     * de Mapbox, s'il n'est pas (ou plus) proposé ([satellite] faux), laisse la place à sa carte de plein air.
      */
-    fun effective(id: String?, offlineRevision: Int, offlineInstalled: Boolean, mapbox: Boolean = false): MapLayer {
+    fun effective(id: String?, offlineRevision: Int, offlineInstalled: Boolean, mapbox: Boolean = false, satellite: Boolean = false): MapLayer {
         val chosen = byId(id)
         return when {
             chosen.offline && offlineRevision > 0 && !offlineInstalled -> OPENFREEMAP
             chosen.engine == MapEngine.MAPBOX && !mapbox -> OPENFREEMAP
+            chosen == MAPBOX_SATELLITE && !satellite -> MAPBOX
             else -> chosen
         }
     }

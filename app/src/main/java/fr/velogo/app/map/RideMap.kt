@@ -56,6 +56,13 @@ class RideMapState internal constructor(
             mapbox.onRouteTapped = value
         }
 
+    /** Appelé quand Mapbox refuse d'envoyer le fond affiché : voir [MapboxMapState.onRefused]. */
+    var onMapboxRefused: (() -> Unit)? = null
+        set(value) {
+            field = value
+            mapbox.onRefused = value
+        }
+
     /** Change de moteur : celui qui s'en va passe sa vue et son suivi à celui qui arrive. */
     internal fun switchTo(next: MapEngine) {
         if (next == engine) return

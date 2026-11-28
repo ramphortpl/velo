@@ -43,6 +43,28 @@ class RideMapStateTest {
     }
 
     @Test
+    fun `le refus de mapbox remonte a l'ecran`() {
+        val state = RideMapState()
+        var told = 0
+        state.onMapboxRefused = { told++ }
+        // C'est le pilote de Mapbox qui constate le refus ; l'écran n'a branché que la carte à deux moteurs.
+        state.mapbox.onRefused?.invoke()
+        assertEquals(1, told)
+        state.onMapboxRefused = null
+        assertNull(state.mapbox.onRefused)
+    }
+
+    @Test
+    fun `une vue se passe d'un moteur a l'autre avec ses marges`() {
+        // Sans marge par défaut : une carte suivie ou cadrée par Mapbox n'en a pas.
+        assertEquals(MapPadding.NONE, MapCamera(corte, 13.0).padding)
+        // Une carte cadrée au-dessus du panneau d'itinéraire garde sa marge du bas en changeant de moteur.
+        val framed = MapCamera(corte, 13.0, padding = MapPadding(left = 0.0, top = 180.0, right = 0.0, bottom = 620.0))
+        assertEquals(620.0, framed.padding.bottom, 0.0)
+        assertEquals(180.0, framed.padding.top, 0.0)
+    }
+
+    @Test
     fun `une carte deplacee le reste en changeant de moteur`() {
         val state = RideMapState()
         // Le moteur affiché a quitté le suivi (carte déplacée au doigt) ; celui qui prend la relève ne recentre pas.

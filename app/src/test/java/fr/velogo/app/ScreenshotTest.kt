@@ -690,7 +690,7 @@ class ScreenshotTest {
 
     @Test
     fun fonds_de_carte_avec_mapbox_sombre() =
-        layersImage("fonds_de_carte_mapbox_sombre", MapLayers.offered(mapbox = true), MapLayers.MAPBOX_SATELLITE, offlineInstalled = false, ThemeMode.DARK)
+        layersImage("fonds_de_carte_mapbox_sombre", MapLayers.offered(mapbox = true, satellite = true), MapLayers.MAPBOX_SATELLITE, offlineInstalled = false, ThemeMode.DARK)
 
     private fun mapboxConsentImage(name: String, statistics: Boolean, theme: ThemeMode = ThemeMode.LIGHT) = captureRoboImage("$OUT/$name.png") {
         VeloGoTheme(mode = theme) {

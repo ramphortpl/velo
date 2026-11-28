@@ -14,8 +14,19 @@ enum class MapEngine {
     MAPBOX,
 }
 
-/** Où regarde une carte : sert à passer d'un moteur à l'autre sans changer de vue. */
-data class MapCamera(val center: LatLon, val zoom: Double, val bearingDeg: Double = 0.0)
+/**
+ * Où regarde une carte : sert à passer d'un moteur à l'autre sans changer de vue. [center] est le point montré au
+ * milieu de ce que laissent les marges [padding] : une carte cadrée au-dessus du panneau d'itinéraire a une marge
+ * en bas, et sans elle la même vue se retrouverait décalée sous le panneau (vu sur l'émulateur, fabrication n° 39).
+ */
+data class MapCamera(val center: LatLon, val zoom: Double, val bearingDeg: Double = 0.0, val padding: MapPadding = MapPadding.NONE)
+
+/** Marges d'une carte, en pixels : la place de ce qui la recouvre sur chaque bord. */
+data class MapPadding(val left: Double, val top: Double, val right: Double, val bottom: Double) {
+    companion object {
+        val NONE = MapPadding(0.0, 0.0, 0.0, 0.0)
+    }
+}
 
 /**
  * Ce que l'écran « Rouler » demande à sa carte, quel que soit le moteur qui la dessine : ce qu'il faut y tracer,

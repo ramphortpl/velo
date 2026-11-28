@@ -24,7 +24,7 @@ simulée à Corte).*
   moyenne, max, pente, dénivelé, altitude), pause automatique, enregistrement écran éteint. La musique n'est
   jamais coupée.
 - **Cartes** : un plan dessiné pour l'appli (clair ou sombre, relief ombré, pistes cyclables en vert), les fonds
-  CyclOSM, Plan IGN et photos aériennes, les cartes de Mapbox si tu les veux (plein air et satellite), et une
+  CyclOSM, Plan IGN et photos aériennes, la carte de plein air de Mapbox si tu la veux, et une
   carte vélo **hors ligne** par région, aux couleurs du plan (pistes, voies vertes, véloroutes, revêtements, relief).
 - **Itinéraires** : calculés sur le téléphone, même sans réseau : le plus rapide, le plus sûr, le moins de dénivelé,
   pour vélo de route, VTC/gravel ou VTT. La carte se cadre en grand sur le trajet ; un appui sur un tracé le choisit.
@@ -86,9 +86,12 @@ Si le téléphone refuse l'installation :
   itinéraire) : là où elle ne connaît pas le nom d'une voie, la consigne s'en passe.
 - La carte et les itinéraires viennent d'OpenStreetMap, comme ceux de Strava, et la carte est dessinée par
   MapLibre, le moteur libre issu de celui de Mapbox.
-- Les cartes de Mapbox (celles qu'affiche Strava) sont proposées en plus, dans les fonds de carte : « Mapbox » et
-  « Mapbox Satellite ». Elles demandent du réseau et ton accord, car Mapbox voit alors la zone de carte que tu
-  regardes et compte les appareils qui affichent ses cartes ; les autres fonds ne lui envoient rien.
+- La carte de plein air de Mapbox (celle dont part Strava) est proposée en plus, dans les fonds de carte. Elle
+  demande du réseau et ton accord, car Mapbox voit alors la zone de carte que tu regardes et compte les appareils
+  qui affichent ses cartes ; les autres fonds ne lui envoient rien. Le compte Mapbox de l'appli a une limite
+  d'utilisation chaque mois : si Mapbox refuse d'envoyer sa carte, l'appli le dit et revient à son plan. Ses
+  images satellite (« Mapbox Satellite ») ne sont pas proposées pour l'instant : Mapbox les réserve aux comptes
+  qui ont un moyen de paiement.
 - Un trajet enregistré se suit tel quel, avec ses consignes : si tu t'en écartes, l'appli te prévient sans le
   recalculer.
 - L'affiche a besoin du réseau pour son fond de carte, sauf si le fond choisi est la carte « Vélo hors ligne » ;

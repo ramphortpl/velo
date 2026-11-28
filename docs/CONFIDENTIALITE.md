@@ -37,7 +37,7 @@ Ces services ont leurs propres règles de confidentialité, consultables sur leu
 
 ## Les cartes de Mapbox, si tu les choisis
 
-Deux fonds de carte, « Mapbox » et « Mapbox Satellite », sont fournis par Mapbox, une société américaine, et dessinés par son propre logiciel, inclus dans l'appli. Ce logiciel reste à l'arrêt tant que tu n'as pas choisi un de ces fonds et accepté la fenêtre qui te le demande. Avec les autres fonds de carte, rien n'est envoyé à Mapbox.
+Le fond de carte « Mapbox », et le fond « Mapbox Satellite » quand l'appli le propose, sont fournis par Mapbox, une société américaine, et dessinés par son propre logiciel, inclus dans l'appli. Ce logiciel reste à l'arrêt tant que tu n'as pas choisi un de ces fonds et accepté la fenêtre qui te le demande. Avec les autres fonds de carte, rien n'est envoyé à Mapbox.
 
 Tant qu'un fond Mapbox est affiché, Mapbox reçoit :
 

@@ -24,6 +24,7 @@ Ce fichier résume l'architecture et les décisions. Il est tenu à jour à chaq
 python3 outils/fiche_play.py   # longueurs des textes de la fiche Google Play (docs/play/fiche.md)
 python3 outils/controle_apk.py pages <apk|aab>         # chaque bibliothèque native accepte-t-elle les pages de 16 Ko ?
 python3 outils/controle_apk.py mapbox <apk|aab> <oui|non>  # le jeton Mapbox est-il dans l'appli quand il doit y être, et seulement alors ?
+python3 -m pyflakes outils/*.py   # avant de pousser un script : une faute de nom n'y apparaît sinon que sur l'émulateur (pip install pyflakes)
 cd cartes/style && npm install && npm run generer   # régénère les styles de la carte (assets/en-ligne, assets/hors-ligne)
 cd cartes/style && npm run controler                # les contrôle : spécification MapLibre, et ce qu'Android ne sait pas lire
 ```
@@ -105,6 +106,12 @@ pour l'envoi de la clé à Google, manuel).
   (`BuildConfig.MAPBOX_TOKEN`, donné par le secret `MAPBOX_ACCESS_TOKEN`) et que l'appareil annonce OpenGL ES 3
   (`isAvailable`) ; ils ne s'affichent qu'après l'accord de l'utilisateur (`Settings.mapboxConsent`,
   `MapboxConsentDialog`), et un fusible (`MapboxFuse`) les met de côté après deux affichages interrompus.
+  « Mapbox Satellite » n'est proposé que si la fabrication l'a demandé (variable du dépôt `MAPBOX_SATELLITE`,
+  `BuildConfig.MAPBOX_SATELLITE`, `MapboxSupport.satellite`, `MapLayers.offered` et `effective`) : Mapbox refuse ses
+  images satellite aux comptes sans moyen de paiement. Quand Mapbox refuse d'envoyer un fond (`RefusalWatch`,
+  `MapboxMapState.onRefused`, `RideMapState.onMapboxRefused`), l'écran revient au plan et le dit (`MAPBOX_REFUSED`).
+  La vue passée d'un moteur à l'autre porte ses marges (`MapCamera.padding`) : un trajet cadré au-dessus du
+  panneau d'itinéraire le reste.
   Le détail d'une sortie (`TrackMap`) et l'affiche (`RouteSnapshot`) restent dessinés par MapLibre : pour un fond
   Mapbox, `MapLayers.effective` leur rend le plan de VeloGo.
 - **Styles de carte** : le fond « Plan » (en ligne) et le fond « Vélo hors ligne » sont deux styles MapLibre
@@ -568,8 +575,12 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
     est réservé aux bibliothèques de Mapbox (`@RestrictTo`, erreur de lint `RestrictedApi`) : l'appli passe par la
     brique publique `MapTelemetryImpl` (module `com.mapbox.module:maps-telemetry-ndk27`, nommé pour cela dans les
     dépendances), celle dont se sert le bouton d'information ;
-  - **la position ne vient jamais de Mapbox** : `MapboxMapState.Provider` donne au kit les positions de l'appli
-    (`setLocationProvider`), comme à MapLibre. Le kit n'écoute ni le GPS ni les services de localisation ;
+  - **la carte de Mapbox reçoit sa position de l'appli** : `MapboxMapState.Provider` la lui donne
+    (`setLocationProvider`), comme à MapLibre ; la carte n'écoute ni le GPS ni les services de localisation. La
+    brique de statistiques du kit, elle, a sa propre écoute de la position, passive (elle ne demande rien au
+    téléphone, elle reçoit ce que d'autres demandent) : le journal de l'émulateur la montre démarrée
+    (`state == STARTED`), et, statistiques refusées, n'envoyant rien (« events dispatch disabled », « Failed to
+    flush 0 event(s) ») ;
   - **logo et bouton d'information de Mapbox toujours affichés**, à la place de la mention que l'écran écrit pour
     les autres fonds (`MapPilot.setOrnamentInsets`, `RideChrome` reçoit alors une mention vide) ;
   - **tracés sous le bloc de noms final** (`MapboxMapState.labelsAnchor`) et non sous la première couche de texte :
@@ -579,6 +590,26 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
     `gestures.focalPoint`), et faire glisser la carte l'arrête (`transitionsToIdleUponUserInteraction(false)`,
     `OnMoveListener`). Carte à plat (les fonds Mapbox s'ouvrent en globe vus de loin : projection Mercator
     forcée), noms en français (`localizeLabels`) ;
+  - **compte d'essai** (page d'inscription de Mapbox, relevée le 28/11/2026 ; « subject to change ») : sans moyen
+    de paiement, le compte de l'auteur est limité à 100 MAU par mois pour les kits mobiles, 20 000 demandes par
+    mois à l'API des tuiles vectorielles (la page ne dit pas si celles du kit y comptent), des débits plus bas,
+    **pas d'API des tuiles en images** (« Adding a payment method unlocks the Raster Tiles API »), un seul jeton
+    qu'on ne peut ni créer ni supprimer, et une « fin de l'essai » sans durée annoncée. À l'ajout d'un moyen de
+    paiement, Mapbox propose « Rotate token (Recommended) » (l'ancien jeton cesse de marcher : les applis déjà
+    installées perdraient leurs cartes Mapbox) ou « Keep token » : l'auteur est prévenu de garder le jeton
+    (`docs/PLAY_STORE.md`) ;
+  - **satellite sur demande seulement** : à la fabrication n° 39, chaque tuile satellite a été refusée (« Failed
+    to load tile: HTTP status code 429. Too Many Requests ») et la carte restait noire sous les noms. D'où la
+    variable `MAPBOX_SATELLITE` : absente, le fond n'est pas proposé, et un réglage qui le désignait retombe sur
+    la carte de plein air de Mapbox ;
+  - **un refus de Mapbox ramène au plan** (`RefusalWatch`) : le fond lui-même refusé (401, 403, 429), tout de
+    suite ; sinon quatre refus d'affilée pour une même source (tuiles, ou sa description : un seul suffit), puis
+    2,5 s sans qu'aucune tuile de cette source n'arrive. Une tuile arrivée (`subscribeSourceDataLoaded`, type
+    `TILE` : dans la lignée de ce moteur, une tuile en erreur n'y passe pas) remet le compte à zéro. Le délai
+    protège d'une salve de refus passagère (les débits sont limités, les réponses arrivent dans le désordre).
+    Polices et icônes refusées sont ignorées : la carte reste lisible. Le réglage est remis sur le plan, pour
+    que l'appli ne retente pas Mapbox à chaque ouverture ; l'utilisateur le rechoisit quand il veut. Les types
+    d'erreur du kit s'écrivent « Style », « Tile », « Source » dans le journal, pas en majuscules ;
   - **fusible** (`MapboxFuse`) : le moteur de Mapbox est du code natif jamais essayé sur le téléphone de l'auteur.
     S'il plantait à l'affichage, l'appli se fermerait à chaque ouverture (elle rouvre le dernier fond) et il ne
     resterait qu'à effacer ses données, sorties comprises. On compte donc les affichages commencés et jamais
@@ -725,11 +756,19 @@ Les versions sont centralisées dans `gradle/libs.versions.toml`.
   d'essai. Les tests tournent sans lui. Sans ce secret, tout se fabrique et se publie comme avant, sans les fonds
   Mapbox. `outils/controle_apk.py mapbox` vérifie dans l'APK et l'AAB que le jeton y est quand il doit y être, et
   seulement alors.
+- **Variable `MAPBOX_SATELLITE`** (une *variable* du dépôt, pas un secret : Settings > Secrets and variables >
+  Actions > Variables) : `oui` ajoute le fond « Mapbox Satellite » aux versions fabriquées. À ne créer que si le
+  compte Mapbox de l'auteur a un moyen de paiement. Elle n'existe pas aujourd'hui.
 - **`[essai mapbox]`** dans le message du dernier commit poussé : l'essai sur émulateur va jusqu'à afficher une
   carte Mapbox (tracé, guidage, satellite). Sans cela il vérifie seulement que les fonds sont proposés et que
   l'accord est demandé, puis annule : Mapbox compte chaque appareil qui affiche une de ses cartes dans le mois, et
   chaque émulateur neuf en est un de plus (100 par mois sans carte bancaire dans le compte). À ne mettre que
-  quand le moteur Mapbox a changé.
+  quand le moteur Mapbox a changé. Avec cette mention, l'APK d'essai contient toujours le fond satellite, quelle
+  que soit la variable `MAPBOX_SATELLITE` : tant que le compte n'y a pas droit, c'est le moyen de voir sur un vrai
+  Android ce que fait l'appli quand Mapbox refuse une carte (message, retour au plan) ; les deux issues, images
+  affichées ou refus annoncé, sont acceptées par le scénario, une carte laissée noire ne l'est pas. Ne jamais
+  lancer un essai Mapbox par `workflow_dispatch` : le message du commit y est vide, l'essai n'afficherait pas de
+  carte Mapbox et la version serait publiée.
 - **`[sans publication]`** dans le message du dernier commit poussé : toute la fabrication est déroulée (tests,
   APK signé, essai sur émulateur) mais le job `publication` est sauté. Pour ce qui ne change pas l'appli (essai
   sur émulateur, outils, workflow) : une version identique à la précédente ne ferait que proposer une mise à
